@@ -28,6 +28,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Windows 控制台默认 GBK，打印 emoji / 生僻字会直接 UnicodeEncodeError 把测试打断。
+# 放在这里是为了在任何输出之前生效；不支持 reconfigure 的环境静默跳过。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001
+    pass
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
 
