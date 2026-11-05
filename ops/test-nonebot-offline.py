@@ -103,6 +103,13 @@ async def main() -> None:
     parts = chat_mod.split_reply("今天天气不错。你要出去吗？我觉得可以。")
     check("split_reply 分段非空且无空白项", bool(parts) and all(p.strip() for p in parts), str(parts))
 
+    # 全新机器上没有 /opt/nonebot/data/persona.json：给测试一份临时人格，
+    # 否则 config_issues() 会一直报「人格文件异常」，和被测逻辑无关。
+    _persona = TMP / "persona.json"
+    _persona.write_text(json.dumps({"system_prompt": "测试人格", "begin_dialogs": []},
+                                   ensure_ascii=False), encoding="utf-8")
+    chat_mod.PERSONA = _persona
+    chat_mod._PERSONA_ERROR = ""
     core = chat_mod.ChatCore()
     core.llm.key_fn = lambda: "sk-test"     # 离线环境没有 keys.json
     await core.init_db()

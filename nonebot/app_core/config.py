@@ -179,6 +179,8 @@ def load(force: bool = False) -> dict:
     if _cache is not None and not force:
         return _cache
     data = {}
+    # 每次加载都清空错误：文件被删掉/换回来之后，"上次解析失败"不该一直挂着
+    _load_error = ""
     try:
         _loaded_mtime = CONFIG_PATH.stat().st_mtime
     except Exception:  # noqa: BLE001
@@ -186,7 +188,6 @@ def load(force: bool = False) -> dict:
     if CONFIG_PATH.exists():
         try:
             data = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")) or {}
-            _load_error = ""
         except Exception as e:  # noqa: BLE001
             # 缩进写错、tab 混用都会走到这里。**必须喊出来**，
             # 否则整份配置悄悄变回 DEFAULTS，线上只看得到「它不太对劲」。
