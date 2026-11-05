@@ -129,7 +129,7 @@ from app_core import (  # noqa: E402
     shadow as shadow_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
-    maintenance as maint_mod, paths as paths_mod,
+    maintenance as maint_mod, paths as paths_mod, status as status_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -366,6 +366,14 @@ async def main() -> None:
             {"家庭": True}, 1_800_000_000.0)
         check("profile.update_state 变化留旧值",
               _st2["previous"]["家庭"]["text"] == "催婚")
+
+        # ---------- status（记忆健康快照） ----------
+        _st = status_mod.snapshot(now=1_800_000_000.0, data_dir=TMP,
+                                  mem_db=TMP / "livingmemory.db",
+                                  chat_db=TMP / "chat.db")
+        check("status 快照字段齐全",
+              {"mem", "chat", "today", "files"} <= set(_st), str(sorted(_st)))
+        check("status 能渲染成几行", len(status_mod.render(_st).splitlines()) >= 3)
 
         # ---------- paths（运行时路径） ----------
         check("paths 从 ROOT 派生目录",

@@ -135,6 +135,7 @@ QQ 没有面向个人号的官方机器人 API。接入靠的是 OneBot v11 实�
 ops/verify.sh            # 六件套：分层 / 离线 / 联动 / 全链路 / 插件 / agentd
 ops/verify.sh --pre      # 重启前：不碰生产库、不发消息
 ops/verify.sh --quick    # 秒级：分层 + 联动
+ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时间敏感链路
 ```
 
 「联动体检」是真把 nonebot 跑起来、驱动插件 handler，断言**调用次数和参数**——

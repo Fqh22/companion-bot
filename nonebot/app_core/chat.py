@@ -236,7 +236,18 @@ class ChatCore:
 
     async def init_db(self) -> None:
         DATA.mkdir(parents=True, exist_ok=True)
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
+            # chat.db 是写入最频繁的库（消息、用量、情绪、台账都在这里），而且
+            # 同一进程里至少有十几个短连接在写。默认的 rollback journal 下一次写
+            # 会挡住所有读，忙等 5 秒就抛 database is locked。
+            # WAL 是**持久属性**，设一次就对之后所有连接生效；busy_timeout 是每连接的，
+            # 所以关键写入点（remember / 调度 / agent 插件）另行设置。
+            try:
+                await db.execute("PRAGMA journal_mode=WAL")
+                await db.execute("PRAGMA synchronous=NORMAL")
+                await db.execute("PRAGMA busy_timeout=15000")
+            except Exception as e:  # noqa: BLE001
+                log.warning("chat.db 设置 WAL 失败（不影响启动）：%s", e)
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS messages ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -301,7 +312,7 @@ class ChatCore:
         """从最近往前取，按字符预算截断（至少保留最近 2 条）。"""
         budget = max_chars or self.history_max_chars
         limit = max_items or self.history_max_items
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT role, content FROM messages WHERE session=? ORDER BY id DESC LIMIT ?",
                 (session, limit))
@@ -325,7 +336,7 @@ class ChatCore:
             sql += " AND id<?"
             args.append(before_id)
         try:
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 cur = await db.execute(sql, args)
                 row = await cur.fetchone()
         except Exception:  # noqa: BLE001
@@ -378,7 +389,7 @@ class ChatCore:
         if not row_id or not suffix:
             return False
         try:
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 await db.execute(
                     "UPDATE messages SET content = content || ? WHERE id = ?",
                     (suffix, int(row_id)))
@@ -417,7 +428,7 @@ class ChatCore:
     async def last_prompts(self, n: int = 1) -> list[dict]:
         """最近几条 prompt 快照（含正文）。排障用：它当时到底看到了什么。"""
         n = max(1, min(5, int(n or 1)))
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT ts, session, chars, flags, COALESCE(body,'') AS body "
                 "FROM prompt_log ORDER BY id DESC LIMIT ?", (n,))
@@ -427,7 +438,7 @@ class ChatCore:
 
     async def remember(self, session: str, role: str, content: str) -> int:
         """写一条消息，返回行号。行号用来事后补写（比如给图片补图注）。"""
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "INSERT INTO messages(session, role, content, ts) VALUES (?,?,?,?)",
                 (session, role, content, time.time()))
@@ -445,7 +456,7 @@ class ChatCore:
             blob = json.dumps(msgs, ensure_ascii=False).encode()
             tag = ",".join(k for k, v in flags.items() if v)
             body = blob.decode("utf-8", errors="replace")[:6000]
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 await db.execute(
                     "INSERT INTO prompt_log(ts,session,sha,chars,flags,body) "
                     "VALUES(?,?,?,?,?,?)",
@@ -492,7 +503,7 @@ class ChatCore:
 
     async def usage_stats(self, days: int = 1) -> dict:
         since = time.time() - days * 86400
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0) "
                 "FROM usage WHERE ts >= ?", (since,))
@@ -1048,7 +1059,7 @@ class ChatCore:
 
     async def get_digest(self, session: str) -> str:
         try:
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 cur = await db.execute(
                     "SELECT digest FROM session_digest WHERE session=?", (session,))
                 row = await cur.fetchone()
@@ -1058,7 +1069,7 @@ class ChatCore:
 
     async def _save_digest(self, session: str, text: str, last_id: int) -> None:
         """写纪要。调用方负责保证 text 已经是最终版本。"""
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             await db.execute(
                 "INSERT OR REPLACE INTO session_digest(session, digest, last_id, updated_ts)"
                 " VALUES (?,?,?,?)", (session, text, last_id, time.time()))
@@ -1092,7 +1103,7 @@ class ChatCore:
         # INSERT ... ON CONFLICT DO UPDATE ... WHERE 在冲突时 rowcount 仍是 1，
         # 判断不出到底抢没抢到。
         try:
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 now = time.time()
                 try:
                     await db.execute("INSERT INTO locks(name, ts) VALUES (?,?)", (name, now))
@@ -1110,7 +1121,7 @@ class ChatCore:
 
     async def _release(self, name: str) -> None:
         try:
-            async with aiosqlite.connect(DB) as db:
+            async with aiosqlite.connect(DB, timeout=15) as db:
                 await db.execute("DELETE FROM locks WHERE name=?", (name,))
                 await db.commit()
         except Exception:
@@ -1140,7 +1151,7 @@ class ChatCore:
         session = self.private_session()
         if not session:
             return {"ran": False, "reason": "no-admin", "pending": 0}
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT COUNT(*) FROM messages WHERE session=? AND role='user'",
                 (session,))
@@ -1220,7 +1231,7 @@ class ChatCore:
         - 推水位成功、写记忆失败 → 不会发生（先写后推，写失败就 return）
         - 同一段反复失败 → 熔断跳过并报错，不让它把后续记忆全堵死
         """
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT COUNT(*), COALESCE(MAX(id),0) FROM messages "
                 "WHERE session=? AND role='user'", (session,))
@@ -1244,7 +1255,7 @@ class ChatCore:
         idle_long = (time.time() - last_ts) >= self.summary_idle_seconds
         if not (force or enough_rounds or idle_long):
             return
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT id, role, content FROM messages "
                 "WHERE session=? AND id>? ORDER BY id LIMIT ?",
@@ -1333,7 +1344,7 @@ class ChatCore:
         await self._save_summary_state(session, n, target)
 
     async def _save_summary_state(self, session: str, count: int, last_id: int) -> None:
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             await db.execute(
                 "INSERT OR REPLACE INTO summaries"
                 "(session, last_count, last_id, ts, fail_count, fail_id) "
@@ -1343,7 +1354,7 @@ class ChatCore:
     async def _save_fail(self, session: str, count: int, last_id: int,
                          fails: int, fail_id: int) -> None:
         """只记失败次数，不动水位。ts 保持不变，下一轮还会再试。"""
-        async with aiosqlite.connect(DB) as db:
+        async with aiosqlite.connect(DB, timeout=15) as db:
             await db.execute(
                 "UPDATE summaries SET fail_count=?, fail_id=? WHERE session=?",
                 (fails, fail_id, session))

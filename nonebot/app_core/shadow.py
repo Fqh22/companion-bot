@@ -259,7 +259,61 @@ def weekly_summary(days: float = 7) -> dict:
     }
 
 
-def summary_lines(days: float = 7) -> list[str]:
+SNAP = DATA / "shadow-weekly.json"
+
+
+def rotate_snapshot(curr: dict | None = None, now: float | None = None) -> dict:
+    """把本周汇总存盘，返回**上一次**的汇总（给本周做对比）。
+
+    为什么要留上一周：影子指标是缓慢漂移的，单看一周的数字没有意义——
+    「召回重合 2.1」是好是坏，得跟上周的 1.8 比。没有基线，指标就只是装饰。
+    """
+    now = time.time() if now is None else now
+    prev: dict = {}
+    try:
+        if SNAP.exists():
+            prev = json.loads(SNAP.read_text(encoding="utf-8")) or {}
+    except Exception as e:  # noqa: BLE001
+        log.debug("影子周快照读取失败：%s", e)
+    cur = curr if curr is not None else weekly_summary(7)
+    try:
+        SNAP.parent.mkdir(parents=True, exist_ok=True)
+        SNAP.write_text(json.dumps({"at": now, "summary": cur}, ensure_ascii=False),
+                        encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        log.debug("影子周快照写入失败：%s", e)
+    return (prev or {}).get("summary") or {}
+
+
+def compare_lines(curr: dict, prev: dict) -> list[str]:
+    """本周 vs 上周。只报有数的项，差值保留两位。"""
+    if not prev:
+        return []
+    out: list[str] = []
+
+    def one(label: str, a, b, unit: str = "") -> None:
+        if a is None or b is None:
+            return
+        try:
+            d = float(a) - float(b)
+        except Exception:  # noqa: BLE001
+            return
+        out.append("%s：%s%s（上周 %s%s，%+.2f）" % (label, a, unit, b, unit, d))
+
+    one("召回平均重合", curr.get("retrieval", {}).get("avg_overlap"),
+        prev.get("retrieval", {}).get("avg_overlap"))
+    one("二次召回命中", curr.get("second", {}).get("hit_rate"),
+        prev.get("second", {}).get("hit_rate"), "%")
+    one("自指率", curr.get("attention", {}).get("avg_ratio"),
+        prev.get("attention", {}).get("avg_ratio"))
+    one("连边覆盖率", (round(100.0 * curr["graph"]["with_neighbors"] / curr["graph"]["n"], 1)
+                   if curr.get("graph", {}).get("n") else None),
+        (round(100.0 * prev["graph"]["with_neighbors"] / prev["graph"]["n"], 1)
+         if prev.get("graph", {}).get("n") else None), "%")
+    return out
+
+
+def summary_lines(days: float = 7, prev: dict | None = None) -> list[str]:
     """周报里那几行。没数据的档位直接不出现，别拿空行凑数。"""
     s = weekly_summary(days)
     out: list[str] = []
@@ -292,5 +346,9 @@ def summary_lines(days: float = 7) -> list[str]:
     pos = s["positive"]
     if pos["n"]:
         out.append("正反馈 %d 条" % pos["n"])
+    if prev:
+        cmp_ = compare_lines(s, prev)
+        if cmp_:
+            out.append("与上周相比：" + "；".join(cmp_))
     return out
 

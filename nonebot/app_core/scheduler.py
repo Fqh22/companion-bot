@@ -81,7 +81,7 @@ class Scheduler:
         await self._loop()
 
     async def _ensure_schema(self) -> None:
-        async with aiosqlite.connect(CHAT_DB) as db:
+        async with aiosqlite.connect(CHAT_DB, timeout=15) as db:
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS job_runs ("
                 "name TEXT NOT NULL, day TEXT NOT NULL, ts REAL NOT NULL,"
@@ -101,7 +101,7 @@ class Scheduler:
     async def _claim_job(self, name: str, day: str) -> bool:
         """「今天这件事还没跑过」才返回 True。重启不会重跑。"""
         try:
-            async with aiosqlite.connect(CHAT_DB) as db:
+            async with aiosqlite.connect(CHAT_DB, timeout=15) as db:
                 cur = await db.execute(
                     "INSERT OR IGNORE INTO job_runs(name, day, ts) VALUES (?,?,?)",
                     (name, day, time.time()))
@@ -129,7 +129,7 @@ class Scheduler:
         「这周怎么没消息」，而 job_runs 里一切正常。
         """
         try:
-            async with aiosqlite.connect(CHAT_DB) as db:
+            async with aiosqlite.connect(CHAT_DB, timeout=15) as db:
                 await db.execute("DELETE FROM job_runs WHERE name=? AND day=?",
                                  (name, day))
                 await db.commit()
@@ -194,7 +194,7 @@ class Scheduler:
             import aiosqlite
 
             from app_core.chat import DB as _chat_db
-            async with aiosqlite.connect(_chat_db) as db:
+            async with aiosqlite.connect(_chat_db, timeout=15) as db:
                 await db.execute("DELETE FROM prompt_log WHERE ts < ?",
                                  (time.time() - 7 * 86400,))
                 await db.commit()
@@ -492,7 +492,7 @@ class Scheduler:
         """
         expected = [(n, hh, mm) for n, hh, mm, _w in JOBS if n != "job-audit"]
         try:
-            async with aiosqlite.connect(CHAT_DB) as db:
+            async with aiosqlite.connect(CHAT_DB, timeout=15) as db:
                 cur = await db.execute("SELECT name FROM job_runs WHERE day=?", (day,))
                 had = {r[0] for r in await cur.fetchall()}
                 cur = await db.execute("SELECT MIN(ts) FROM job_runs")

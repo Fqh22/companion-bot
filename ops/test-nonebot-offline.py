@@ -134,6 +134,13 @@ async def main() -> None:
     check("usage 有 ts 索引", "idx_usage_ts" in idxs, str(sorted(idxs)))
     check("messages 有 (role,ts) 索引", "idx_msg_role_ts" in idxs, str(sorted(idxs)))
 
+    # chat.db 必须是 WAL：默认 rollback journal 下一次写会挡住所有读，
+    # 同进程十几个短连接并发时会 database is locked
+    con = sqlite3.connect(TMP / "chat.db")
+    _jm = con.execute("PRAGMA journal_mode").fetchone()[0]
+    con.close()
+    check("chat.db 开了 WAL", str(_jm).lower() == "wal", str(_jm))
+
     # 全新机器上 livingmemory.db 是空的：init 必须自己把 documents / memory_atoms 建出来，
     # 否则第一条记忆就崩。云端的库是历史安装遗留，这个坑一直到开源走查才暴露。
     con = sqlite3.connect(TMP / "livingmemory.db")
@@ -584,6 +591,7 @@ async def main() -> None:
     shadow_mod.SECOND_LOG = _all_logs["second"]
     shadow_mod.ATTENTION_LOG = _all_logs["attention"]
     shadow_mod.LOGS = dict(_all_logs)
+    shadow_mod.SNAP = TMP / "shadow-weekly.json"
     shadow_mod.record_retrieval("查询", ["a"] * 5, ["b"] * 5, ["a"] * 3 + ["b"] * 2)
     shadow_mod.record_graph("查询", ["a"], ["b", "c"])
     shadow_mod.record_second_recall("那呢", "这个", [{"doc_id": "abcdef12"}])
@@ -595,7 +603,14 @@ async def main() -> None:
     check("影子汇总：连边覆盖率", _sum["graph"]["with_neighbors"] >= 1,
           str(_sum["graph"]))
     check("影子汇总：二次召回命中", _sum["second"]["hit"] >= 1, str(_sum["second"]))
-    _sl = shadow_mod.summary_lines(7)
+    _cur = {"retrieval": {"avg_overlap": 2.0}, "second": {"hit_rate": 40},
+            "attention": {"avg_ratio": 0.4}, "graph": {"n": 2, "with_neighbors": 1}}
+    check("第一次影子快照没有上一周", shadow_mod.rotate_snapshot(_cur) == {})
+    _prev = shadow_mod.rotate_snapshot(_cur)
+    check("第二次快照返回上一次",
+          _prev.get("retrieval", {}).get("avg_overlap") == 2.0, str(_prev)[:60])
+    _sl = shadow_mod.summary_lines(7, prev=_prev)
+    check("周报里有「与上周相比」", any("与上周相比" in x for x in _sl), str(_sl[-1:])[:90])
     check("影子周报有可读的行", any("召回对比" in x for x in _sl), str(_sl[:2]))
     check("影子周报会带上画像块",
           any("画像块" in x for x in _sl), str(_sl))

@@ -75,7 +75,7 @@ async def _append_history(session: str, text: str) -> None:
     try:
         import aiosqlite
 
-        async with aiosqlite.connect(_paths.DATA / "chat.db") as db:
+        async with aiosqlite.connect(_paths.DATA / "chat.db", timeout=15) as db:
             await db.execute(
                 "INSERT INTO messages(session,role,content,ts) VALUES(?,?,?,?)",
                 (session, "assistant", text[:2000], time.time()))

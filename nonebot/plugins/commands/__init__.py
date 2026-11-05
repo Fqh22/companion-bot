@@ -32,6 +32,7 @@ usage_cmd = on_command("usage", priority=5, block=True, permission=SUPERUSER)
 cleanup_cmd = on_command("memory_cleanup", priority=5, block=True, permission=SUPERUSER)
 restore_cmd = on_command("memory_restore", priority=5, block=True, permission=SUPERUSER)
 conflicts_cmd = on_command("memory_conflicts", priority=5, block=True, permission=SUPERUSER)
+mem_status_cmd = on_command("mem_status", priority=5, block=True, permission=SUPERUSER)
 prompt_last_cmd = on_command("prompt_last", priority=5, block=True, permission=SUPERUSER)
 kb_verify = on_command("kb_verify", priority=5, block=True, permission=SUPERUSER)
 kb_deprecate = on_command("kb_deprecate", priority=5, block=True, permission=SUPERUSER)
@@ -222,6 +223,17 @@ async def _(event: MessageEvent):
         body = r["body"] or "（这条是加正文之前记的，只有指纹）"
         blocks.append(head + NL + body[:600] + ("…" if len(body) > 600 else ""))
     await prompt_last_cmd.finish((NL + NL).join(blocks)[:1800])
+
+
+@mem_status_cmd.handle()
+async def _():
+    """记忆链路健康快照：哪一环静默失败了，先从这几个数看。"""
+    from app_core import status as status_mod
+
+    try:
+        await mem_status_cmd.finish(status_mod.render(status_mod.snapshot()))
+    except Exception as e:  # noqa: BLE001
+        await mem_status_cmd.finish(f"取不到状态：{type(e).__name__}: {e}")
 
 
 @conflicts_cmd.handle()

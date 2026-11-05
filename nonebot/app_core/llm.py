@@ -319,7 +319,7 @@ class LLM:
         # 缓存命中省的是真金白银，记下来才看得见效果
         hit = int(usage.get("prompt_cache_hit_tokens") or 0)
         miss = int(usage.get("prompt_cache_miss_tokens") or 0)
-        async with aiosqlite.connect(self.db) as db:
+        async with aiosqlite.connect(self.db, timeout=15) as db:
             await db.execute(
                 "INSERT INTO usage(ts, model, prompt_tokens, completion_tokens, latency_ms,"
                 " cache_hit, cache_miss, purpose) VALUES (?,?,?,?,?,?,?,?)",

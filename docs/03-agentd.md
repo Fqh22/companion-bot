@@ -183,7 +183,7 @@ QQ → plugins/agent（2 秒轮询发件箱）→ HTTP 127.0.0.1:8100 → agentd
 | 文件 | 只挂 `/work`（rw），宿主侧 realpath 校验 |
 | 出网 | 内网（无路由）+ 代理白名单；iptables 禁直连宿主网关 |
 | 凭证 | 沙箱内**没有任何 key** |
-| 审批 | `rm -rf`/`dd`/`mkfs`/`shutdown` 先问 |
+| 审批 | 按 argv 解析判断：`rm` 的递归/强制、`dd if=/of=`、`mkfs*`、`shutdown` 等；支持 `sudo` 前缀与 `;` `&&` 串联；子串匹配只作兜底 |
 | OOM | QQ 容器 `-500`、沙箱 `+500`（宁可杀沙箱） |
 | 审计 | 所有动作写 `events` |
 

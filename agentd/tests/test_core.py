@@ -316,6 +316,14 @@ async def main() -> None:
 
     check("rm -rf 判为危险", is_dangerous("rm -rf /work/1"))
     check("普通命令不拦", not is_dangerous("echo hi"))
+    check("rm -r -f 也拦（分开写）", is_dangerous("rm -r -f /work/1"))
+    check("rm --recursive --force 也拦", is_dangerous("rm --recursive --force x"))
+    check("rm 变量展开保守拦截", is_dangerous("rm $FLAGS x"))
+    check("普通 rm 不拦", not is_dangerous("rm a.txt"))
+    check("引号里的 rm -rf 不误判", not is_dangerous('echo "rm -rf /"'))
+    check("分号串联照样拦", is_dangerous("ls; rm -rf /"))
+    check("sudo 前缀不影响判断", is_dangerous("sudo /bin/rm -rf /tmp/x"))
+    check("dd if= 仍拦", is_dangerous("dd if=/dev/zero of=/dev/sda"))
     store9 = Store(TMP / "data" / "t9.db")
     plan9 = json.dumps({"steps": [
         {"idx": 0, "desc": "危险操作", "verify": {"exit_code": 0}}]})

@@ -604,7 +604,9 @@ async def weekly(core) -> str:
     try:
         from app_core import shadow as shadow_mod
 
-        _sl = shadow_mod.summary_lines(7)
+        _snap = shadow_mod.weekly_summary(7)
+        _prev = shadow_mod.rotate_snapshot(_snap)
+        _sl = shadow_mod.summary_lines(7, prev=_prev)
         if _sl:
             text += ("\n\n## 影子这周（只记录，没改行为）\n"
                      + "\n".join("- " + x for x in _sl))

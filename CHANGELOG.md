@@ -3,6 +3,18 @@
 只记里程碑。日常的小修在 git history 里。
 
 
+## 2026-11-05 · 评审五条：WAL、命令解析、健康快照、时钟冒烟、周报对比
+
+- `chat.db` 开 WAL + `synchronous=NORMAL`，所有 aiosqlite 连接加 15s busy timeout：
+  同进程十几个短连接并发写不再可能 `database is locked`。
+- 危险命令从纯子串匹配改成 argv 解析：`rm -r -f` / `rm --recursive --force` / `rm $FLAGS`、
+  `sudo` 前缀、`;` `&&` 串联都能识别；引号里的字符串不再误判。
+- 新增 `/mem_status`：记忆条数、最近召回、最近写入、知识页数、今日矛盾判定、影子体积。
+- 新增 `ops/smoke-clock.py`：真实时钟冒烟，覆盖 mock 时间测不到的重启/跳变/晚跑场景。
+- 周报「影子这周」加「与上周相比」：召回重合、二次召回命中率、自指率、连边覆盖率的差值。
+- 顺带修：字符串形态的 `/opt/...` 路径（scheduler / agent / proactive / tools）也走 `paths.py`；
+  lint 新增「运行时路径不许写死 /opt」。
+
 ## 2026-11-05 · 写明外部依赖风险
 
 QQ 个人号没有官方机器人 API，接入依赖 OneBot v11 实现（第三方逆向协议）。README / SECURITY 现在明确写了：

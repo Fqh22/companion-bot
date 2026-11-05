@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import time
 from pathlib import Path
@@ -597,9 +598,87 @@ def classify(obs: Observation, why: str, ok: bool) -> str:
     return "logic"
 
 
+def _segments(cmd: str) -> list[list[str]]:
+    """按 ; && || | 和换行切成独立命令，返回 token 列表。
+
+    纯子串匹配的漏洞：rm -r -f、rm --recursive --force、rm $FLAGS 都能绕过去。
+    解析成 argv 之后按「命令 + 参数组合」判断，绕过面小得多。
+    解析失败（引号不配对等）时调用方退回子串匹配。
+    """
+    lex = shlex.shlex(cmd, posix=True, punctuation_chars=";&|\n")
+    lex.whitespace_split = True
+    toks = list(lex)
+    out: list[list[str]] = []
+    cur: list[str] = []
+    for t in toks:
+        if t and set(t) <= set(";&|\n"):
+            if cur:
+                out.append(cur)
+                cur = []
+        else:
+            cur.append(t)
+    if cur:
+        out.append(cur)
+    return out
+
+
+_DANGER_CMDS = {"mkfs", "shutdown", "reboot", "poweroff", "halt", "init",
+                "wipefs", "fdisk", "parted", "shred", "killall", "pkill"}
+_RECURSIVE = {"-r", "-R", "--recursive"}
+_PREFIXES = {"sudo", "doas", "env", "command", "nohup", "time", "exec"}
+
+
+def _is_dangerous_argv(argv: list[str]) -> bool:
+    if not argv:
+        return False
+    while argv and argv[0].lower() in _PREFIXES:
+        argv = argv[1:]
+    if not argv:
+        return False
+    head = argv[0].lower().rsplit("/", 1)[-1]
+    args = argv[1:]
+
+    if head in _DANGER_CMDS or head.startswith("mkfs"):
+        return True
+
+    if head == "dd":
+        return any(a.startswith(("if=", "of=")) for a in args)
+
+    if head == "rm":
+        # 变量 / 命令替换会把真实参数藏起来（rm $FLAGS），看不到就按危险处理
+        if any("$" in a or chr(96) in a for a in args):
+            return True
+        flags = [a for a in args if a.startswith("-")]
+        if any(f in flags for f in _RECURSIVE):
+            return True
+        # 合写形态：-rf / -fr / -Rf / -rfi …
+        if any(not f.startswith("--") and "r" in f.lower() and "f" in f.lower()
+               for f in flags):
+            return True
+        return False
+
+    if head == "chmod":
+        return any(a == "777" for a in args) and any(f in _RECURSIVE for f in args)
+
+    if head == "truncate":
+        return any(a.startswith("-s0") for a in args)
+
+    return False
+
+
 def is_dangerous(cmd: str) -> bool:
-    low = cmd.lower()
-    return any(d in low for d in DANGER)
+    """要不要人工点头。宁可多问一句，也不要让模型一步清空工作区。"""
+    low = (cmd or "").lower()
+    # 这两类没法当普通命令解析，先兜住
+    if ":(){" in low or "> /etc/" in low:
+        return True
+    try:
+        segs = _segments(cmd)
+    except Exception:  # noqa: BLE001
+        return any(d in low for d in DANGER)
+    if not segs:
+        return any(d in low for d in DANGER)
+    return any(_is_dangerous_argv(seg) for seg in segs)
 
 
 def _sha(p: Path) -> str:

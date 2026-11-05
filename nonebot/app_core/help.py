@@ -25,6 +25,7 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ]),
     ("记忆", [
         ("memory_cleanup", "手动跑一次分层归档"),
+        ("mem_status", "记忆链路健康快照（条数 / 最近召回 / 今日矛盾判定）"),
         ("memory_conflicts", "看被新事实推翻的旧记忆（判错了可恢复）"),
         ("memory_restore", "从归档/被取代里捞回来：/memory_restore 关键词"),
         ("usage", "今日 / 近 7 天 token 与费用"),
