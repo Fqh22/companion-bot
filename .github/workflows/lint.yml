@@ -16,3 +16,28 @@ jobs:
         run: python ops/lint-plugins.py
       - name: 密钥扫描
         run: python ops/scan-secrets.py
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: nonebot/requirements.txt
+      - name: 装依赖
+        run: pip install -r nonebot/requirements.txt
+      # 这三套都不联网、不碰生产库、几十秒跑完，天生适合当守门员
+      - name: 离线回归
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/test-nonebot-offline.py
+      - name: 全链路体检（假模型）
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/smoke-all.py
+      - name: agentd 单测
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python agentd/tests/test_core.py

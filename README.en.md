@@ -33,7 +33,7 @@ without a framework, a network, or a database.
 
 ## Quick start (no QQ needed)
 
-Python 3.10+.
+Python **3.12** (the only version CI tests; `requirements.txt` is pinned for 3.12).
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
@@ -48,7 +48,7 @@ If it prints `全部通过`, the code is self-consistent on your machine.
 
 
 On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
-the other 596 really run.
+the other 605 really run.
 
 ## Path convention
 

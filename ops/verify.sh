@@ -1,5 +1,5 @@
 #!/bin/bash
-# verify.sh —— 一键跑「四件套」，任何一套失败就返回非零。
+# verify.sh —— 一键跑「六件套」，任何一套失败就返回非零。
 #
 # 用法（在云端 /opt/nonebot 下，root 或 ubuntu 都行）：
 #   ops/verify.sh            # 全量：分层 + 离线回归 + 联动体检 + 全链路 + 插件启动

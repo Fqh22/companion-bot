@@ -36,7 +36,7 @@ QQ
 
 ## 快速开始（不需要 QQ）
 
-要求 Python 3.10+。
+要求 Python **3.12**（CI 只测这个版本；`requirements.txt` 是 3.12 的冻结点，3.10/3.11 未验证）。
 
 ```bash
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
@@ -51,7 +51,7 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 
 
 首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的，其余
-596 条都会真跑。
+605 条都会真跑。
 
 ## 路径约定
 
