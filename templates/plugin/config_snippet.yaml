@@ -1,0 +1,7 @@
+# 粘到 /opt/nonebot/config.yaml 末尾，按需改值。
+# 改完 systemctl restart nonebot 生效（配置在进程内缓存）。
+# 加完这一段，app_core/{{name}}.py 的 settings() 就能读到。
+
+{{name}}:
+  admin_id: "0"           # 填真实管理员 QQ；留 "0" 表示只有超管可用
+  enabled: true           # 关掉后 on_startup 会跳过初始化

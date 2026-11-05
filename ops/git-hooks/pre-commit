@@ -1,0 +1,23 @@
+#!/bin/sh
+# 提交前扫一遍暂存区，别把密钥/真地址带进仓库。
+# 安装：cp ops/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Windows 上 python3 常常是应用商店的占位程序（一跑就退出），
+# 所以要挑一个真的能执行的解释器，而不是看命令在不在。
+PY=""
+for cand in python python3 py; do
+    if "$cand" -c "import sys" >/dev/null 2>&1; then
+        PY="$cand"
+        break
+    fi
+done
+if [ -z "$PY" ]; then
+    echo "找不到可用的 Python，跳过密钥扫描（建议装上 python 再提交）"
+    exit 0
+fi
+
+"$PY" "$ROOT/ops/scan-secrets.py" --staged || {
+    echo "提交被拦下：先处理上面列出的内容（或确认无误后用 git commit --no-verify）"
+    exit 1
+}

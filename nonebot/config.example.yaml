@@ -1,0 +1,186 @@
+# NoneBot 运行时配置
+# 改完执行: systemctl restart nonebot
+
+admin:
+  # 管理员 QQ。仓库里是占位值，部署时改成真实号（云端 config.yaml 独立维护，不要被仓库版覆盖）。
+  # 留空或 "0" 的后果：记忆不写入、主动消息和定时推送发不出去。
+  user_id: "0"
+
+llm:
+  api: https://api.deepseek.com/v1/chat/completions
+  model: deepseek-flash
+  temperature: 1.15
+  # 推理模式下 temperature 不生效，但实测开思考的回复更具体、少套路，
+  # 所以这里保留原值（切回 false 时它会重新生效）。
+  max_tokens: 1000
+  # 单次回复最多跑几轮工具调用。3 轮常不够用（查记忆+读文件+写笔记就满了），提到 6。
+  # 每多一轮就多一次完整 LLM 调用，约 +1.5s，别设太大。
+  # 轮数用尽时程序会去掉工具再问一次，保证仍有正文返回。
+  max_tool_rounds: 6
+  # 一次回复的总时限（秒）。超了就回一句「有点卡」，不让用户干等。
+  # 工具最坏 6 轮 × 90s，没有这个上限能拖到 9 分钟。
+  reply_deadline_seconds: 45
+  # 思考模式。deepseek-flash 默认开着思考：更聪明、回复更有内容，但首字慢约 0.8s，
+  # 输出 token 更多（每次约 +100），且思考模式下 temperature 完全不生效。
+  # 2026-10-31 实测取舍后选择开启；想更快更省改成 false。
+  thinking: true
+  # 闲聊轮单独关思考。2026-11-05 用 replay 台实测（16 条真实消息，只改这一个变量）：
+  #   思考开：平均 37 字 / 2.3 句 / 三段以上 5/16 / 句长变异 0.36
+  #   关思考：平均 21 字 / 1.2 句 / 三段以上 1/16 / 句长变异 0.52
+  # 思考模式先规划结构再写，天然产出「总—分—总」，还会让 temperature 失效。
+  # 只对**明确闲聊**关：短句、没问号、没技术词、不带图；其余照旧开着。
+  thinking_casual: true
+
+summary:
+  # 记忆总结 / 复盘 / 周报 / 日记 / 间隔重复
+  # 用 chat 而不是 flash：flash 在长 JSON 输出上约 1/3 会截断，导致记忆静默丢失
+  # （真正原因是思考模式吃掉了输出预算，关掉思考后截断率会明显下降，
+  #   但 summary 仍保留 chat + 重试兜底。注：deepseek-chat 目前实际路由到 flash。）
+  model: deepseek-chat
+  max_tokens: 700
+  retry_model: deepseek-chat
+  thinking: false
+
+embedding:
+  api: https://open.bigmodel.cn/api/paas/v4/embeddings
+  model: embedding-3
+
+tools:
+  # 单个工具调用超时；总预算是一轮回复里所有工具调用的上限。
+  # 不加的话，6 轮 × 每轮 90s 的模型超时能把一次回复拖到 9 分钟。
+  timeout_seconds: 30
+  total_timeout_seconds: 120
+
+context:
+  # 历史对话的字符预算。6000 时占满载 prompt 的 57%，是最大头。
+  # 降到 4000 能省约 1/4 输入，仍够容纳 30–50 条短消息。
+  history_max_chars: 2500
+  history_max_items: 40       # 条数上限，防止短句刷屏
+  # 单条消息上限。文件正文只在当前轮给全文，入库的是摘要；
+  # 但老数据里可能还有超长条目，读历史时再兜一层。
+  history_item_max_chars: 1500
+  recall_query_items: 2       # 召回时额外拼最近几条用户消息
+  summary_idle_minutes: 30    # 距上次总结超过这么久且有新消息，也触发一次
+
+chat:
+  # 没有「先等再答」的输入防抖了：实测 14 天 472 次连发里合并成功 0 次，
+  # 却让每条消息白等 1.05 秒。现在文本零等待；
+  # 只有收到图片/文件之后，才等这么久看他有没有补一句说明。
+  media_settle_seconds: 1.5
+  # 影子模式：只记日志、不发消息，用来在真改行为前先量收益。
+  #   shadow-followup.jsonl  每轮生成一句「本来可以补的话」，看有多少真值得发
+  #   shadow-positive.jsonl  他说「哈哈/笑死/懂了」时记一条正例（之前只有纠错闭环）
+  shadow_followup: true
+  shadow_sample: 0.3        # 抽样比例，省 token
+
+group:
+  # 群聊是独立链路（无长期记忆、无情绪、无工具），见 app_core/group.py。
+  # 默认关闭；白名单为空时即使 enabled=true 也不回任何群（空跑期用这个状态）。
+  enabled: false
+  whitelist: []            # 群号列表，例如 [123456789]
+  context_turns: 20        # 进程内短期上下文条数，重启即忘
+  rate_per_minute: 3       # 每群每分钟最多回几条
+  cooldown_seconds: 5      # 两次回复的最小间隔
+  daily_token_budget: 50000   # 每群每天 token 上限，超了静默停
+  reply_max_tokens: 300    # 群里说短句，别刷屏
+
+watch:
+  # 话题巡检：每周日 20:30 主动搜一次，只报「真的变了」的（没变化就沉默）。
+  # 这里只是初始值；会写进 /opt/nonebot/data/watchlist.json，
+  # 之后直接改那个 JSON 即可，不用重启。
+  topics:
+    - "RTX 4080 SUPER 价格"
+    - "DeepSeek 最新模型版本"
+
+image:
+  # 图片长边与 JPEG 质量。1600 是为了手机截图里的小字还读得清：
+  # 1024 时 13px 正文只剩约 5px，实测报错码和文件路径会被读错。
+  # 降到 1024 能省约一半视觉 token、快 1.5 秒，但字会糊。
+  max_side: 1600
+  quality: 90
+
+mood:
+  # 情绪动力学。都是水龙头：tau_* 越小忘得越快，burst_cost 越大连发越容易累。
+  tau_valence_hours: 5.0    # 单次心情波动回到基线的尺度
+  tau_base_hours: 72.0      # 天级基线追随当前心情的尺度
+  tau_energy_hours: 8.0     # 白天闲下来时精力回静息的尺度
+  tau_social_hours: 6.0     # 互动热度的记忆长度
+  night_drain: 0.06         # 0-5 点每小时掉多少精力
+  sleep_recover_hours: 2.0  # 6-9 点向满电恢复的尺度
+  energy_base_cost: 0.004   # 每条消息的基础精力成本
+  energy_burst_cost: 0.016  # 连发时额外加的成本（乘连发系数）
+
+meme:
+  # 情绪强度 = |valence| + max(0, energy-0.7)×0.5，达到阈值才把 meme_send 工具给模型。
+  # 只用「高于静息值」的精力做兴奋加成：疲倦不是情绪强烈。
+  # 阈值按 valence 正负分三档，因为正负词表的单次分值不对称：
+  # 正向 +0.06/词、负向 -0.10/词，用同一个门槛会出现「开心容易发、吐槽发不出来」。
+  # 实测：平淡 ~0.09、连续 5 条开心 ~0.28、连续 4 条吐槽 ~0.30。
+  # 负向给 0.18（比中性低一点，让吐槽也能发）、但仍高于正向（避免一抱怨就甩图）。
+  # 2026-11-01 重标定：旧值 0.15/0.20/0.18 是线性累加时代定的；新情绪模型
+  # 冲量带饱和（一条正面词只到 0.154、两条负面才到 -0.089），旧负向阈值要连说三条
+  # 才触发。现在按新曲线重定：正向 1 句、负向 2 句就能发。
+  threshold_positive: 0.12
+  threshold_neutral: 0.16
+  threshold_negative: 0.08
+  # 老键：三档都缺省时作为回落值，保留是为了兼容云端还没更新成三档的配置
+  mood_threshold: 0.20
+
+memory:
+  # 同一段文字（去空白后完全相同）在这么多分钟内不重复写第二条。
+  # 两道幂等：range_key 管「同一段对话」，这个管「同一段文字」——
+  # 加 range 之前的老记忆没有 range_key，只能靠文本兜底。设 0 = 关掉。
+  dup_window_minutes: 10
+  # 记忆归档（软删，可恢复）。召回时会刷新 last_access_time，
+  # 所以「天天被想起来」的记忆永远不会被归档。
+  #
+  # 按重要性分层保留期，而不是一刀切：
+  #   重要的旧事不该因为放久了就被删掉。
+  cleanup_days_important: 180    # importance ≥ 0.8：半年没想起才归档
+  cleanup_days_normal: 90        # 0.5 ~ 0.8：三个月
+  cleanup_days_low: 30           # < 0.5：一个月
+  # 总量兜底：活跃记忆超过这个数，按 importance × 新鲜度淘汰最差的。
+  # 按每天 5 条算，3000 条约等于一年半的积累，那时召回信噪比才开始下降。
+  cleanup_max_active: 3000
+  # 召回相似度下限。实测：相关 query 的 top-5 在 0.36–0.48，
+  # 无关 query 整体在 0.24–0.28。0.35 能干净地分开两类。
+  recall_min_score: 0.35
+  # 时间/重要性调制：最终分 = cos × (1-w+w×exp(-天数/τ)) × (1+w_i×importance)
+  # 相似度仍是主导，时间只在「差不多相关」时让新的胜出。
+  # 现在记忆时间跨度只有几天，这几个参数暂时看不出差异；
+  # 攒够两三周后看日志里 cos 与 f 的排序是否发生变化，再决定怎么调。
+  recall_time_tau_days: 30      # 时间衰减半衰期（天）
+  recall_time_weight: 0.3       # 时间最多把分数拉低 30%
+  recall_importance_weight: 0.1 # 重要性最多加 10%
+  recall_keep_important: 0.8    # importance ≥ 此值不做时间衰减（保底）
+  # 矛盾检测：新记忆写入时，找几条高度相似的活跃旧记忆问一次模型「是不是同一件事的
+  # 两个版本」；是就把旧的标成 superseded（软删，/memory_restore 能捞回来）。
+  #   off    = 不查
+  #   shadow = 只记 data/contradictions.jsonl，不改任何状态（先看判定准不准）
+  #   on     = 真的标记取代
+  # 四道闸：相似度 >=0.5 才问、>=0.6 才改、每次最多 2 条、必须给理由。
+  contradiction_check: on
+  # 关键词通道（BM25+RRF）的影子对比。开着就每轮多算一遍关键词召回，
+  # 写进 data/shadow-retrieval.jsonl；**不改召回结果**，只用来判断要不要转正。
+  shadow_retrieval: true
+
+# 自我画像注入（每天 03:40 的复盘会更新 profile.json）。
+# off    = 不注入、也不记影子
+# shadow = 只把「本来会注入的那 200 字」写进 data/shadow-profile.jsonl，不改回复
+# on     = 真的拼进 prompt（放在纪要之前，属于稳定前缀）
+profile:
+  inject: shadow
+
+# 费用估算，单位：元 / 百万 token。按官网高峰价保守估算，空闲时段约半价。
+# 注意：deepseek-chat 目前实际路由到 deepseek-flash。
+# cache_in 是「上下文缓存命中」的输入单价，约未命中的 1/4。
+# 命中率会在 /usage 里显示；命中越多，实际成本越低。
+pricing:
+  deepseek-flash:
+    in: 2.0
+    out: 8.0
+    cache_in: 0.5
+  deepseek-chat:
+    in: 2.0
+    out: 8.0
+    cache_in: 0.5

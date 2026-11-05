@@ -1,0 +1,39 @@
+# 凭证与私钥
+密钥/
+*.pem
+*.key
+*.p12
+.env
+.env.*
+!.env.example
+
+# 运行时配置（模板见 config.example.yaml）
+nonebot/config.yaml
+config.yaml
+
+# 运行时数据与缓存
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+nonebot/data/
+*.log
+*.sqlite
+*.db
+*.db-wal
+*.db-shm
+
+# 测试与体检留下的临时目录
+qqbot-test-*/
+smoke-*/
+plug-*/
+tmp*/
+.agentd-test/
+.testtmp/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

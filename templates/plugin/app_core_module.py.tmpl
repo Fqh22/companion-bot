@@ -1,0 +1,38 @@
+"""{{name}} — {{short}}
+
+纯逻辑层：不依赖 NoneBot，可以离线单测（写脚本直接 import，不用起框架）。
+适配层在 plugins/{{name}}/__init__.py。
+
+约定：
+  * 不放 httpx 以外的重依赖；同步阻塞调用由调用方用 asyncio.to_thread 包。
+  * 所有可调参数走 config.yaml 的 {{name}} 段，不要硬编码阈值/路径。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from app_core import config
+
+# 运行数据固定放云上这个位置（和 learn/ diary/ 同级），不要在别处新建目录
+DATA_DIR = Path("/opt/qqbot-data/workspace/{{name}}")
+
+DEFAULT_ADMIN = "0"  # 未配置；部署时在 config.yaml 的 admin.user_id 填真实号
+
+
+def settings() -> dict:
+    """读 config.yaml 的 {{name}} 段；没配就用默认值。"""
+    cfg = config.load().get("{{name}}") or {}
+    return {
+        "admin_id": str(cfg.get("admin_id", DEFAULT_ADMIN)),
+        "enabled": bool(cfg.get("enabled", True)),
+    }
+
+
+def ping() -> str:
+    """健康检查。纯函数，方便单测。"""
+    return "pong"
+
+
+def ensure_dir() -> Path:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DATA_DIR

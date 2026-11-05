@@ -1,0 +1,49 @@
+"""{{name}} 插件：{{short}}
+
+适配层：只做「消息 → app_core → 回复」的转换，业务逻辑一律放 app_core/{{name}}.py。
+"""
+from __future__ import annotations
+
+from nonebot import get_driver, logger, on_command
+from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.permission import SUPERUSER
+
+from app_core import {{name}} as impl
+
+driver = get_driver()
+
+PLUGIN = "{{name}}"
+
+ping_cmd = on_command(f"{PLUGIN}_ping", priority=5, block=True)
+admin_cmd = on_command(f"{PLUGIN}_admin", priority=5, block=True, permission=SUPERUSER)
+
+
+@ping_cmd.handle()
+async def _ping() -> None:
+    try:
+        await ping_cmd.finish(impl.ping())
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[{PLUGIN}] ping 失败: {e}", exc_info=True)
+        await ping_cmd.finish("出错了，稍后再试")
+
+
+@admin_cmd.handle()
+async def _admin(event: MessageEvent) -> None:
+    cfg = impl.settings()
+    if str(event.user_id) != cfg["admin_id"]:
+        await admin_cmd.finish("只有管理员能用")
+    try:
+        await admin_cmd.finish("管理员命令已执行")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"[{PLUGIN}] admin 命令失败: {e}", exc_info=True)
+        await admin_cmd.finish("出错了，稍后再试")
+
+
+@driver.on_startup
+async def _startup() -> None:
+    cfg = impl.settings()
+    if not cfg["enabled"]:
+        logger.info(f"[{PLUGIN}] 配置里已禁用，跳过启动")
+        return
+    impl.ensure_dir()
+    logger.info(f"[{PLUGIN}] ready")
