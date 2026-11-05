@@ -192,6 +192,9 @@ CORE_API = {
     "whitelist", "admin_uid",
     # 图片与文件
     "caption_images",
+    # 记忆门面（不许插件直接 core.memory.*）
+    "memory_cleanup", "memory_superseded", "memory_forgotten",
+    "memory_embed", "memory_restore",
     # 写历史（插件发消息后必须回写，否则机器人不记得自己说过什么）
     "record_assistant", "append_to_message",
     # 兼容入口
@@ -231,6 +234,15 @@ def check_core_api() -> tuple[list[str], list[str]]:
                 continue
             for m in pat.finditer(line):
                 name = m.group(1)
+                if name.startswith("_"):
+                    fails.append(
+                        f"{_rel(f)}:{i}: core.{name} 是私有成员，插件不得直接访问")
+                    continue
+                if name == "memory":
+                    fails.append(
+                        f"{_rel(f)}:{i}: 别直接调 core.memory.*，用 core.memory_* 门面"
+                        f"（内部结构才能自由改）")
+                    continue
                 if name in CORE_API:
                     if name in CORE_API_DEPRECATED:
                         warns.append(f"{_rel(f)}:{i}: core.{name} 是遗留接口，建议改用公共方法")

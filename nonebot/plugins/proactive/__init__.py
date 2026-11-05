@@ -168,7 +168,7 @@ def _candidates() -> tuple[list, list, list]:
           for x in learn.read_list(learn.CURIOUS)]
     me = []
     try:
-        for r in core.memory.forgotten_important(3):
+        for r in core.memory_forgotten(3):
             me.append(("mem:" + r["doc_id"], r["text"][:120],
                        "突然想起这件事，有阵子没提了"))
     except Exception:

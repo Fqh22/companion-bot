@@ -1445,6 +1445,51 @@ async def main() -> None:
     rp3, _ = await core.reply("private:fallback", "在吗", on_sentence=sink)
     check("流式挂了会回退非流式", "回退成功" in "".join(rp3 or []), str(rp3))
 
+    # 流式：结尾建议先扣住，最后丢弃；正文照常发出
+    acalls = {"n": 0}
+
+    async def advice_stream(msgs, tools_arg=None, cb=None, **kw):
+        acalls["n"] += 1
+        # 节奏照真实流式：句子要等下一个字到了才冲刷；结尾建议先扣住，
+        # 最后一个增量只剩空白 -> 扣住的那句判定为结尾，丢弃。
+        for d in ("好的。x", " 建议你早点睡。", " "):
+            await cb(d)
+        return {"content": "好的。x 建议你早点睡。", "tool_calls": []}
+
+    core._stream_raw = advice_stream
+    got: list[str] = []
+
+    async def collect(s):
+        got.append(s)
+
+    await core.reply("private:advice", "嗯", on_sentence=collect)
+    check("流式：结尾建议被扣住没发出去", not any("建议" in x for x in got), str(got))
+    check("流式：正文照常发出", any("好的" in x for x in got),
+          f"got={got} calls={acalls['n']}")
+
+    # 流式：中途断流，已发出的句子必须写回历史（否则下一轮断片）
+    async def cut_stream(msgs, tools_arg=None, cb=None, **kw):
+        await cb("第一句。")
+        raise httpx.ConnectError("断流")
+
+    core._stream_raw = cut_stream
+    got2: list[str] = []
+
+    async def collect2(s):
+        got2.append(s)
+
+    await core.reply("private:cut", "在吗", on_sentence=collect2)
+    con2 = sqlite3.connect(TMP / "chat.db")
+    last = con2.execute(
+        "SELECT content FROM messages WHERE session='private:cut' AND role='assistant' "
+        "ORDER BY id DESC LIMIT 1").fetchone()
+    con2.close()
+    check("断流：已发出的片段写回历史", bool(last) and "第一句" in last[0],
+          (last[0] if last else "none")[:40])
+
+    core.__dict__.pop("_stream_raw", None)
+    core.__dict__.pop("complete_raw", None)
+
     # ---------- AB. 主动消息判断层（纯函数，可离线测） ----------
     from app_core import proactive as decide
     ok, why = decide.gate(3, 99999, 99999, 0, 4, {}, [0.1, 0.1, 0.1])

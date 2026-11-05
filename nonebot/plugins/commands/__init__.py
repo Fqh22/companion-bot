@@ -189,7 +189,7 @@ async def _():
 
 @cleanup_cmd.handle()
 async def _():
-    r = core.memory.cleanup()
+    r = core.memory_cleanup()
     await cleanup_cmd.finish(f"已归档 {r['archived']} 条，剩余活跃 {r['alive']} 条")
 
 
@@ -200,12 +200,12 @@ async def _(event: MessageEvent):
     if not arg:
         await restore_cmd.finish("用法：/memory_restore 关键词（从归档池里按语义找回，最多 3 条）")
     try:
-        vec = (await core.memory.embed([arg]))[0]
+        vec = (await core.memory_embed([arg]))[0]
     except Exception as e:  # noqa: BLE001
         await restore_cmd.finish(f"取向量失败：{type(e).__name__}: {e}")
         return
     try:
-        items = await asyncio.to_thread(core.memory.restore, vec, 3)
+        items = await asyncio.to_thread(core.memory_restore, vec, 3)
     except Exception as e:  # noqa: BLE001
         await restore_cmd.finish(f"恢复失败：{type(e).__name__}: {e}")
         return
@@ -251,7 +251,7 @@ async def _():
 @conflicts_cmd.handle()
 async def _():
     """看「被新事实推翻」的旧记忆。矛盾检测是软删，这里能看到它判了什么、为什么。"""
-    items = core.memory.superseded(8)
+    items = core.memory_superseded(8)
     if not items:
         await conflicts_cmd.finish("最近没有「被新记忆取代」的旧记忆")
     lines = ["最近被取代的旧记忆（旧 → 新）："]

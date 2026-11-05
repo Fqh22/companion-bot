@@ -184,6 +184,8 @@ class ChatCore:
         memory / scheduler / pacing / proactive / files / group / chat
         caption_images                          图片描述
         record_assistant / append_to_message     主动消息写回历史 / 给消息补图注
+        memory_cleanup / memory_superseded      记忆维护门面（不许直接 core.memory.*）
+        memory_forgotten / memory_embed / memory_restore
         rate_per_minute / cooldown / enabled / whitelist / admin_uid
 
     其余方法（_turn_*、_run_tools、remember_safe…）都是内部实现，
@@ -630,6 +632,25 @@ class ChatCore:
                 self.meme_thresholds.get(tier, self.meme_threshold))
         except Exception:
             return False
+
+    # ---- 记忆门面 ----
+    # 插件原来直接 core.memory.cleanup() / .embed() / .restore() / .superseded()，
+    # 等于把 Memory 的内部方法焊进了插件层——改 Memory 就得改两个插件。
+    # 这里收成窄门面：插件只表达「要做什么」，具体怎么查库不归它管。
+    def memory_cleanup(self) -> dict:
+        return self.memory.cleanup()
+
+    def memory_superseded(self, limit: int = 10) -> list:
+        return self.memory.superseded(limit)
+
+    def memory_forgotten(self, limit: int = 3) -> list:
+        return self.memory.forgotten_important(limit)
+
+    async def memory_embed(self, texts: list) -> list:
+        return await self.memory.embed(texts)
+
+    def memory_restore(self, qv: list, top_k: int = 3) -> list:
+        return self.memory.restore(qv, top_k)
 
     async def mood_event(self, kind: str) -> None:
         """记一次「机器人自己经历的事」（超时、工具失败、被纠正）。
