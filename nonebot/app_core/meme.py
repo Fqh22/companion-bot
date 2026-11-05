@@ -44,6 +44,10 @@ RECENT_FILE = _paths.DATA / "meme-recent.json"
 RECENT_WINDOW_H = 24
 RECENT_KEEP = 80
 
+# 本次进程内的匹配方式计数：语义命中率是判断「向量这一层有没有真的在工作」
+# 的唯一指标。重启归零，看趋势用 /meme_stats 的当前值即可。
+_hits: dict[str, int] = {"semantic": 0, "category": 0, "none": 0}
+
 
 def scan() -> list[tuple[str, Path]]:
     global _cache
@@ -106,7 +110,8 @@ def stats() -> dict:
     except Exception:  # noqa: BLE001
         n = 0
     return {"total": len(items), "categories": cats, "described": len(meta()),
-            "vectorized": int(n), "recent_24h": len(_recent_paths())}
+            "vectorized": int(n), "recent_24h": len(_recent_paths()),
+            "hits": dict(_hits)}
 
 
 def _recent_load() -> list[dict]:
@@ -238,13 +243,16 @@ async def find_ex(query: str) -> tuple[str, str, float]:
                     scored.sort(key=lambda x: -x[1])
                     top = [p for p, s in scored[:8] if s >= 0.30]
                     if top:
+                        _hits["semantic"] += 1
                         return _pick(top), "semantic", round(scored[0][1], 3)
             else:
                 log.warning("表情包向量库为空，落回分类匹配")
         except Exception as e:  # noqa: BLE001
             log.warning("表情包语义匹配失败，回退分类：%s", e)
     path = _category_fallback(q)
-    return path, ("category" if path else "none"), 0.0
+    mode = "category" if path else "none"
+    _hits[mode] = _hits.get(mode, 0) + 1
+    return path, mode, 0.0
 
 
 async def find(query: str) -> str:

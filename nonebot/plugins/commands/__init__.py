@@ -157,9 +157,14 @@ async def _(event: MessageEvent):
 async def _():
     s = meme.stats()
     cats = "、".join(f"{k}:{v}" for k, v in sorted(s["categories"].items()))
+    hits = s.get("hits") or {}
+    total_hits = sum(hits.values()) or 0
+    rate = f"{100 * hits.get('semantic', 0) / total_hits:.0f}%" if total_hits else "—"
     await meme_stats.finish(
-        f"共 {s['total']} 张（有语义描述 {s['described']}，有向量 {s['vectorized']}，"
-        f"24h 内发过 {s['recent_24h']}）{NL}{cats}")
+        f"共 {s['total']} 张（描述 {s['described']}，向量 {s['vectorized']}，"
+        f"24h 内发过 {s['recent_24h']}）{NL}"
+        f"本次启动以来：语义 {hits.get('semantic', 0)} / 分类 "
+        f"{hits.get('category', 0)}，语义命中率 {rate}{NL}{cats}")
 
 
 @usage_cmd.handle()

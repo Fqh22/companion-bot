@@ -258,6 +258,8 @@ async def main() -> None:
         check("meme.find_ex 带匹配方式", _mode in ("semantic", "category", "none"), _mode)
         check("meme 去重记录落盘", meme_mod.RECENT_FILE.exists(), str(meme_mod.RECENT_FILE))
         check("meme 去重记录能读回", bool(meme_mod._recent_paths()), "空")
+        _h = meme_mod.stats().get("hits") or {}
+        check("meme 暴露匹配方式计数", sum(_h.values()) >= 1, str(_h))
         check("meme._category_fallback", bool(meme_mod._category_fallback("无语")))
         check("meme._pick", isinstance(meme_mod._pick([str(x[1]) for x in packs]), str))
         check("meme.describe", isinstance(meme_mod.describe(pick), str))
