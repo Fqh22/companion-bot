@@ -657,6 +657,47 @@ async def main() -> None:
     await mem.recall("查询", 3, qv=[0.11, 0.22, 0.33])
     check("传 qv 时不再调用 embedding", len(embed_calls) == 0, str(embed_calls))
 
+    # ---------- C2. 召回 golden：固定语料 + 固定向量，锁死排序 ----------
+    # 改召回打分（时间/重要性调制、阈值、重复降权）时这条会红。
+    # 断言的是「谁排第几」，不是具体分数——分数会随参数微调，顺序才是契约。
+    from app_core import vec as vec_mod
+
+    gdb = TMP / "golden-recall.db"
+    if gdb.exists():
+        gdb.unlink()
+    _old_mem_db = memory_mod.DB
+    memory_mod.DB = gdb
+    try:
+        g = memory_mod.Memory()
+        g.init()
+        _now = time.time()
+        _rows = [
+            # doc_id, 文本, 向量, importance, 多少天前
+            ("aaaa0001", "今天聊了部署", [1.0, 0.0, 0.0], 0.5, 0),
+            ("bbbb0002", "很久以前聊过部署", [1.0, 0.0, 0.0], 0.5, 120),
+            ("cccc0003", "完全不相关", [0.0, 1.0, 0.0], 0.5, 1),
+            ("dddd0004", "很重要的事", [1.0, 0.0, 0.0], 0.95, 300),
+        ]
+        _con = sqlite3.connect(gdb)
+        for _id, _text, _v, _imp, _age in _rows:
+            _con.execute(
+                "INSERT INTO documents(doc_id, text, metadata) VALUES (?,?,?)",
+                (_id, _text, json.dumps({
+                    "importance": _imp,
+                    "create_time": _now - _age * 86400,
+                    "last_access_time": _now - 7200})))
+            _con.execute("INSERT INTO memory_vectors(doc_id, vec, ts) VALUES (?,?,?)",
+                         (_id, vec_mod.pack(_v), _now))
+        _con.commit()
+        _con.close()
+        _gout = await g.recall("部署", 3, qv=[1.0, 0.0, 0.0], touch=False)
+        _gids = [d["doc_id"] for d in _gout]
+        check("召回 golden：重要性保底 > 新近 > 久远",
+              _gids == ["dddd0004", "aaaa0001", "bbbb0002"], str(_gids))
+        check("召回 golden：低于阈值的不进结果", "cccc0003" not in _gids, str(_gids))
+    finally:
+        memory_mod.DB = _old_mem_db
+
     # ---------- D. 工具循环：不污染上下文 / 重试屏蔽副作用 ----------
     seen_tools = []
     state = {"n": 0}
