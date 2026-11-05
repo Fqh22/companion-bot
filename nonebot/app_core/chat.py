@@ -8,6 +8,7 @@ import random
 import re
 import time
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app_core import paths as _paths
@@ -125,6 +126,51 @@ _err_text = llm_mod._err_text
 _clip = prompt_mod.clip
 _age_label = prompt_mod.age_label
 split_reply = prompt_mod.split_reply
+
+
+@dataclass
+class Turn:
+    """一轮回复的状态。
+
+    拆 reply 的目的：原来 15 个阶段挤在同一个 356 行的局部作用域里，
+    改任何一段都得读懂全部。现在阶段之间只传这一个对象，
+    哪些是「本轮的」，一眼能看全。
+    """
+    session: str
+    user_text: str
+    images: list
+    store_text: str | None
+    owner: bool
+    rid: str
+    t0: float
+    degraded: int = 0
+    m: dict = field(default_factory=dict)
+    stored: str = ""
+    extra_system: list = field(default_factory=list)
+    digest: str = ""
+    history: list = field(default_factory=list)
+    query: str = ""
+    user_msg_id: int = 0
+    mvec: list = field(default_factory=list)
+    qv: list | None = None
+    seg_max: int = 0
+    memories: list = field(default_factory=list)
+    knowledge: str = ""
+    skills: list = field(default_factory=list)
+    lessons: str = ""
+    profile_block: str = ""
+    open_items: str = ""
+    msgs: list = field(default_factory=list)
+    allow_meme: bool = True
+    ai_images: list = field(default_factory=list)
+    buffer: str = ""
+    held: str = ""
+    streamed: bool = False
+    sent_parts: list = field(default_factory=list)
+    text: str = ""
+    img_budget: int = 0
+    task_stats: dict = field(default_factory=dict)
+    think: bool = False
 
 
 class ChatCore:
@@ -655,28 +701,42 @@ class ChatCore:
         store_text：入库版本。文件正文这类超长输入只在**本轮**给模型看全文，
         历史里存一份压缩摘要，否则每轮都要把 8000 字重新发一遍。
         on_sentence：传了就启用流式，收到完整句子立即回调；返回值为还没发出去的尾巴。
+
+        流水线四段：prepare 取上下文 → compose 拼 prompt → generate 调模型 →
+        commit 收尾。拆分不改行为，只是把原来一个 356 行的局部作用域切开。
         """
-        rid = uuid.uuid4().hex[:6]
-        t0 = time.perf_counter()
-        degraded = 0
+        turn = await self._turn_prepare(session, user_text, images, store_text)
+        await self._turn_compose(turn)
+        await self._turn_generate(turn, on_sentence)
+        await self._turn_commit(turn, on_sentence)
+        if on_sentence and turn.streamed:
+            # 流式已经发出去的不再返回，只把没说完的尾巴交回去
+            tail = split_reply(turn.buffer, turn.seg_max) if turn.buffer.strip() else []
+            return tail, turn.ai_images
+        return split_reply(turn.text, turn.seg_max), turn.ai_images
+
+    async def _turn_prepare(self, session: str, user_text: str,
+                            images: list | None, store_text: str | None) -> Turn:
+        """取证：历史、记忆、知识、画像、情绪。"""
+        turn = Turn(session=session, user_text=user_text, images=list(images or []),
+                    store_text=store_text, owner=self._is_owner(session),
+                    rid=uuid.uuid4().hex[:6], t0=time.perf_counter())
         # 只有本人那一轮才动记忆/情绪/知识/工具。别人可以聊，但聊的是一个
         # 「不记得他、也不知道我」的版本——否则他一句话就能把我的记忆念出来，
         # 或者把话写进我的库（2026-11-05 实测：陌生人问「我是谁」，它答了 QQ 号）。
-        owner = self._is_owner(session)
-        m = mood.settle(mood.load()) if owner else {
+        turn.m = mood.settle(mood.load()) if turn.owner else {
             "valence": 0.0, "valence_base": 0.0, "energy": 0.7, "social": 0.5}
 
         if store_text is not None:
-            stored = store_text
-        elif images:
-            stored = f"{user_text}（附了 {len(images)} 张图）"
+            turn.stored = store_text
+        elif turn.images:
+            turn.stored = f"{user_text}（附了 {len(turn.images)} 张图）"
         else:
-            stored = user_text
+            turn.stored = user_text
 
         # 他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
         # 上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
-        extra_system: list[str] = []
-        if not images and len(user_text) >= 2:      # 「改完了」只有 3 个字，不能因此跳过
+        if not turn.images and len(user_text) >= 2:      # 「改完了」只有 3 个字，不能因此跳过
             try:
                 followup.confirm_pending(user_text)
                 res = followup.resolve(user_text)
@@ -684,68 +744,66 @@ class ChatCore:
                     followup.apply(res)
                     log.info("[chat] followup %s", res)
                 if res.get("done"):
-                    extra_system.append(
+                    turn.extra_system.append(
                         "他刚说这件事办完了，你已经记成完成——"
                         "这轮别再问进展，也别再说「记得跟我说」。")
                 if res.get("confirm"):
                     names = followup.texts_for(res["confirm"])
                     if names:
-                        extra_system.append(
+                        turn.extra_system.append(
                             "他像是在说「%s」已经办完了，但你没把握："
                             "在回复里顺口确认一句，别直接当成已完成。" % names[0])
             except Exception:
                 pass
 
         try:
-            digest = await self.get_digest(session)
+            turn.digest = await self.get_digest(session)
         except Exception:
-            digest = ""
+            turn.digest = ""
         # 还没有纪要时放宽历史预算：一上线就砍到 2500 会把老上下文丢了
-        hist_budget = self.history_max_chars if digest else max(self.history_max_chars, 4000)
+        hist_budget = self.history_max_chars if turn.digest else max(self.history_max_chars, 4000)
         # 先读历史、后写本轮：否则刚写进去的这句会被 history() 读回来，
         # 再在 build_messages 末尾追加一次 —— 同一句话在 prompt 里出现两遍。
-        history = await self.history(session, max_chars=hist_budget)
-        recent_user = [x["content"] for x in history if x["role"] == "user"][-self.recall_query_items:]
-        query = " ".join(recent_user + [user_text])[-400:]
+        turn.history = await self.history(session, max_chars=hist_budget)
+        recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
+        turn.query = " ".join(recent_user + [user_text])[-400:]
 
-        self.user_msg_id = await self.remember_safe(session, "user", stored)
-        if not self.user_msg_id:
-            degraded += 1
+        turn.user_msg_id = await self.remember_safe(session, "user", turn.stored) or 0
+        self.user_msg_id = turn.user_msg_id
+        if not turn.user_msg_id:
+            turn.degraded += 1
 
         # 两条向量一次算完：本轮这句（判话题推进）+ 召回 query（含前几轮）。
         # 之前分两次串行 embed，同一个 provider 要握手两遍，白等一趟 HTTP。
-        mvec: list = []
-        qv = None
         try:
             texts = [user_text] if user_text.strip() else []
-            if query and query != user_text:
-                texts.append(query)
+            if turn.query and turn.query != user_text:
+                texts.append(turn.query)
             if texts:
                 vecs = await self.memory.embed(texts)
                 if user_text.strip():
-                    mvec = vecs[0]
-                    qv = vecs[-1]
+                    turn.mvec, turn.qv = vecs[0], vecs[-1]
                 else:
-                    qv = vecs[0]
+                    turn.qv = vecs[0]
         except Exception:
-            mvec, qv = [], None
+            turn.mvec, turn.qv = [], None
         # 情绪要等向量出来才能算「推进 / 重复 / 换话题」，所以 observe 挪到这里。
         # 不是本人就不观察也不保存：情绪是全局单例，别人几句话能把他的心情带跑。
-        if owner:
-            mood.observe(m, user_text, vec=mvec)
-            mood.save(m)
-        seg_max = self.seg_max(m)
+        if turn.owner:
+            mood.observe(turn.m, user_text, vec=turn.mvec)
+            mood.save(turn.m)
+        turn.seg_max = self.seg_max(turn.m)
         try:
-            memories = await self.memory.recall(query, 5, qv=qv) if owner else []
+            turn.memories = await self.memory.recall(turn.query, 5, qv=turn.qv) if turn.owner else []
         except Exception:
-            memories = []
+            turn.memories = []
         # 二次召回（影子）：他这句是在回指上文时，用上一轮他的话再捞一次。
         # 只落盘、不改变本轮注入的 memories；touch=False 是为了不污染
         # 「被想起过」的记账——影子不该改变清理和重复降权的依据。
         try:
-            if owner and intent.refers_to_previous(user_text):
+            if turn.owner and intent.refers_to_previous(user_text):
                 prev_said = next(
-                    ((h.get("content") or "").strip() for h in reversed(history)
+                    ((h.get("content") or "").strip() for h in reversed(turn.history)
                      if h.get("role") == "user" and (h.get("content") or "").strip()),
                     "")
                 if prev_said and prev_said != user_text:
@@ -753,38 +811,35 @@ class ChatCore:
                     shadow.record_second_recall(user_text, prev_said, extra)
         except Exception as e:  # noqa: BLE001
             log.debug("二次召回影子失败：%s", e)
+
         # 知识：优先注入索引（省 token、短查询更准）；索引还没建好时退回向量检索。
         # 不是本人就整段跳过——知识库里全是他自己的笔记和文档。
-        knowledge, skills = "", []
-        if owner:
+        if turn.owner:
             try:
-                knowledge = wiki.index_text()
+                turn.knowledge = wiki.index_text()
             except Exception:
-                knowledge = ""
-            if not knowledge:
+                turn.knowledge = ""
+            if not turn.knowledge:
                 try:
-                    knowledge = "\n\n".join(await kb.recall(query, 3, qv=qv))
+                    turn.knowledge = "\n\n".join(await kb.recall(turn.query, 3, qv=turn.qv))
                 except Exception:
-                    knowledge = ""
-            skills = learn.skill_match(user_text, 2)
+                    turn.knowledge = ""
+            turn.skills = learn.skill_match(user_text, 2)
         # 他纠正过的事要真进 prompt，否则「学到了」只是写了个文件。
         # 按场景分流：「别瞎猜糊图」只在有图的那轮才有意义。
         # 纠正清单是全局文件，不是本人就别注入——里面写满了他的私事。
-        lessons = ""
-        if owner:
+        if turn.owner:
             try:
-                lessons = "\n".join(
+                turn.lessons = "\n".join(
                     f"- {x}" for x in learn.recent_corrections(
-                        6, scene="image" if images else "text"))
+                        6, scene="image" if turn.images else "text"))
             except Exception:
-                lessons = ""
+                turn.lessons = ""
 
         # 画像：一周才变一次，属于稳定前缀，放在纪要之前几乎不打断缓存。
         # 默认 shadow —— 只把「本来会注入的这 200 字」落盘，不改 messages。
-        # 攒够样本、确认没有离谱的，再把 profile.inject 改成 on。
-        profile_block = ""
         try:
-            _pfields = learn.profile_fields() if owner else {}
+            _pfields = learn.profile_fields() if turn.owner else {}
             if _pfields:
                 _ptext = profile_mod.compact(_pfields, learn.profile_conf(),
                                              learn.profile_seen())
@@ -793,214 +848,210 @@ class ChatCore:
                 _pm = (config.load().get("profile") or {}).get("inject", "shadow")
                 _pmode = "on" if _pm is True else ("off" if _pm is False else str(_pm))
                 if _pmode == "on":
-                    profile_block = _ptext
+                    turn.profile_block = _ptext
                 if _pmode in ("on", "shadow"):
                     shadow.record_profile(_ptext, _pfields, _pmode)
         except Exception as e:  # noqa: BLE001
             log.debug("画像注入准备失败：%s", e)
+        return turn
 
+    async def _turn_compose(self, turn: Turn) -> None:
+        """拼 prompt：风格块、待办、相处状态、画像、知识合成一条 system 消息。"""
         # 这一轮怎么说：长度 / 形式 / 图片 / 时效 / 纠正 合成**一条**消息。
         # 合并的原因：原来五条 system 消息会互相打架（allow_short 就是打过的补丁），
         # 现在冲突规则集中在一个函数里，可测、只需查一处。
         try:
-            recent_lens = [len(h.get("content") or "") for h in history
+            recent_lens = [len(h.get("content") or "") for h in turn.history
                            if h.get("role") == "assistant"][-3:]
-            _user_lens = [len(h.get("content") or "") for h in history
+            _user_lens = [len(h.get("content") or "") for h in turn.history
                           if h.get("role") == "user"][-3:]
             block = prompt_mod.style_block(
-                user_text, history, m, recent_lens,
-                burst=user_text.count("\n") + 1,
-                images=len(images) if images else 0,
+                turn.user_text, turn.history, turn.m, recent_lens,
+                burst=turn.user_text.count("\n") + 1,
+                images=len(turn.images) if turn.images else 0,
                 recent_user_lens=_user_lens)
             if block:
-                extra_system = list(extra_system) + [block]
+                turn.extra_system = list(turn.extra_system) + [block]
         except Exception as e:  # noqa: BLE001
             log.debug("风格块生成失败：%s", e)
 
         # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得
         try:
             _open = [x["text"][:40] for x in followup.pending(3)]
-            open_items = "\n".join(f"- {x}" for x in _open)
+            turn.open_items = "\n".join(f"- {x}" for x in _open)
         except Exception:  # noqa: BLE001
-            open_items = ""
+            turn.open_items = ""
 
         # 相处状态：说「他那边怎么样、这一轮该做什么」，不说「我心情如何」。
         try:
-            _gap = await self.gap_hours(session, self.user_msg_id) if owner else 0.0
+            _gap = await self.gap_hours(turn.session, turn.user_msg_id) if turn.owner else 0.0
             # 这里要的是**他**说要做还没做的事，不是「我答应过他、还没跟进的事」。
             # 两者都存在 followup 里，但方向相反：一个是他自己欠着，一个是我欠他。
-            _his = followup.due_for_asking(3) if owner else []
+            _his = followup.due_for_asking(3) if turn.owner else []
             _mood_text = relational.describe(
-                m, _gap, len(_his), _his[0]["text"] if _his else "")
+                turn.m, _gap, len(_his), _his[0]["text"] if _his else "")
         except Exception:  # noqa: BLE001
-            _mood_text = mood.describe(m)
-        msgs = self.build_messages(history, user_text, memories, _mood_text,
-                                   knowledge, skills, images, extra_system, digest,
-                                   lessons=lessons, open_items=open_items,
-                                   profile=profile_block,
-                                   persona=self.persona_for(session))
-        await self._log_prompt(session, msgs, digest=digest, images=images)
-        # 发表情的门槛是「我的情绪强度够不够」。外人不共享我的情绪（用中性值），
-        # 这条永远过不了——所以对外人直接放开，靠人格里的「别连着刷」约束。
+            _mood_text = mood.describe(turn.m)
+        turn.msgs = self.build_messages(turn.history, turn.user_text, turn.memories,
+                                        _mood_text, turn.knowledge, turn.skills,
+                                        turn.images, turn.extra_system, turn.digest,
+                                        lessons=turn.lessons, open_items=turn.open_items,
+                                        profile=turn.profile_block,
+                                        persona=self.persona_for(turn.session))
+        await self._log_prompt(turn.session, turn.msgs, digest=turn.digest,
+                               images=turn.images)
         # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出
         # 稳定预期，结果一次都不发。频率改由「每轮最多一张 + 24h 去重」控制。
-        allow_meme = True
+        turn.allow_meme = True
 
-        ai_images: list[str] = []       # 本轮要附带发出的表情包
-        buffer = ""
-        held = ""                       # 疑似结尾建议，先扣住
-        streamed = False
-        # 真正交到用户手里的句子。流式中途断掉时，靠它把已经发出去的话写回历史，
-        # 否则下一轮它完全不记得自己说过什么（表现是断片、重复、自相矛盾）。
-        sent_parts: list[str] = []
-
+    async def _turn_generate(self, turn: Turn, on_sentence) -> None:
+        """调模型（含流式、重试、降级），产出 turn.text / buffer / sent_parts。"""
         async def sink(delta: str) -> None:
             """流式增量 → 攒够一句就交给 on_sentence 发出去。
 
             疑似的「结尾建议」先扣住：等下一句到了说明它不是结尾，再补发；
             一直没下一句，就说明它真是结尾 —— 丢掉（这条实测模型改不掉，只能事后剪）。
             """
-            nonlocal buffer, streamed, held
-            streamed = True
-            buffer += delta
-            cut = max(buffer.rfind(c) for c in "。！？!?~…\n")
-            if cut >= 0 and cut < len(buffer) - 1:
-                chunk, buffer = buffer[:cut + 1], buffer[cut + 1:]
-                for part in split_reply(chunk, seg_max):
+            turn.streamed = True
+            turn.buffer += delta
+            cut = max(turn.buffer.rfind(c) for c in "。！？!?~…\n")
+            if cut >= 0 and cut < len(turn.buffer) - 1:
+                chunk, turn.buffer = turn.buffer[:cut + 1], turn.buffer[cut + 1:]
+                for part in split_reply(chunk, turn.seg_max):
                     part = prompt_mod.soften_tone(part)      # 去掉「哈哈哈」这类轻浮语气
                     if not part.strip():
                         continue
-                    if held:
-                        await on_sentence(held)
-                        sent_parts.append(held)
-                        held = ""
+                    if turn.held:
+                        await on_sentence(turn.held)
+                        turn.sent_parts.append(turn.held)
+                        turn.held = ""
                     # 他在征求意见时，建议是答案，不能扣
-                    if not prompt_mod.wants_advice(user_text) \
+                    if not prompt_mod.wants_advice(turn.user_text) \
                             and prompt_mod.is_advice_sentence(part):
-                        held = part
+                        turn.held = part
                     else:
                         await on_sentence(part)
-                        sent_parts.append(part)
+                        turn.sent_parts.append(part)
 
-        text = ""
-        img_budget = max(self.max_tokens, REPLY_MAX_TOKENS)
-        task_stats: dict = {}
-        _think = self._thinking_for(user_text, images)
+        turn.img_budget = max(self.max_tokens, REPLY_MAX_TOKENS)
+        turn.think = self._thinking_for(turn.user_text, turn.images)
         try:
-            text = await self._run_tools(msgs, allow_meme, ai_images,
-                                         on_text=sink if on_sentence else None,
-                                         budget=img_budget, stats=task_stats,
-                                         thinking=_think, allow_tools=owner)
-            if not text:
+            turn.text = await self._run_tools(
+                turn.msgs, turn.allow_meme, turn.ai_images,
+                on_text=sink if on_sentence else None,
+                budget=turn.img_budget, stats=turn.task_stats,
+                thinking=turn.think, allow_tools=turn.owner)
+            if not turn.text:
                 # 重试也要守住白名单：漏传 allow_tools 会默认 True，
                 # 等于给外人一次「首次回复为空」的机会拿回全部工具（能读笔记和记忆）。
-                text = await self._run_tools(msgs, allow_meme, ai_images, retry=True,
-                                             budget=img_budget, stats=task_stats,
-                                             thinking=_think, allow_tools=owner)
+                turn.text = await self._run_tools(
+                    turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
+                    budget=turn.img_budget, stats=turn.task_stats,
+                    thinking=turn.think, allow_tools=turn.owner)
         except Exception as e:  # noqa: BLE001
             log.warning("生成回复失败：%s", e)
-            degraded += 1
-            text = ""
+            turn.degraded += 1
+            turn.text = ""
             # 流式在首字之前就断了：这时什么都没发出去，退回非流式重来一次，
             # 别直接把兜底的「在」甩给用户。已经吐过字就不能重来。
-            if on_sentence and not streamed:
+            if on_sentence and not turn.streamed:
                 try:
-                    text = await self._run_tools(msgs, allow_meme, ai_images,
-                                                 budget=img_budget, stats=task_stats,
-                                                 thinking=_think, allow_tools=owner)
+                    turn.text = await self._run_tools(
+                        turn.msgs, turn.allow_meme, turn.ai_images,
+                        budget=turn.img_budget, stats=turn.task_stats,
+                        thinking=turn.think, allow_tools=turn.owner)
                     log.info("流式失败，回退非流式成功")
                 except Exception as e2:  # noqa: BLE001
                     log.warning("回退非流式也失败：%s", e2)
-        if not text and not streamed:
-            text = random.choice(FALLBACK_LINES)
+        if not turn.text and not turn.streamed:
+            turn.text = random.choice(FALLBACK_LINES)
         # 这一轮到底费不费劲：查了几轮工具、答了多长。问一句答一句几乎不耗，
         # 查三次资料再写长答案才该累——按条数扣钱会把这两件事算成一样。
         try:
-            if owner:
-                mood.apply_task(task_stats.get("rounds", 0), len(text or buffer))
+            if turn.owner:
+                mood.apply_task(turn.task_stats.get("rounds", 0),
+                                len(turn.text or turn.buffer))
         except Exception as e:  # noqa: BLE001
             log.debug("结算任务精力失败：%s", e)
         log.info("[chat] req %s %dms streamed=%s degraded=%d rounds=%d tools=%d "
                  "out=%d chars: %s",
-                 rid, int((time.perf_counter() - t0) * 1000), streamed, degraded,
-                 int(task_stats.get("rounds", 0)), int(task_stats.get("tools", 0)),
-                 len(text or buffer),
-                 (text or buffer)[:60].replace(chr(10), " "))
+                 turn.rid, int((time.perf_counter() - turn.t0) * 1000), turn.streamed,
+                 turn.degraded, int(turn.task_stats.get("rounds", 0)),
+                 int(turn.task_stats.get("tools", 0)),
+                 len(turn.text or turn.buffer),
+                 (turn.text or turn.buffer)[:60].replace(chr(10), " "))
 
+    async def _turn_commit(self, turn: Turn, on_sentence) -> None:
+        """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
         # 影子记录：不改行为，只攒样本（补一句的候选 + 正反馈样本）。
         # 只记本人的：这些样本是用来调他的机器人语气/频率的基线，
         # 混进陌生人的对话（还是鲸鱼人格）会把基线带偏。
-        if owner:
+        if turn.owner:
             try:
-                self._schedule_shadow(user_text, text or buffer)
+                self._schedule_shadow(turn.user_text, turn.text or turn.buffer)
             except Exception:  # noqa: BLE001
                 pass
 
         # 注意力记账：这条回复有多少在说他、多少在说自己。
         # 不评判好坏，只看两周后的趋势——自指率往上走，就是开始表演了。
-        if owner:
+        if turn.owner:
             try:
-                _ar = attention.self_ref_ratio(text or buffer)
-                shadow.record_attention(text or buffer, _ar["ratio"],
-                                        _ar["self"], _ar["you"], user_text)
+                _ar = attention.self_ref_ratio(turn.text or turn.buffer)
+                shadow.record_attention(turn.text or turn.buffer, _ar["ratio"],
+                                        _ar["self"], _ar["you"], turn.user_text)
             except Exception:  # noqa: BLE001
                 pass
 
         # 事后硬剪：模型仍会在结尾顺手加一句建议，规则拦不住，就在发出前剪掉。
         # **但他在征求意见时不剪**——「该不该/怎么办」的答案本身就是建议。
-        _allow_advice = prompt_mod.wants_advice(user_text)
-        if streamed:
-            if held and not _allow_advice:
+        _allow_advice = prompt_mod.wants_advice(turn.user_text)
+        if turn.streamed:
+            if turn.held and not _allow_advice:
                 # 扣住的这句一直没等到下一句，说明它就是结尾 —— 丢掉，除非后面还有尾巴
-                if not buffer.strip():
-                    log.info("[chat] 剪掉结尾建议（流式）：%s", held[-40:])
+                if not turn.buffer.strip():
+                    log.info("[chat] 剪掉结尾建议（流式）：%s", turn.held[-40:])
                 else:
                     try:
-                        await on_sentence(held)
-                        sent_parts.append(held)
+                        await on_sentence(turn.held)
+                        turn.sent_parts.append(turn.held)
                     except Exception:  # noqa: BLE001
                         pass
-                held = ""
-            elif held:
+                turn.held = ""
+            elif turn.held:
                 try:
-                    await on_sentence(held)
-                    sent_parts.append(held)
+                    await on_sentence(turn.held)
+                    turn.sent_parts.append(turn.held)
                 except Exception:  # noqa: BLE001
                     pass
-                held = ""
+                turn.held = ""
         else:
             try:
                 # 先去掉轻浮语气词，再剪结尾建议；顺序反了会把「哈哈，建议你…」剪歪
-                _soft = prompt_mod.soften_tone(text or buffer)
-                if _soft and _soft != (text or buffer):
-                    text = _soft
-                    buffer = _soft
-                _cut, _hit = prompt_mod.strip_advice_tail(text or buffer,
+                _soft = prompt_mod.soften_tone(turn.text or turn.buffer)
+                if _soft and _soft != (turn.text or turn.buffer):
+                    turn.text = _soft
+                    turn.buffer = _soft
+                _cut, _hit = prompt_mod.strip_advice_tail(turn.text or turn.buffer,
                                                           allow_advice=_allow_advice)
                 if _hit:
-                    log.info("[chat] 剪掉结尾建议：%s", (text or buffer)[-40:])
-                    text = _cut
-                    if _cut != buffer:
-                        buffer = _cut
+                    log.info("[chat] 剪掉结尾建议：%s", (turn.text or turn.buffer)[-40:])
+                    turn.text = _cut
+                    if _cut != turn.buffer:
+                        turn.buffer = _cut
             except Exception:  # noqa: BLE001
                 pass
 
         # 写历史的是「用户真正看到的那几句」：流式用已发出的片段 + 还要补发的尾巴，
         # 非流式用剪完建议、去掉语气词之后的文本。放在剪之后再写，否则历史里留着
         # 用户根本没看到的话，下一轮它会以为「我上面不是说过了」。
-        if streamed:
-            sent_text = "".join(sent_parts) + (buffer if buffer.strip() else "")
+        if turn.streamed:
+            sent_text = "".join(turn.sent_parts) + (turn.buffer if turn.buffer.strip() else "")
         else:
-            sent_text = text or buffer
-        if not await self.remember_safe(session, "assistant", sent_text):
-            degraded += 1
-        if self.admin_uid and session == f"private:{self.admin_uid}":
-            self._schedule_summary(session)
-
-        if on_sentence and streamed:
-            # 流式已经发出去的不再返回，只把没说完的尾巴交回去
-            return (split_reply(buffer, seg_max) if buffer.strip() else []), ai_images
-        return split_reply(text, seg_max), ai_images
+            sent_text = turn.text or turn.buffer
+        if not await self.remember_safe(turn.session, "assistant", sent_text):
+            turn.degraded += 1
+        if self.admin_uid and turn.session == f"private:{self.admin_uid}":
+            self._schedule_summary(turn.session)
 
     def seg_max(self, m: dict) -> int:
         """情绪决定一条消息多长：累了碎一点，有精神可以连成句。
