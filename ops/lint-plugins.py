@@ -192,13 +192,14 @@ CORE_API = {
     "whitelist", "admin_uid",
     # 图片与文件
     "caption_images",
-    # 老调用：能用，但计划收进内部
-    "append_to_message", "record_assistant", "remember_safe",
-    "catch_up_summary", "complete_raw", "init_db", "budget_left",
+    # 写历史（插件发消息后必须回写，否则机器人不记得自己说过什么）
+    "record_assistant", "append_to_message",
+    # 兼容入口
+    "remember_safe", "catch_up_summary", "complete_raw", "init_db",
 }
 
-# 历史遗留：先记 WARN，等调用点迁移完再升级成 FAIL
-CORE_API_DEPRECATED = {"append_to_message", "record_assistant", "budget_left"}
+# 没有遗留项了。以后要收内部接口，先在这里登记，再逐个迁移调用点。
+CORE_API_DEPRECATED: set[str] = set()
 
 
 def check_core_api() -> tuple[list[str], list[str]]:
@@ -215,9 +216,16 @@ def check_core_api() -> tuple[list[str], list[str]]:
     warns: list[str] = []
     for f in sorted(PLUGINS.rglob("*.py")):
         try:
-            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+            text = f.read_text(encoding="utf-8", errors="replace")
         except Exception:  # noqa: BLE001
             continue
+        # 只查持有 ChatCore 的插件。group 里的 core 是 GroupCore（另一个类），
+        # 它自己的 budget_left 是合法接口，不属于这条检查。
+        if "from plugins.chat import core" not in text and f.name != "__init__.py":
+            continue
+        if f.parent.name == "group":
+            continue
+        lines = text.splitlines()
         for i, line in enumerate(lines, 1):
             if line.strip().startswith("#"):
                 continue

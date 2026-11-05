@@ -183,9 +183,10 @@ class ChatCore:
         persona / persona_for / reload_persona
         memory / scheduler / pacing / proactive / files / group / chat
         caption_images                          图片描述
+        record_assistant / append_to_message     主动消息写回历史 / 给消息补图注
         rate_per_minute / cooldown / enabled / whitelist / admin_uid
 
-    其余方法（_turn_*、_run_tools、remember_safe、append_to_message…）都是内部实现，
+    其余方法（_turn_*、_run_tools、remember_safe…）都是内部实现，
     改它们不该牵连插件；要暴露新东西，先登记到 lint 的 CORE_API 清单里。
     """
     def __init__(self) -> None:
