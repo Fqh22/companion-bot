@@ -46,6 +46,25 @@ python ops/test-nonebot-offline.py  # offline suite: no network, LLM and embeddi
 
 If it prints `全部通过`, the code is self-consistent on your machine.
 
+
+On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
+the other 596 really run.
+
+## Path convention (read before deploying)
+
+Runtime paths are **hard-coded**:
+
+- `/opt/nonebot/data` — `chat.db`, persona, shadow logs, prompt snapshots
+- `/opt/qqbot-data` — memory DB, `keys.json`, learn material
+- `/opt/agentd` — agentd workspace and inbox
+
+To install elsewhere, edit the constants at the top of `app_core/chat.py` (`DATA`),
+`memory.py` (`DB`), `learn.py` (`LEARN`/`MEM_DB`/`CHAT_DB`) etc. They are deliberately not
+config keys: for a single-host deployment, "hard-coded and greppable" beats "typo in a path
+that silently writes elsewhere".
+
+The offline suite is unaffected — it redirects every path into a temp dir.
+
 ## Connect to QQ
 
 1. Run an OneBot v11 implementation (NapCat / SnowLuma / Lagrange …) pointing at the reverse-WS port

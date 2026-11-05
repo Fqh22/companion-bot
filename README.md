@@ -49,6 +49,24 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 
 看到 `全部通过` 就说明这套代码在你机器上是自洽的。
 
+
+首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的，其余
+596 条都会真跑。
+
+## 路径约定（部署前先看）
+
+运行时路径目前**写死**在代码里：
+
+- `/opt/nonebot/data` —— `chat.db`、人格、影子日志、prompt 快照
+- `/opt/qqbot-data` —— 记忆库、`keys.json`、学习资料（`workspace/learn`）
+- `/opt/agentd` —— agentd 的工作区与收件箱
+
+要装到别的目录，得改各模块顶部的常量（`app_core/chat.py` 的 `DATA`、`memory.py` 的 `DB`、
+`learn.py` 的 `LEARN`/`MEM_DB`/`CHAT_DB` 等）。**这一步没做成配置项**：单机自建场景下，
+「路径写死、一眼能搜到」比「配置项拼错、写到别处」更容易排查。
+
+离线测试不受影响：它会把所有落盘路径重定向到临时目录。
+
 ## 接到 QQ
 
 1. 装一个 OneBot v11 实现（NapCat / SnowLuma / Lagrange 等），指向本机的反向 WS 端口

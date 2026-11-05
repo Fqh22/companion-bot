@@ -2,6 +2,21 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+
+## 2026-11-05 · 开源走查：三个只有新机器才暴露的问题
+
+在干净机器上从零 clone、装依赖、跑测试，暴露了三个云端永远看不到的问题：
+
+- **`memory_schema.sql` 从没被程序加载**：云端库是 AstrBot 时代遗留的，新装的人
+  `documents` / `memory_atoms` 表根本不存在，第一条记忆就崩。现在 `Memory.init()`
+  先执行 schema（全部 `IF NOT EXISTS`，幂等）。
+- **`config.load()` 不清旧错误**：配置文件不存在时，上一次的解析错误一直挂着，
+  换回正常配置仍然报警。现在每次加载都先清空。
+- **Windows 控制台 GBK**：测试打印 emoji 直接 `UnicodeEncodeError` 打断整轮。
+  四个测试脚本在输出前统一 `reconfigure(encoding="utf-8")`。
+
+顺带补了「路径约定」：运行时路径写死为 `/opt/...`，装别处要改常量（README 已说明）。
+
 ## 2026-11-05 · 开源整理
 
 - 许可证：MIT
