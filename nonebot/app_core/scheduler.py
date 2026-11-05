@@ -19,12 +19,13 @@ from datetime import datetime, timedelta
 
 import aiosqlite
 
+from app_core import paths as _paths
 from app_core import (config, diary, files, followup, kb, learn, mood, purge,
                       remind, watch, web, wiki)
 
 NL = chr(10)
-CHAT_DB = "/opt/nonebot/data/chat.db"
-CLEANUP_LOG = "/opt/nonebot/data/memory-cleanup.log"
+CHAT_DB = _paths.DATA / "chat.db"
+CLEANUP_LOG = _paths.DATA / "memory-cleanup.log"
 
 # 定时任务表：(名字, 时, 分, 补跑窗口分钟)。
 # 为什么要有窗口：主循环是「跑一轮 → sleep 60s」，任务本身也会拖时间，

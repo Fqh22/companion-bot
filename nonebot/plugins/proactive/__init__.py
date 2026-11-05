@@ -15,11 +15,12 @@ from datetime import datetime
 
 from nonebot import get_bots, get_driver, logger
 
+from app_core import paths as _paths
 from app_core import followup, learn, mood
 from app_core import proactive as decide
 from plugins.chat import core
 
-CHAT_DB = "/opt/nonebot/data/chat.db"
+CHAT_DB = _paths.DATA / "chat.db"
 driver = get_driver()
 
 REPLY_WINDOW = 7200            # 发出去 2 小时内他回了，算「有回应」

@@ -154,6 +154,29 @@ def check_help_coverage() -> tuple[list[str], list[str]]:
     return fails, []
 
 
+def check_no_hardcoded_paths() -> list[str]:
+    """运行时路径不许写死 /opt：必须从 app_core/paths.py 取。
+
+    2026-11-05 的漏网：改成 QQBOT_ROOT 时只替换了 Path("/opt/...")，
+    字符串形态的 "/opt/nonebot/data/chat.db" 留在 scheduler / agent / proactive 里，
+    结果设了根还是会写回 /opt。人眼靠不住，交给机器查。
+    """
+    bad: list[str] = []
+    for d in (CORE, PLUGINS):
+        for p in sorted(d.rglob("*.py")):
+            if p.name == "paths.py":
+                continue
+            for i, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                t = line.strip()
+                if t.startswith("#"):
+                    continue
+                if '"/opt/' in t or "'/opt/" in t:
+                    bad.append(f"{_rel(p)}:{i}")
+    if not bad:
+        return []
+    return ["运行时路径写死了（改用 app_core/paths.py）：" + "、".join(bad)]
+
+
 def check_duplicate_commands() -> list[str]:
     """命令名不许重复：同名的两个 matcher，优先级高的会把另一个整个吞掉。
 
@@ -197,6 +220,7 @@ def main() -> int:
     all_fails += core_fails + plug_fails
     if not name:                      # 重名/覆盖率都是跨插件的，只在全量检查时看
         all_fails += check_duplicate_commands()
+        all_fails += check_no_hardcoded_paths()
         help_fails, help_warns = check_help_coverage()
         all_fails += help_fails
         all_warns += help_warns

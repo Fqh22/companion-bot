@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from app_core import paths as _paths
 from app_core import config
 
 # 运行数据固定放云上这个位置（和 learn/ diary/ 同级），不要在别处新建目录
-DATA_DIR = Path("/opt/qqbot-data/workspace/{{name}}")
+DATA_DIR = _paths.QDATA / "workspace" / "{{name}}"
 
 DEFAULT_ADMIN = "0"  # 未配置；部署时在 config.yaml 的 admin.user_id 填真实号
 

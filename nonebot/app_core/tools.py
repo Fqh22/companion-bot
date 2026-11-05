@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app_core import diary, kb, learn, meme, remind, web, wiki
+from app_core import paths as _paths
 
 TOOLS = [
     {"type": "function", "function": {
@@ -214,7 +215,7 @@ async def _delegate(goal: str, core=None) -> str:
     # 1) 文件：优先按句子里点名的文件名找，其次用「刚发的那个」
     info: dict = {}
     try:
-        info = json.loads(_P("/opt/nonebot/data/last-file.json").read_text(encoding="utf-8"))
+        info = json.loads(_paths.DATA / "last-file.json".read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001
         info = {}
     named = intent.mentioned_files(goal)
@@ -252,7 +253,7 @@ async def _delegate(goal: str, core=None) -> str:
     if not res.get("ok"):
         return f"派不进去：{res.get('error')}"
     try:
-        _P("/opt/nonebot/data/last-file.json").unlink(missing_ok=True)
+        (_paths.DATA / "last-file.json").unlink(missing_ok=True)
     except Exception:  # noqa: BLE001
         pass
     return f"已派给后台（#{res['id']}），结果会单独发过来"

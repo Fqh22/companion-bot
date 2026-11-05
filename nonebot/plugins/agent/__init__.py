@@ -23,12 +23,13 @@ from nonebot import get_bot, get_driver, on_command
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent
 from nonebot.log import logger
 from nonebot.permission import SUPERUSER
+from app_core import paths as _paths
 from app_core import files as files_mod
 
 API = "http://127.0.0.1:8100"
 POLL_SECONDS = 2.0
 # 游标必须落盘：放内存里的话，每次重启都从 0 开始，会把历史消息重发一遍（刷屏惨案）
-CURSOR_FILE = Path("/opt/nonebot/data/agent-cursor.json")
+CURSOR_FILE = _paths.DATA / "agent-cursor.json"
 # 文件状态挪到了 app_core/files.py：**收到文件的那一方（chat）负责登记**，
 # 这里只读。以前两边各下一遍，同一份 PDF 白走两次网络（2026-11-05 合并）。
 
@@ -74,7 +75,7 @@ async def _append_history(session: str, text: str) -> None:
     try:
         import aiosqlite
 
-        async with aiosqlite.connect("/opt/nonebot/data/chat.db") as db:
+        async with aiosqlite.connect(_paths.DATA / "chat.db") as db:
             await db.execute(
                 "INSERT INTO messages(session,role,content,ts) VALUES(?,?,?,?)",
                 (session, "assistant", text[:2000], time.time()))
