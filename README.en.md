@@ -113,6 +113,20 @@ templates/plugin/  new-plugin scaffold
 - No multi-agent parallelism, no browser automation, no local models
 - Sandbox state is not persisted (pip takes seconds to reinstall)
 
+## External dependency and risks
+
+QQ has no official bot API for personal accounts. Access goes through an OneBot v11 implementation
+(NapCat / SnowLuma / Lagrange …), which **reverse-engineers QQ's private protocol or hooks the official
+client**. It is not a stable contract:
+
+- **It can break at any time** — a protocol change or a new risk-control rule takes the whole link down.
+  go-cqhttp used to be the de-facto standard and is now barely maintained; the community moved to NapCat.
+- **Swapping implementations is cheap** — OneBot v11 is a de-facto standard, so switching means editing the
+  WS URL and token in `nonebot/.env`. `app_core` and `plugins` stay untouched.
+- **Account bans are possible** — a ToS matter that no code can prevent. **Run it on a secondary account.**
+- **Disconnects are visible** — the health check probes login state every 5 minutes and alerts on repeated failure.
+
+If that is not acceptable, this project is not a fit — it is not something configuration can solve.
 ## Tests
 
 ```bash

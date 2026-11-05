@@ -31,9 +31,10 @@
   <path class="edge" d="M170 168 L170 206"/>
   <text class="tiny" x="178" y="192">消息</text>
 
-  <rect class="box" x="60" y="206" width="220" height="64" rx="10"/>
+  <rect class="box" x="60" y="206" width="220" height="86" rx="10"/>
   <text class="title" x="80" y="232">OneBot v11</text>
-  <text class="sub" x="80" y="251">NapCat / SnowLuma</text>
+  <text class="sub" x="80" y="251">NapCat / SnowLuma / Lagrange</text>
+  <text class="tiny" x="80" y="272">第三方实现 · 可替换（改 .env）</text>
 
   <path class="edge" d="M280 238 L352 238"/>
   <text class="tiny" x="292" y="230">ws://</text>

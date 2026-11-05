@@ -19,6 +19,17 @@
 cp ops/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
 ```
 
+## 第三方协议实现（外部风险）
+
+本项目通过 OneBot v11 实现对接 QQ（NapCat / SnowLuma / Lagrange 等）。这些实现逆向 QQ 私有协议、
+或 hook 官方客户端，**不是腾讯提供的接口**：
+
+- 协议变更可能导致整条链路失效，通常没有提前通知
+- 使用非官方客户端存在账号风控 / 封号风险，代码层面无法规避
+- 建议用独立小号运行；不要把主号或任何与支付相关的账号接进来
+- 本项目不对第三方实现的行为、可用性或账号安全作任何保证
+
+排障时先看 `get_login_info` 是否返回 0（健康检查用的就是这条），再判断是机器人挂了还是协议端掉了。
 ## 已知的信任边界
 
 - 命令全部 `permission=SUPERUSER`，群聊默认关闭
