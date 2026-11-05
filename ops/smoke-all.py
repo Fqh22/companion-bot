@@ -129,7 +129,8 @@ from app_core import (  # noqa: E402
     shadow as shadow_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
-    maintenance as maint_mod, paths as paths_mod, status as status_mod,
+    maintenance as maint_mod, paths as paths_mod, review as review_mod,
+    status as status_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -375,6 +376,14 @@ async def main() -> None:
             {"家庭": True}, 1_800_000_000.0)
         check("profile.update_state 变化留旧值",
               _st2["previous"]["家庭"]["text"] == "催婚")
+
+        # ---------- review（复盘/周报实现，learn 只是入口） ----------
+        check("review._extract_json 兼容代码块",
+              review_mod._extract_json('\u0060\u0060\u0060json\n{"a": 1}\n\u0060\u0060\u0060') == {"a": 1})
+        check("review._documents_since 返回列表",
+              isinstance(review_mod._documents_since(7), list))
+        check("review._profile_block_for_review 返回字符串",
+              isinstance(review_mod._profile_block_for_review(), str))
 
         # ---------- status（记忆健康快照） ----------
         _st = status_mod.snapshot(now=1_800_000_000.0, data_dir=TMP,

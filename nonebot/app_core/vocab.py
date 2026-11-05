@@ -22,9 +22,32 @@ import re
 
 _SPACE = re.compile(r"\s+")
 
+# 人工维护的别名表：只收「字面不像、但确实指同一件事」的词。
+# 字面相似的（求职/求职面试）交给下面的 similarity，不用人管。
+# 2026-11-05 的影子数据：410 个标签里 393 个只出现一次，「harness」「harness 架构」
+# 「DSH」被当成三个实体，实体连边只覆盖 34% 的记忆。
+_ALIAS_GROUPS = {
+    "DSH": ("dsh", "deepseekharness", "deepseek-harness", "harness",
+            "harness架构", "dsh工作区"),
+    "companion-bot": ("companion-bot", "companionbot", "companion-bot仓库"),
+    "qq-cloud-bot": ("qq-cloud-bot", "qqcloudbot", "qq-cloudbot"),
+    "NoneBot2": ("nonebot", "nonebot2", "nonebotv2"),
+    "NapCat": ("napcat", "napcatqq", "napcat-qq"),
+    "SnowLuma": ("snowluma", "snow-luma"),
+    "Lagrange": ("lagrange", "lagrange.core", "lagrangecore"),
+    "BM25": ("bm25", "bm-25"),
+}
+
+
 
 def _norm(topic: str) -> str:
     return _SPACE.sub("", str(topic or "")).lower().strip("，,。.;；:：、")
+
+
+_ALIAS: dict[str, str] = {}
+for _canon, _keys in _ALIAS_GROUPS.items():
+    for _k in _keys:
+        _ALIAS[_norm(_k)] = _canon
 
 
 def similarity(a: str, b: str) -> float:
@@ -43,6 +66,11 @@ def similarity(a: str, b: str) -> float:
     return len(ba & bb) / len(ba | bb)
 
 
+def alias(topic: str) -> str:
+    """把别名映射到规范名；表里没有就原样返回。"""
+    return _ALIAS.get(_norm(topic), str(topic or "").strip())
+
+
 def build(topic_lists, limit: int = 50) -> list[str]:
     """从历史标签里取高频词，作为「该复用哪些」的候选表。
 
@@ -53,6 +81,7 @@ def build(topic_lists, limit: int = 50) -> list[str]:
     surface: dict[str, str] = {}
     for topics in topic_lists or []:
         for t in topics or []:
+            t = alias(t)
             key = _norm(t)
             if not key:
                 continue
@@ -73,8 +102,17 @@ def canonicalize(topics, vocab, threshold: float = 0.75,
     seen: set[str] = set()
     vocab = [v for v in (vocab or []) if _norm(v)]
     for t in topics or []:
-        t = str(t).strip()
+        t = alias(str(t))
         if not t:
+            continue
+        # 命中别名表就不再做相似度匹配，直接采用规范名
+        if t in _ALIAS.values():
+            key = _norm(t)
+            if key and key not in seen:
+                seen.add(key)
+                out.append(t)
+            if len(out) >= limit:
+                break
             continue
         pick = t
         best, best_sim = 0.0, ""

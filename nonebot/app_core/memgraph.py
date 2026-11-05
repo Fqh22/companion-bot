@@ -17,6 +17,8 @@
 """
 from __future__ import annotations
 
+from app_core import vocab
+
 import math
 import re
 
@@ -35,8 +37,10 @@ def normalize(entity: str) -> str:
     「harness 架构」和「harness架构」得算同一个，否则同一件事会被拆成两条边。
     """
     s = _SPACE.sub("", str(entity or "")).lower()
-    s = s.replace("／", "/")
-    return s.strip("，,。.;；")
+    s = s.replace("／", "/").strip("，,。.;；")
+    # 别名表：让「harness 架构」和「DSH」在连边时算同一个实体。
+    # 放在读侧归一，老数据不用迁移就能立刻受益。
+    return vocab._norm(vocab.alias(s))
 
 
 class EntityGraph:

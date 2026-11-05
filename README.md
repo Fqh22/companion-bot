@@ -87,7 +87,7 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 
 ```
 nonebot/
-├─ app_core/     37 个纯逻辑模块（不 import nonebot）
+├─ app_core/     40 个纯逻辑模块（不 import nonebot）
 ├─ plugins/      7 个插件：chat / group / commands / admin / schedule / proactive / agent
 └─ personas/     外人版人格（陌生人私聊用）
 agentd/          agent 运行时：代码 / 测试 / 沙箱 / 文档

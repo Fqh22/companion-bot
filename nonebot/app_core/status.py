@@ -150,4 +150,10 @@ def render(s: dict) -> str:
         f"今日矛盾判定 {s['today']['contradictions']} 次",
         f"影子日志 {s['files']['shadow_bytes'] // 1024} KB",
     ]
+    try:
+        from app_core import shadow as shadow_mod
+
+        lines.append(shadow_mod.retrieval_line(now))
+    except Exception:  # noqa: BLE001
+        pass
     return chr(10).join(lines)

@@ -206,6 +206,67 @@ def _read_recent(path: Path, days: float, limit: int = 4000) -> list[dict]:
     return out
 
 
+# BM25+RRF 影子的判据：起跑两周必须做决定，不许变成永远的影子。
+# 重合 ≥4.0 → 两路几乎一样，砍；≤3.0 → 互补明显，转正；中间人工抽 20 条。
+RETRIEVAL_DECIDE_DAYS = 14
+RETRIEVAL_MIN_SAMPLES = 50
+RETRIEVAL_CUT_OVERLAP = 4.0
+RETRIEVAL_KEEP_OVERLAP = 3.0
+
+
+def retrieval_verdict(now: float | None = None) -> dict:
+    """BM25 影子跑到哪一步、该不该做决定了。
+
+    影子模式的初衷是「改行为前先量收益」；量到了就必须改，否则它只是
+    占着写盘和注意力、却从不影响召回的死代码。
+    """
+    now = time.time() if now is None else now
+    # 判据看全量样本（不按时间窗过滤）：影子可能只在早期跑过，
+    # 用「最近 N 天」会把结论算成「没数据」。
+    rows: list[dict] = []
+    try:
+        with RETRIEVAL_LOG.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh.readlines()[-4000:]:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except Exception:  # noqa: BLE001
+                    continue
+                if isinstance(rec, dict):
+                    rows.append(rec)
+    except Exception:  # noqa: BLE001
+        rows = []
+    n = len(rows)
+    if not n:
+        return {"n": 0, "days": 0.0, "avg_overlap": 0.0, "due": False,
+                "verdict": "还没有样本"}
+    first = min(float(r.get("ts") or now) for r in rows)
+    days = (now - first) / 86400.0
+    avg = _mean([float(r.get("overlap") or 0) for r in rows])
+    due = days >= RETRIEVAL_DECIDE_DAYS
+    if not due or n < RETRIEVAL_MIN_SAMPLES:
+        verdict = f"继续攒样本（{n}/{RETRIEVAL_MIN_SAMPLES} 次，第 {days:.0f} 天）"
+    elif avg >= RETRIEVAL_CUT_OVERLAP:
+        verdict = "建议砍掉：两路几乎一样，融合没有收益"
+    elif avg <= RETRIEVAL_KEEP_OVERLAP:
+        verdict = "建议转正：互补明显，值得改召回"
+    else:
+        verdict = "人工抽检 20 条 query 再定"
+    return {"n": n, "days": round(days, 1), "avg_overlap": avg,
+            "due": due, "verdict": verdict}
+
+
+def retrieval_line(now: float | None = None) -> str:
+    v = retrieval_verdict(now)
+    if not v["n"]:
+        return "BM25 影子：还没有样本"
+    return (f"BM25 影子：{v['n']} 次，重合 {v['avg_overlap']:.1f}/5，第 {v['days']:.0f} 天"
+            f"（判据 {RETRIEVAL_DECIDE_DAYS} 天 / {RETRIEVAL_MIN_SAMPLES} 次）"
+            f" → {v['verdict']}")
+
+
 def _mean(xs: list[float]) -> float:
     return round(sum(xs) / len(xs), 2) if xs else 0.0
 

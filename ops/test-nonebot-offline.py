@@ -279,6 +279,16 @@ async def main() -> None:
           vocab_mod.canonicalize(["区块链"], ["求职"]) == ["区块链"])
     check("vocab.canonicalize 去重且限长",
           vocab_mod.canonicalize(["求职", "求职", "a", "b", "c"], ["求职"], limit=2) == ["求职", "a"])
+    # 别名表：字面不像但指同一件事的，必须并成一个
+    check("vocab.alias 把 harness 架构 归到 DSH",
+          vocab_mod.alias("Harness 架构") == "DSH", vocab_mod.alias("Harness 架构"))
+    check("vocab.canonicalize 三种写法并成一个",
+          vocab_mod.canonicalize(["DSH", "harness 架构", "DeepSeek Harness"], []) == ["DSH"],
+          str(vocab_mod.canonicalize(["DSH", "harness 架构", "DeepSeek Harness"], [])))
+    from app_core import memgraph as memgraph_mod
+    check("memgraph 读侧归一：harness 架构 与 DSH 同边",
+          memgraph_mod.normalize("harness 架构") == memgraph_mod.normalize("DSH") == "dsh",
+          memgraph_mod.normalize("harness 架构"))
     check("summarize.vocab_hint 空表不加提示", summarize_mod.vocab_hint([]) == "")
     check("summarize.vocab_hint 非空才要求复用",
           "复用" in summarize_mod.vocab_hint(["求职", "装机"]))
@@ -611,6 +621,27 @@ async def main() -> None:
           _prev.get("retrieval", {}).get("avg_overlap") == 2.0, str(_prev)[:60])
     _sl = shadow_mod.summary_lines(7, prev=_prev)
     check("周报里有「与上周相比」", any("与上周相比" in x for x in _sl), str(_sl[-1:])[:90])
+
+    # BM25 影子的判据：到点 + 样本够 + 重合高/低 → 给出明确结论
+    import json as _json
+    shadow_mod.RETRIEVAL_LOG = TMP / "shadow-retrieval.jsonl"
+    shadow_mod.RETRIEVAL_LOG.write_text(
+        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 2}) for i in range(60)),
+        encoding="utf-8")
+    _v = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
+    check("BM25 判据：到点且重合低 → 建议转正",
+          _v["due"] and "转正" in _v["verdict"], str(_v))
+    shadow_mod.RETRIEVAL_LOG.write_text(
+        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 5}) for i in range(60)),
+        encoding="utf-8")
+    _v2 = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
+    check("BM25 判据：到点且重合高 → 建议砍掉", "砍掉" in _v2["verdict"], str(_v2))
+    shadow_mod.RETRIEVAL_LOG.write_text(
+        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 2}) for i in range(3)),
+        encoding="utf-8")
+    _v3 = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
+    check("BM25 判据：样本不足 → 继续攒", "继续攒" in _v3["verdict"], str(_v3))
+    check("BM25 判据能渲染成一行", "BM25" in shadow_mod.retrieval_line(now=1000.0 + 20 * 86400))
     check("影子周报有可读的行", any("召回对比" in x for x in _sl), str(_sl[:2]))
     check("影子周报会带上画像块",
           any("画像块" in x for x in _sl), str(_sl))
