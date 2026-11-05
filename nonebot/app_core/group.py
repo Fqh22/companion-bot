@@ -23,12 +23,14 @@ import time
 from collections import deque
 from pathlib import Path
 
+from app_core import paths as _paths
+
 from app_core import config
 from app_core import llm as llm_mod
 from app_core.prompt import split_reply
 
-DB = Path("/opt/nonebot/data/chat.db")
-PERSONA_PATH = Path("/opt/nonebot/data/group_persona.json")
+DB = _paths.DATA / "chat.db"
+PERSONA_PATH = _paths.DATA / "group_persona.json"
 
 MAX_CONTEXT_CHARS = 1500      # 短期上下文的字数上限（条数之外再加一道）
 DEFAULT_PERSONA = """你在这个群里说话。简短、有分寸，不抢话、不讨好、不说教。

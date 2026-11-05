@@ -13,12 +13,14 @@ import time
 import uuid
 from pathlib import Path
 
+from app_core import paths as _paths
+
 import httpx
 
 from app_core import config
 
-DB = Path("/opt/qqbot-data/livingmemory.db")
-KEYS = Path("/opt/qqbot-data/keys.json")
+DB = _paths.MEM_DB
+KEYS = _paths.KEYS
 
 log = logging.getLogger("qqbot.memory")
 

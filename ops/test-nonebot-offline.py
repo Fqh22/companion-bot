@@ -1610,6 +1610,27 @@ async def main() -> None:
     chat_mod._PERSONA_ERROR = _real_perr
     check("人格正常时不报警", not core.config_issues(), str(core.config_issues())[:80])
 
+    # QQBOT_ROOT：运行时路径都从它派生，默认 /opt（换目录不用改代码）
+    import importlib
+    _paths_mod = importlib.import_module("app_core.paths")
+    _old_root = os.environ.get("QQBOT_ROOT")
+    os.environ["QQBOT_ROOT"] = str(TMP / "root")
+    try:
+        importlib.reload(_paths_mod)
+        check("QQBOT_ROOT 改根后路径跟着变",
+              str(_paths_mod.DATA) == str(TMP / "root" / "nonebot" / "data"),
+              str(_paths_mod.DATA))
+        check("QQBOT_ROOT 下 keys 与记忆库都在根内",
+              str(_paths_mod.KEYS).startswith(str(TMP / "root"))
+              and str(_paths_mod.MEM_DB).startswith(str(TMP / "root")),
+              str(_paths_mod.MEM_DB))
+    finally:
+        if _old_root is None:
+            os.environ.pop("QQBOT_ROOT", None)
+        else:
+            os.environ["QQBOT_ROOT"] = _old_root
+        importlib.reload(_paths_mod)
+
 
     # 命令清单：/help 的唯一真相源（lint 会核对注册表，这里只保证内容可用）
     from app_core import help as help_mod

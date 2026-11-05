@@ -7,9 +7,11 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DIARY_DIR = Path("/opt/qqbot-data/workspace/diary")
-MIRROR_DIR = Path("/opt/qqbot-data/workspace/learn")
-CHAT_DB = Path("/opt/nonebot/data/chat.db")
+from app_core import paths as _paths
+
+DIARY_DIR = _paths.QDATA / "workspace" / "diary"
+MIRROR_DIR = _paths.LEARN
+CHAT_DB = _paths.DATA / "chat.db"
 
 SYSTEM = (
     "你在写今天的日记，只给自己看。第一人称，像人睡前随手记："

@@ -50,21 +50,24 @@ If it prints `全部通过`, the code is self-consistent on your machine.
 On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
 the other 596 really run.
 
-## Path convention (read before deploying)
+## Path convention
 
-Runtime paths are **hard-coded**:
+The runtime root defaults to `/opt` and can be overridden with `QQBOT_ROOT`:
 
-- `/opt/nonebot/data` — `chat.db`, persona, shadow logs, prompt snapshots
-- `/opt/qqbot-data` — memory DB, `keys.json`, learn material
-- `/opt/agentd` — agentd workspace and inbox
+```bash
+export QQBOT_ROOT=/srv/qqbot      # default: /opt
+```
 
-To install elsewhere, edit the constants at the top of `app_core/chat.py` (`DATA`),
-`memory.py` (`DB`), `learn.py` (`LEARN`/`MEM_DB`/`CHAT_DB`) etc. They are deliberately not
-config keys: for a single-host deployment, "hard-coded and greppable" beats "typo in a path
-that silently writes elsewhere".
+Everything derives from it in `nonebot/app_core/paths.py`:
 
-The offline suite is unaffected — it redirects every path into a temp dir.
+| Path | Contents |
+|---|---|
+| `$QQBOT_ROOT/nonebot/data` | `chat.db`, persona, shadow logs, prompt snapshots |
+| `$QQBOT_ROOT/qqbot-data` | memory DB, `keys.json`, learn material |
+| `$QQBOT_ROOT/agentd` | agent workspace and inbox |
+| `$QQBOT_ROOT/backup` | backups |
 
+The offline suite redirects every path into a temp dir, so it is unaffected.
 ## Connect to QQ
 
 1. Run an OneBot v11 implementation (NapCat / SnowLuma / Lagrange …) pointing at the reverse-WS port

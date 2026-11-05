@@ -24,7 +24,9 @@ import time
 log = logging.getLogger("qqbot.followup")
 from pathlib import Path
 
-DB = Path("/opt/nonebot/data/chat.db")
+from app_core import paths as _paths
+
+DB = _paths.DATA / "chat.db"
 
 MAX_TEXT = 160
 NEAR_DUP = 0.62          # 近似重复的判定线，见 textsim.similar

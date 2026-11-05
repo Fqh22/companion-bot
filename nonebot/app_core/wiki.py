@@ -25,13 +25,15 @@ import sqlite3
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 from app_core import learn as learn_mod
 
 log = logging.getLogger("qqbot.wiki")
 
-DB = Path("/opt/nonebot/data/chat.db")
-NOTES = Path("/opt/qqbot-data/workspace/learn/notes")
-SKILLS = Path("/opt/qqbot-data/workspace/learn/skills")
+DB = _paths.DATA / "chat.db"
+NOTES = _paths.LEARN / "notes"
+SKILLS = _paths.LEARN / "skills"
 
 MAX_PAGE_CHARS = 2000      # kb_read 一次最多返回多少字
 INDEX_MAX_PAGES = 16       # 注入索引最多几行

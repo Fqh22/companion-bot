@@ -5,11 +5,13 @@ import copy
 import logging
 from pathlib import Path
 
+from app_core import paths as _paths
+
 import yaml
 
 log = logging.getLogger("qqbot.config")
 
-CONFIG_PATH = Path("/opt/nonebot/config.yaml")
+CONFIG_PATH = _paths.NB / "config.yaml"
 
 DEFAULTS = {
     "admin": {

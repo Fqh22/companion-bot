@@ -18,13 +18,15 @@ import sqlite3
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 import numpy as np
 
 from app_core import learn as learn_mod
 from app_core.memory import Memory, _pack
 
-LEARN = Path("/opt/qqbot-data/workspace/learn")
-DB = Path("/opt/nonebot/data/chat.db")
+LEARN = _paths.LEARN
+DB = _paths.DATA / "chat.db"
 
 # 学习笔记的时间衰减：半衰期比闲聊记忆长得多（知识不会因为放久了失效）
 KB_TIME_TAU_DAYS = 120.0

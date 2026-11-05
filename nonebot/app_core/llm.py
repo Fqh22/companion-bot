@@ -13,12 +13,14 @@ import logging
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 import aiosqlite
 import httpx
 
 log = logging.getLogger("qqbot.llm")
 
-KEYS = Path("/opt/qqbot-data/keys.json")
+KEYS = _paths.KEYS
 
 # 这些状态码值得重试；其它 4xx 重试只是把同样的错误再犯三次
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}

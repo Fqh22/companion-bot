@@ -16,7 +16,9 @@ import json
 import time
 from pathlib import Path
 
-WATCH = Path("/opt/nonebot/data/watchlist.json")
+from app_core import paths as _paths
+
+WATCH = _paths.DATA / "watchlist.json"
 MAX_TOPICS = 8
 
 COMPARE_SYSTEM = (

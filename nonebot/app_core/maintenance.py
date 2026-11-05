@@ -17,10 +17,12 @@ import sqlite3
 import time
 from pathlib import Path
 
-DATA = Path("/opt/nonebot/data")
+from app_core import paths as _paths
+
+DATA = _paths.DATA
 # 只收这些「追加式」日志。prompt_log 在库里，由 chat 自己截断。
 LOG_GLOBS = ("shadow-*.jsonl", "contradictions.jsonl")
-DBS = (DATA / "chat.db", Path("/opt/qqbot-data/livingmemory.db"))
+DBS = (DATA / "chat.db", _paths.MEM_DB)
 
 # 单个文件超过这个大小就不读了（说明哪里出了问题，留给人工看，别把 04:50 拖成事故）
 MAX_FILE_MB = 50
@@ -91,7 +93,7 @@ def vacuum(db_path: Path) -> dict:
     return out
 
 
-OPS = Path("/opt/nonebot/ops")
+OPS = _paths.NB / "ops"
 
 
 def _read_state(path: Path) -> dict:

@@ -53,20 +53,24 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的，其余
 596 条都会真跑。
 
-## 路径约定（部署前先看）
+## 路径约定
 
-运行时路径目前**写死**在代码里：
+默认根目录是 `/opt`，可以用 `QQBOT_ROOT` 改：
 
-- `/opt/nonebot/data` —— `chat.db`、人格、影子日志、prompt 快照
-- `/opt/qqbot-data` —— 记忆库、`keys.json`、学习资料（`workspace/learn`）
-- `/opt/agentd` —— agentd 的工作区与收件箱
+```bash
+export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
+```
 
-要装到别的目录，得改各模块顶部的常量（`app_core/chat.py` 的 `DATA`、`memory.py` 的 `DB`、
-`learn.py` 的 `LEARN`/`MEM_DB`/`CHAT_DB` 等）。**这一步没做成配置项**：单机自建场景下，
-「路径写死、一眼能搜到」比「配置项拼错、写到别处」更容易排查。
+派生出来的位置（全部在 `nonebot/app_core/paths.py` 算一次，其余模块从它取）：
 
-离线测试不受影响：它会把所有落盘路径重定向到临时目录。
+| 路径 | 内容 |
+|---|---|
+| `$QQBOT_ROOT/nonebot/data` | `chat.db`、人格、影子日志、prompt 快照 |
+| `$QQBOT_ROOT/qqbot-data` | 记忆库、`keys.json`、学习资料（`workspace/learn`） |
+| `$QQBOT_ROOT/agentd` | agent 工作区与收件箱 |
+| `$QQBOT_ROOT/backup` | 备份 |
 
+离线测试不受影响：它会把落盘路径全部重定向到临时目录。
 ## 接到 QQ
 
 1. 装一个 OneBot v11 实现（NapCat / SnowLuma / Lagrange 等），指向本机的反向 WS 端口

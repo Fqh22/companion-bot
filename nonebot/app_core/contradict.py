@@ -22,12 +22,14 @@ import re
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 CAND_MIN_SCORE = 0.50
 SUPERSEDE_MIN_SCORE = 0.60
 MAX_CAND = 3
 MAX_PER_RUN = 2
 
-LOG = Path("/opt/nonebot/data/contradictions.jsonl")
+LOG = _paths.DATA / "contradictions.jsonl"
 
 SYSTEM = (
     "你在核对记忆有没有自相矛盾——同一件事的两个版本。只判「不能同时成立」的。"

@@ -9,10 +9,12 @@ import shutil
 import time
 from pathlib import Path
 
-SAVE_DIR = Path("/opt/nonebot/data/files")
+from app_core import paths as _paths
+
+SAVE_DIR = _paths.DATA / "files"
 # 「刚收到的文件」登记处：/task 和 agent_task 都从这里取。
-PENDING_JSON = Path("/opt/nonebot/data/last-file.json")
-AGENT_INBOX = Path("/opt/agentd/inbox")
+PENDING_JSON = _paths.DATA / "last-file.json"
+AGENT_INBOX = _paths.AGENTD / "inbox"
 PENDING_TTL = 1800
 MAX_BYTES = 30 * 1024 * 1024   # 单文件下载上限，防止把内存和磁盘打满
 TEXT_EXT = {

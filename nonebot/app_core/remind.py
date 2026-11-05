@@ -11,7 +11,9 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DB = Path("/opt/nonebot/data/chat.db")
+from app_core import paths as _paths
+
+DB = _paths.DATA / "chat.db"
 
 MAX_DAYS = 180          # 最远只接受半年内的提醒
 MAX_TEXT = 200

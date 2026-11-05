@@ -28,9 +28,11 @@ import tarfile
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 log = logging.getLogger("qqbot.purge")
 
-BACKUP_DIR = Path("/opt/backup")
+BACKUP_DIR = _paths.BACKUP
 PURGE_KEEP_PACKS = 2      # 保留最近几份清理包
 
 

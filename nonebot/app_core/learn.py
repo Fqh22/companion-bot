@@ -10,11 +10,13 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from app_core import paths as _paths
+
 from app_core import profile as profile_mod
 
 log = logging.getLogger("qqbot.learn")
 
-LEARN = Path("/opt/qqbot-data/workspace/learn")
+LEARN = _paths.LEARN
 PROFILE = LEARN / "self_profile.md"
 # 结构化画像：md 继续留着（kb 索引 / review 回读都用它），json 是机器读的那份
 PROFILE_JSON = LEARN / "profile.json"
@@ -23,8 +25,8 @@ CURIOUS = LEARN / "curious.md"
 SKILLS = LEARN / "skills"
 NOTES = LEARN / "notes"
 RAW = LEARN / "raw"          # 对话原文（原始材料，不加工）
-MEM_DB = Path("/opt/qqbot-data/livingmemory.db")
-CHAT_DB = Path("/opt/nonebot/data/chat.db")
+MEM_DB = _paths.MEM_DB
+CHAT_DB = _paths.DATA / "chat.db"
 
 SYSTEM_REVIEW = (
     "你在给自己记事。读今天真实发生过的对话，记下你真正会记住的东西："

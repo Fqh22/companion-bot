@@ -31,12 +31,14 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from app_core import paths as _paths
+
 from app_core import config
 
-STATE_DIR = Path("/opt/nonebot/data/plugin_data/mood")
+STATE_DIR = _paths.DATA / "plugin_data/mood"
 STATE = STATE_DIR / "state.json"
 # 情绪历史存在会话库里：跟消息、用量同一份数据，备份时一起带上
-CHAT_DB = Path("/opt/nonebot/data/chat.db")
+CHAT_DB = _paths.DATA / "chat.db"
 HISTORY_KEEP_DAYS = 400     # 留一年出头，够看季节性，也不至于无限长
 
 POSITIVE = ("谢谢", "厉害", "不错", "喜欢", "开心", "哈哈", "牛", "棒", "好玩", "可爱", "辛苦了", "乖")

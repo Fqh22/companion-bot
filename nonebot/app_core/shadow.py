@@ -20,9 +20,11 @@ import logging
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 log = logging.getLogger("qqbot.shadow")
 
-DATA = Path("/opt/nonebot/data")
+DATA = _paths.DATA
 FOLLOWUP_LOG = DATA / "shadow-followup.jsonl"
 POSITIVE_LOG = DATA / "shadow-positive.jsonl"
 RETRIEVAL_LOG = DATA / "shadow-retrieval.jsonl"

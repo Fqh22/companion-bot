@@ -129,7 +129,7 @@ from app_core import (  # noqa: E402
     shadow as shadow_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
-    maintenance as maint_mod,
+    maintenance as maint_mod, paths as paths_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -366,6 +366,14 @@ async def main() -> None:
             {"家庭": True}, 1_800_000_000.0)
         check("profile.update_state 变化留旧值",
               _st2["previous"]["家庭"]["text"] == "催婚")
+
+        # ---------- paths（运行时路径） ----------
+        check("paths 从 ROOT 派生目录",
+              str(paths_mod.DATA) == str(paths_mod.ROOT / "nonebot" / "data")
+              and str(paths_mod.MEM_DB) == str(paths_mod.QDATA / "livingmemory.db"),
+              str(paths_mod.DATA))
+        check("paths 的 keys 在 qqbot-data 下",
+              str(paths_mod.KEYS).startswith(str(paths_mod.QDATA)), str(paths_mod.KEYS))
 
         # ---------- maintenance（月度维护） ----------
         _mf = TMP / "maint-log.jsonl"

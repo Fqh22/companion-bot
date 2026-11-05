@@ -7,11 +7,13 @@ import sqlite3
 import time
 from pathlib import Path
 
+from app_core import paths as _paths
+
 from app_core.memory import Memory, _cos, _pack, _unpack
 
-PACKS = Path("/opt/qqbot-data/meme_packs")
+PACKS = _paths.QDATA / "meme_packs"
 META = PACKS / "deepseek-fanart-meme-pack" / "semantic_metadata.json"
-CHAT_DB = Path("/opt/nonebot/data/chat.db")
+CHAT_DB = _paths.DATA / "chat.db"
 EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 CAT_KEYS = {

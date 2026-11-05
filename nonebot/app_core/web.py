@@ -7,13 +7,15 @@ import re
 import socket
 from datetime import datetime
 from pathlib import Path
+
+from app_core import paths as _paths
 from urllib.parse import urlparse
 
 import httpx
 
 from app_core.files import sanitize
 
-KEYS = Path("/opt/qqbot-data/keys.json")
+KEYS = _paths.KEYS
 SEARCH_API = "https://api.deepseek.com/v1/tools/search"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
