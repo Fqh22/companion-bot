@@ -120,6 +120,14 @@ async def main() -> None:
     check("usage 有 ts 索引", "idx_usage_ts" in idxs, str(sorted(idxs)))
     check("messages 有 (role,ts) 索引", "idx_msg_role_ts" in idxs, str(sorted(idxs)))
 
+    # 全新机器上 livingmemory.db 是空的：init 必须自己把 documents / memory_atoms 建出来，
+    # 否则第一条记忆就崩。云端的库是历史安装遗留，这个坑一直到开源走查才暴露。
+    con = sqlite3.connect(TMP / "livingmemory.db")
+    tbls = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    con.close()
+    check("全新库自动建出 documents / memory_atoms",
+          {"documents", "memory_atoms"} <= tbls, str(sorted(tbls)))
+
     mem = core.memory
 
     # ---------- B. touch 刷新访问时间 ----------
