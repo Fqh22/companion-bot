@@ -106,6 +106,15 @@ class Memory:
 
     def init(self) -> None:
         c = self._conn()
+        # 全新机器上这个库是空的：先把完整表结构建出来。
+        # 云端一直是老库（AstrBot 时代建好的），所以之前只补了 memory_vectors 等三张表，
+        # documents / memory_atoms 靠历史安装遗留——新装的人会直接崩在第一条记忆上。
+        try:
+            schema = Path(__file__).with_name("memory_schema.sql")
+            if schema.exists():
+                c.executescript(schema.read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            log.warning("记忆库建表失败（schema）：%s", e)
         with c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS memory_vectors ("
