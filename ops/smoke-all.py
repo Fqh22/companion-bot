@@ -260,6 +260,8 @@ async def main() -> None:
         check("meme 去重记录能读回", bool(meme_mod._recent_paths()), "空")
         _h = meme_mod.stats().get("hits") or {}
         check("meme 暴露匹配方式计数", sum(_h.values()) >= 1, str(_h))
+        _pl = meme_mod.payload(str(packs[0][1]))
+        check("meme.payload 返回 bytes", isinstance(_pl, bytes) and len(_pl) > 0, str(len(_pl)))
         check("meme._category_fallback", bool(meme_mod._category_fallback("无语")))
         check("meme._pick", isinstance(meme_mod._pick([str(x[1]) for x in packs]), str))
         check("meme.describe", isinstance(meme_mod.describe(pick), str))

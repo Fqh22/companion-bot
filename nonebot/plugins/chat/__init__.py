@@ -32,7 +32,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from app_core import config, mood, pacing, relational
+from app_core import config, meme, mood, pacing, relational
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
@@ -279,7 +279,8 @@ async def _send_replies(replies: list[str], images: list[str] | None = None) -> 
                 continue
             # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
             # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
-            await chat.send(MessageSegment.image(p.read_bytes()))
+            data = await asyncio.to_thread(meme.payload, str(p))
+            await chat.send(MessageSegment.image(data))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
 

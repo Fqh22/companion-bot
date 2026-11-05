@@ -215,6 +215,34 @@ def _category_fallback(query: str) -> str:
     return _pick(cands)
 
 
+# 发送前压缩：包里混着 800KB+ 的 PNG，base64 之后 1.2MB，走 WS 太重。
+# 表情包是贴纸，长边 800、JPEG 85 足够；gif/webp 不动（动画会丢，且本来就小）。
+MAX_SEND_BYTES = 300 * 1024
+MAX_SEND_SIDE = 800
+
+
+def payload(path: str) -> bytes:
+    """读成「适合直接发」的 bytes。压缩失败就退回原图，不影响发送。"""
+    raw = Path(path).read_bytes()
+    if len(raw) <= MAX_SEND_BYTES or Path(path).suffix.lower() not in (".png", ".jpg", ".jpeg"):
+        return raw
+    try:
+        import io
+
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(raw)).convert("RGB")
+        im.thumbnail((MAX_SEND_SIDE, MAX_SEND_SIDE))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=85)
+        out = buf.getvalue()
+        if len(out) < len(raw):
+            return out
+    except Exception as e:  # noqa: BLE001
+        log.warning("表情包压缩失败，按原图发送：%s", e)
+    return raw
+
+
 def _vectors() -> list[tuple[str, bytes]]:
     """同步读向量。调用方用 asyncio.to_thread 包住，别阻塞事件循环。"""
     init()

@@ -148,7 +148,8 @@ async def _(event: MessageEvent):
         await meme_cmd.finish("表情包库是空的")
     try:
         # bytes → base64；传 Path 会变成 file:// 宿主机路径，容器里读不到
-        await meme_cmd.send(MessageSegment.image(Path(path).read_bytes()))
+        data = await asyncio.to_thread(meme.payload, path)
+        await meme_cmd.send(MessageSegment.image(data))
     except Exception as e:  # noqa: BLE001
         await meme_cmd.finish(f"发送失败：{type(e).__name__}: {e}")
 
