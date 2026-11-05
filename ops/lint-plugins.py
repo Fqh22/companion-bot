@@ -177,6 +177,62 @@ def check_no_hardcoded_paths() -> list[str]:
     return ["运行时路径写死了（改用 app_core/paths.py）：" + "、".join(bad)]
 
 
+# 插件可以直接碰的 ChatCore 成员（接口线）。
+# 新增一条要走这里登记——逼你先想清楚「这是有意暴露的接口，还是图方便」。
+CORE_API = {
+    # 回复主入口
+    "reply", "reply_deadline", "last_prompts", "mood_event",
+    # 记忆 / 人格
+    "memory", "persona", "persona_for", "reload_persona",
+    # 计数与状态
+    "usage_stats", "config_issues", "config_status",
+    "rate_per_minute", "cooldown", "enabled",
+    # 子服务对象
+    "scheduler", "pacing", "proactive", "files", "group", "chat",
+    "whitelist", "admin_uid",
+    # 图片与文件
+    "caption_images",
+    # 老调用：能用，但计划收进内部
+    "append_to_message", "record_assistant", "remember_safe",
+    "catch_up_summary", "complete_raw", "init_db", "budget_left",
+}
+
+# 历史遗留：先记 WARN，等调用点迁移完再升级成 FAIL
+CORE_API_DEPRECATED = {"append_to_message", "record_assistant", "budget_left"}
+
+
+def check_core_api() -> tuple[list[str], list[str]]:
+    """插件只许调登记过的 core 成员。
+
+    为什么需要：ChatCore 有 40 多个方法/属性，其中一半是内部实现。
+    没有边界时，插件随手 core.append_to_message(...) 就把内部结构焊死了；
+    以后想改内部，得同时改 7 个插件。这条检查把「公共接口」变成可执行的约定。
+    """
+    import re
+
+    pat = re.compile(r"\bcore\.([A-Za-z_]\w*)")
+    fails: list[str] = []
+    warns: list[str] = []
+    for f in sorted(PLUGINS.rglob("*.py")):
+        try:
+            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception:  # noqa: BLE001
+            continue
+        for i, line in enumerate(lines, 1):
+            if line.strip().startswith("#"):
+                continue
+            for m in pat.finditer(line):
+                name = m.group(1)
+                if name in CORE_API:
+                    if name in CORE_API_DEPRECATED:
+                        warns.append(f"{_rel(f)}:{i}: core.{name} 是遗留接口，建议改用公共方法")
+                else:
+                    fails.append(
+                        f"{_rel(f)}:{i}: core.{name} 不在接口清单里"
+                        f"（要暴露就先登记到 ops/lint-plugins.py 的 CORE_API）")
+    return fails, sorted(set(warns))
+
+
 def check_duplicate_commands() -> list[str]:
     """命令名不许重复：同名的两个 matcher，优先级高的会把另一个整个吞掉。
 
@@ -221,6 +277,9 @@ def main() -> int:
     if not name:                      # 重名/覆盖率都是跨插件的，只在全量检查时看
         all_fails += check_duplicate_commands()
         all_fails += check_no_hardcoded_paths()
+        api_fails, api_warns = check_core_api()
+        all_fails += api_fails
+        all_warns += api_warns
         help_fails, help_warns = check_help_coverage()
         all_fails += help_fails
         all_warns += help_warns

@@ -174,6 +174,20 @@ class Turn:
 
 
 class ChatCore:
+    """聊天编排器。**插件只许调下面列出的成员**（ops/lint-plugins.py 会查）。
+
+    公共接口：
+        reply / reply_deadline / last_prompts   一轮回复 + 截止时间 + 上轮 prompt
+        mood_event                              记一次「机器人自己经历的事」
+        usage_stats / config_issues / config_status
+        persona / persona_for / reload_persona
+        memory / scheduler / pacing / proactive / files / group / chat
+        caption_images                          图片描述
+        rate_per_minute / cooldown / enabled / whitelist / admin_uid
+
+    其余方法（_turn_*、_run_tools、remember_safe、append_to_message…）都是内部实现，
+    改它们不该牵连插件；要暴露新东西，先登记到 lint 的 CORE_API 清单里。
+    """
     def __init__(self) -> None:
         self.persona = load_persona()
         self.stranger_persona = load_stranger_persona()
