@@ -167,7 +167,8 @@ class ChatCore:
         self.history_item_max = int(ctx.get("history_item_max_chars", HISTORY_ITEM_MAX))
         self.recall_query_items = int(ctx.get("recall_query_items", 2))
         self.summary_idle_seconds = float(ctx.get("summary_idle_minutes", 30)) * 60
-        self.meme_threshold = float((cfg.get("meme") or {}).get("mood_threshold", 0.35))
+        # 兜底阈值的默认值必须和下面 base_thr 一致，否则配置缺字段时两处会打架
+        self.meme_threshold = float((cfg.get("meme") or {}).get("mood_threshold", 0.20))
         # 表情包阈值按情绪分档：正向更容易触发（愿意分享情绪），负向略高于中性
         # （避免一抱怨就甩图），但仍低于正向，让吐槽也能发得出来。
         # 老配置里只有 mood_threshold 时，三档都回落成它。
@@ -841,7 +842,9 @@ class ChatCore:
         await self._log_prompt(session, msgs, digest=digest, images=images)
         # 发表情的门槛是「我的情绪强度够不够」。外人不共享我的情绪（用中性值），
         # 这条永远过不了——所以对外人直接放开，靠人格里的「别连着刷」约束。
-        allow_meme = self.meme_allowed(m) if owner else True
+        # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出
+        # 稳定预期，结果一次都不发。频率改由「每轮最多一张 + 24h 去重」控制。
+        allow_meme = True
 
         ai_images: list[str] = []       # 本轮要附带发出的表情包
         buffer = ""

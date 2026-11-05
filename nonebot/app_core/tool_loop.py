@@ -17,6 +17,8 @@ log = logging.getLogger("qqbot.tool_loop")
 
 # 只读工具可以在一轮里并发跑；写操作必须串行（同名文件别互相覆盖）。
 # 名单放在 tools 模块里，这里只做兜底。
+PER_TURN_CAP = {"meme_send": 1}
+
 _DEFAULT_READ_ONLY = frozenset({
     "web_search", "web_open", "kb_read", "kb_search", "memory_search", "memory_read",
     "diary_read", "skill_read", "skill_list", "note_list", "remind_list",
@@ -124,9 +126,15 @@ async def run(core, msgs: list[dict], *,
             elif key in seen:
                 results[i] = "（同样的参数这一轮已经调用过，结果见上一条）"
                 log.info("工具 %s 本轮重复，已跳过", name)
+            elif name in PER_TURN_CAP and st.get("per_tool", {}).get(name, 0) >= PER_TURN_CAP[name]:
+                results[i] = "这一轮已经发过表情包了，不要再发"
+                log.info("工具 %s 达到每轮上限，已跳过", name)
             else:
                 seen.add(key)
                 pending.append((i, name, args, key))
+                if name in PER_TURN_CAP:
+                    st.setdefault("per_tool", {})
+                    st["per_tool"][name] = st["per_tool"].get(name, 0) + 1
 
         # 一轮里的多个工具并发跑：只读的并行，写操作的串行。
         # 实测一轮 5 个工具串行要 12 秒（两次搜索 + 两次开网页），并行后约 3 秒。

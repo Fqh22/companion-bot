@@ -273,10 +273,15 @@ async def _send_replies(replies: list[str], images: list[str] | None = None) -> 
         await _send_text(part)
     for path in images or []:
         try:
-            if Path(path).exists():
-                await chat.send(MessageSegment.image(Path(path)))
+            p = Path(path)
+            if not p.exists():
+                logger.warning(f"[chat] 表情包文件不存在：{p}")
+                continue
+            # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
+            # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
+            await chat.send(MessageSegment.image(p.read_bytes()))
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"[chat] send image failed: {e}")
+            logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
 
 
 async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",

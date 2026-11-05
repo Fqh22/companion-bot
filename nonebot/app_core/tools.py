@@ -110,7 +110,7 @@ TOOLS = [
             "required": ["goal"]}}},
     {"type": "function", "function": {
         "name": "meme_send",
-        "description": "发一张表情包。想接梗、表达情绪、或者说话太干时用。query 写一句具体的话描述你想表达的情绪或场景（比如「被夸得很爽」「无语到笑」「累得想躺」「代码又报错了」），比只写分类名准得多；写完不用再描述这张图。",
+        "description": "发一张表情包。他开玩笑、你自嘲、情绪明显、或者一句话太干时优先用它，别只用文字。query 写一句具体的话描述你想表达的情绪或场景（比如「被夸得很爽」「无语到笑」「累得想躺」「代码又报错了」），比只写分类名准得多；写完不用再描述这张图。每轮最多一张，别连着发。",
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string", "description": "关键词或分类，比如 开心/技术/困"}},
             "required": ["query"]}}},
@@ -188,12 +188,14 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
         if name == "agent_task":
             return await _delegate(args.get("goal", ""), core)
         if name == "meme_send":
-            path = await meme.find(args.get("query", ""))
+            path, mode, score = await meme.find_ex(args.get("query", ""))
             if not path:
                 return "表情包库里没找到"
             if images is not None:
                 images.append(path)
-            return "已发了一张表情包"
+            if mode == "semantic":
+                return f"已发了一张表情包（语义匹配 {score:.2f}）"
+            return "已发了一张表情包（没找到贴合的，按分类挑的，可能不太对味）"
     except Exception as e:  # noqa: BLE001
         return f"工具执行失败：{type(e).__name__}: {e}"
     return f"未知工具：{name}"

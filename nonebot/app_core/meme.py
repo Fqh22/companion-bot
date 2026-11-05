@@ -1,7 +1,9 @@
 """表情包：优先按语义匹配（caption + tags 向量），回退到分类。"""
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import random
 import sqlite3
 import time
@@ -11,8 +13,9 @@ from app_core import paths as _paths
 
 from app_core.memory import Memory, _cos, _pack, _unpack
 
+log = logging.getLogger("qqbot.meme")
+
 PACKS = _paths.QDATA / "meme_packs"
-META = PACKS / "deepseek-fanart-meme-pack" / "semantic_metadata.json"
 CHAT_DB = _paths.DATA / "chat.db"
 EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
@@ -34,9 +37,12 @@ CAT_KEYS = {
 
 _cache: list[tuple[str, Path]] | None = None
 _meta: dict[str, dict] | None = None
-# 最近发过的几张，避免同一天反复发同一张
-_recent: list[str] = []
-RECENT_LIMIT = 5
+
+# 最近发过的图（落盘、带时间戳）。原来放在内存里，重启就忘——
+# 而「重启」包括发版、systemd 拉起、崩了自愈，一天可能好几次。
+RECENT_FILE = _paths.DATA / "meme-recent.json"
+RECENT_WINDOW_H = 24
+RECENT_KEEP = 80
 
 
 def scan() -> list[tuple[str, Path]]:
@@ -58,20 +64,32 @@ def meta() -> dict[str, dict]:
     if _meta is not None:
         return _meta
     out: dict[str, dict] = {}
+    # 扫**所有包**下的 *.json，而不是写死某一个包：新加一个包时图片扫得到、
+    # 却永远没有向量，只会静默落进分类回退，而且查不出为什么。
     try:
-        d = json.loads(META.read_text(encoding="utf-8"))
-        base = META.parent
-        for _, v in (d.get("images") or {}).items():
-            rel = v.get("relative_path")
-            if not rel:
+        for f in sorted(PACKS.rglob("*.json")):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except Exception as e:  # noqa: BLE001
+                log.warning("表情包元数据解析失败 %s：%s", f.name, e)
                 continue
-            out[str(base / rel)] = {
-                "caption": v.get("caption") or "",
-                "tags": v.get("tags") or [],
-                "category": v.get("category") or "",
-            }
-    except Exception:
-        pass
+            imgs = d.get("images")
+            if not isinstance(imgs, dict):
+                continue
+            base = f.parent
+            for v in imgs.values():
+                if not isinstance(v, dict):
+                    continue
+                rel = v.get("relative_path")
+                if not rel:
+                    continue
+                out[str(base / rel)] = {
+                    "caption": v.get("caption") or "",
+                    "tags": v.get("tags") or [],
+                    "category": v.get("category") or "",
+                }
+    except Exception as e:  # noqa: BLE001
+        log.warning("表情包目录扫描失败：%s", e)
     _meta = out
     return out
 
@@ -81,7 +99,43 @@ def stats() -> dict:
     cats: dict[str, int] = {}
     for c, _ in items:
         cats[c] = cats.get(c, 0) + 1
-    return {"total": len(items), "categories": cats, "described": len(meta())}
+    try:
+        c = _conn()
+        n = c.execute("SELECT COUNT(*) FROM meme_vectors").fetchone()[0]
+        c.close()
+    except Exception:  # noqa: BLE001
+        n = 0
+    return {"total": len(items), "categories": cats, "described": len(meta()),
+            "vectorized": int(n), "recent_24h": len(_recent_paths())}
+
+
+def _recent_load() -> list[dict]:
+    try:
+        rows = json.loads(RECENT_FILE.read_text(encoding="utf-8"))
+        return [r for r in rows if isinstance(r, dict) and r.get("path")]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _recent_paths(now: float | None = None) -> set[str]:
+    """24 小时内发过的。落盘，重启不丢。"""
+    now = time.time() if now is None else now
+    cutoff = now - RECENT_WINDOW_H * 3600
+    return {str(r["path"]) for r in _recent_load()
+            if float(r.get("ts") or 0) >= cutoff}
+
+
+def _remember(path: str, now: float | None = None) -> None:
+    now = time.time() if now is None else now
+    cutoff = now - RECENT_WINDOW_H * 3600
+    rows = [r for r in _recent_load() if float(r.get("ts") or 0) >= cutoff]
+    rows.append({"path": path, "ts": now})
+    try:
+        RECENT_FILE.parent.mkdir(parents=True, exist_ok=True)
+        RECENT_FILE.write_text(json.dumps(rows[-RECENT_KEEP:], ensure_ascii=False),
+                               encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        log.debug("表情包去重记录写入失败：%s", e)
 
 
 def _conn() -> sqlite3.Connection:
@@ -132,10 +186,10 @@ def _pick(cands: list[str]) -> str:
     """
     if not cands:
         return ""
-    pool = [p for p in cands if p not in _recent] or cands
+    recent = _recent_paths()
+    pool = [p for p in cands if p not in recent] or cands
     choice = random.choice(pool)
-    _recent.append(choice)
-    del _recent[:-RECENT_LIMIT]
+    _remember(choice)
     return choice
 
 
@@ -156,28 +210,47 @@ def _category_fallback(query: str) -> str:
     return _pick(cands)
 
 
-async def find(query: str) -> str:
-    """优先语义匹配 caption/tags，失败回退分类。"""
-    q = (query or "").strip()
-    if not q:
-        return _category_fallback("")
+def _vectors() -> list[tuple[str, bytes]]:
+    """同步读向量。调用方用 asyncio.to_thread 包住，别阻塞事件循环。"""
+    init()
+    c = _conn()
     try:
-        init()
-        c = _conn()
-        rows = c.execute("SELECT path, vec FROM meme_vectors").fetchall()
+        return c.execute("SELECT path, vec FROM meme_vectors").fetchall()
+    finally:
         c.close()
-        if rows:
-            mem = Memory()
-            qv = (await mem.embed([q]))[0]
-            if qv:
-                scored = [(p, _cos(qv, _unpack(v))) for p, v in rows]
-                scored.sort(key=lambda x: -x[1])
-                top = [p for p, s in scored[:8] if s >= 0.30]
-                if top:
-                    return _pick(top)
-    except Exception:
-        pass
-    return _category_fallback(q)
+
+
+async def find_ex(query: str) -> tuple[str, str, float]:
+    """返回 (路径, 匹配方式, 分数)。方式：semantic / category / none。
+
+    为什么要把方式返回出去：语义命中 top-1 和掉进随机分类是两件事，
+    模型需要知道这张到底贴不贴，才能决定要不要补一句。
+    """
+    q = (query or "").strip()
+    if q:
+        try:
+            rows = await asyncio.to_thread(_vectors)
+            if rows:
+                mem = Memory()
+                qv = (await mem.embed([q]))[0]
+                if qv:
+                    scored = [(p, _cos(qv, _unpack(v))) for p, v in rows]
+                    scored.sort(key=lambda x: -x[1])
+                    top = [p for p, s in scored[:8] if s >= 0.30]
+                    if top:
+                        return _pick(top), "semantic", round(scored[0][1], 3)
+            else:
+                log.warning("表情包向量库为空，落回分类匹配")
+        except Exception as e:  # noqa: BLE001
+            log.warning("表情包语义匹配失败，回退分类：%s", e)
+    path = _category_fallback(q)
+    return path, ("category" if path else "none"), 0.0
+
+
+async def find(query: str) -> str:
+    """兼容旧调用：只要路径。"""
+    path, _, _ = await find_ex(query)
+    return path
 
 
 def describe(path: str) -> str:

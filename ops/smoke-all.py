@@ -149,8 +149,8 @@ wiki_mod.DB, wiki_mod.NOTES, wiki_mod.SKILLS = TMP / "chat.db", learn_mod.NOTES,
 diary_mod.DIARY_DIR, diary_mod.MIRROR_DIR, diary_mod.CHAT_DB = TMP / "diary", LEARN, TMP / "chat.db"
 contradict_mod.LOG = TMP / "contradictions.jsonl"
 meme_mod.PACKS = TMP / "packs"
-meme_mod.META = meme_mod.PACKS / "pack" / "semantic_metadata.json"
 meme_mod.CHAT_DB = TMP / "chat.db"
+meme_mod.RECENT_FILE = TMP / "meme-recent.json"
 fu_mod.DB = TMP / "chat.db"
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
@@ -169,10 +169,11 @@ memory_mod.Memory().init()
 
 from PIL import Image  # noqa: E402
 
-meme_mod.META.parent.mkdir(parents=True, exist_ok=True)
+_pack_dir = meme_mod.PACKS / "pack"
+_pack_dir.mkdir(parents=True, exist_ok=True)
 for i in range(2):
-    Image.new("RGB", (32, 32), (i * 80, 100, 200)).save(meme_mod.PACKS / f"m{i}.png")
-meme_mod.META.write_text(json.dumps({
+    Image.new("RGB", (32, 32), (i * 80, 100, 200)).save(_pack_dir / f"m{i}.png")
+(_pack_dir / "semantic_metadata.json").write_text(json.dumps({
     "images": {
         "m0.png": {"relative_path": "m0.png", "caption": "开心 笑", "tags": ["开心"],
                    "category": "happy"},
@@ -253,6 +254,10 @@ async def main() -> None:
         await call("meme.ensure_vectors", meme_mod.ensure_vectors)
         pick = await call("meme.find", meme_mod.find, "开心")
         check("meme.find 有结果", bool(pick), str(pick)[:36])
+        _p, _mode, _score = await meme_mod.find_ex("开心")
+        check("meme.find_ex 带匹配方式", _mode in ("semantic", "category", "none"), _mode)
+        check("meme 去重记录落盘", meme_mod.RECENT_FILE.exists(), str(meme_mod.RECENT_FILE))
+        check("meme 去重记录能读回", bool(meme_mod._recent_paths()), "空")
         check("meme._category_fallback", bool(meme_mod._category_fallback("无语")))
         check("meme._pick", isinstance(meme_mod._pick([str(x[1]) for x in packs]), str))
         check("meme.describe", isinstance(meme_mod.describe(pick), str))

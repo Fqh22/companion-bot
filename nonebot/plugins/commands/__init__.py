@@ -143,17 +143,23 @@ async def _():
 @meme_cmd.handle()
 async def _(event: MessageEvent):
     arg = _arg(event, "/meme")
-    path = await meme.find(arg)
+    path, mode, score = await meme.find_ex(arg)
     if not path:
         await meme_cmd.finish("表情包库是空的")
-    await meme_cmd.send(MessageSegment.image(Path(path)))
+    try:
+        # bytes → base64；传 Path 会变成 file:// 宿主机路径，容器里读不到
+        await meme_cmd.send(MessageSegment.image(Path(path).read_bytes()))
+    except Exception as e:  # noqa: BLE001
+        await meme_cmd.finish(f"发送失败：{type(e).__name__}: {e}")
 
 
 @meme_stats.handle()
 async def _():
     s = meme.stats()
     cats = "、".join(f"{k}:{v}" for k, v in sorted(s["categories"].items()))
-    await meme_stats.finish(f"共 {s['total']} 张{NL}{cats}")
+    await meme_stats.finish(
+        f"共 {s['total']} 张（有语义描述 {s['described']}，有向量 {s['vectorized']}，"
+        f"24h 内发过 {s['recent_24h']}）{NL}{cats}")
 
 
 @usage_cmd.handle()
