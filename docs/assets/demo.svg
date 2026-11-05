@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="660" viewBox="0 0 760 660" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <style>
+      .screen { fill:#f3f5f9; }
+      .bubble-bot  { fill:#ffffff; stroke:#e2e8f0; }
+      .bubble-user { fill:#d8e9ff; stroke:#b9d6ff; }
+      .txt  { font-size:14px; fill:#0f172a; }
+      .meta { font-size:11px; fill:#94a3b8; }
+      .note { font-size:12px; fill:#64748b; }
+      .hdr  { font-size:14px; font-weight:700; fill:#0f172a; }
+    </style>
+  </defs>
+
+  <rect width="760" height="660" fill="#ffffff"/>
+  <rect x="150" y="30" width="460" height="560" rx="26" fill="#1f2937"/>
+  <rect x="162" y="42" width="436" height="536" rx="18" class="screen"/>
+
+  <!-- 顶部栏 -->
+  <rect x="162" y="42" width="436" height="52" rx="18" fill="#e8edf5"/>
+  <rect x="162" y="76" width="436" height="18" fill="#e8edf5"/>
+  <text class="hdr" x="186" y="74">陪伴机器人</text>
+  <text class="meta" x="500" y="74">在线</text>
+
+  <!-- 气泡：自下而上排，先写 y -->
+  <g>
+    <!-- 1 他 -->
+    <rect class="bubble-user" x="468" y="112" width="110" height="38" rx="12"/>
+    <text class="txt" x="484" y="137">今天有点累</text>
+
+    <!-- 2 它 -->
+    <rect class="bubble-bot" x="186" y="164" width="288" height="38" rx="12"/>
+    <text class="txt" x="202" y="189">那就先别想工作。晚饭吃了吗</text>
+
+    <!-- 3 他 -->
+    <rect class="bubble-user" x="508" y="216" width="70" height="38" rx="12"/>
+    <text class="txt" x="524" y="241">还没</text>
+
+    <!-- 4 他 -->
+    <rect class="bubble-user" x="388" y="268" width="190" height="38" rx="12"/>
+    <text class="txt" x="404" y="293">明天有个面试，有点慌</text>
+
+    <!-- 5 它 -->
+    <rect class="bubble-bot" x="186" y="320" width="356" height="58" rx="12"/>
+    <text class="txt" x="202" y="345">慌正常。把明天要讲的三个项目各写一句话，</text>
+    <text class="txt" x="202" y="367">写完就睡。</text>
+
+    <!-- 6 他 -->
+    <rect class="bubble-user" x="318" y="392" width="260" height="58" rx="12"/>
+    <text class="txt" x="334" y="417">/task 把这三个项目整理成一页纸，</text>
+    <text class="txt" x="334" y="439">明天带去</text>
+
+    <!-- 7 它 -->
+    <rect class="bubble-bot" x="186" y="464" width="176" height="38" rx="12"/>
+    <text class="txt" x="202" y="489">收到，跑完发你</text>
+  </g>
+
+  <text class="note" x="164" y="616">示意图（非真实截图），用于说明对话形态与 /task 派活。</text>
+</svg>

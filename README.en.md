@@ -1,0 +1,108 @@
+# companion-bot
+
+> A self-hosted QQ companion bot with **long-term memory, mood, and a sandboxed task agent**.
+
+[中文](README.md) · Not affiliated with Tencent or QQ. Use at your own risk on your own deployment.
+
+## What it is
+
+Two independent paths in one codebase:
+
+```
+QQ
+ ├─ normal messages → companion bot (NoneBot2)   instant replies, remembers you, has moods
+ └─ /task           → agentd (multi-step agent)  works in a sandbox, resumes after crashes
+```
+
+- **Chat**: private messages, split into 25-char bubbles, pacing follows mood, streams as it generates
+- **Memory**: conversation → summary → structured facts → vector recall; used memories stay alive, idle ones get archived
+- **Mood**: valence / baseline / energy, saturating impulses, composable decay; it only changes *how* it talks
+- **Knowledge**: the bot writes its own notes with a shelf life; stale pages are flagged and audited weekly
+- **Profile**: a six-field model of *you*, with confidence and a last-evidence timestamp; it expires
+- **Contradiction check**: when a new fact replaces an old one, the old memory is soft-deleted
+- **Tasks**: `/task` goes to agentd — multi-step planning, docker sandbox, checkpoint recovery, approval for dangerous commands
+
+![demo](docs/assets/demo.svg)
+
+## Architecture
+
+![architecture](docs/assets/architecture.svg)
+
+One layering rule: **`app_core` never imports nonebot**. That keeps the logic testable offline,
+without a framework, a network, or a database.
+
+## Quick start (no QQ needed)
+
+Python 3.10+.
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r nonebot/requirements.txt
+
+export QQBOT_CODE_DIR=$PWD/nonebot
+python ops/lint-plugins.py          # layering & conventions (pure AST, instant)
+python ops/test-nonebot-offline.py  # offline suite: no network, LLM and embeddings mocked
+```
+
+If it prints `全部通过`, the code is self-consistent on your machine.
+
+## Connect to QQ
+
+1. Run an OneBot v11 implementation (NapCat / SnowLuma / Lagrange …) pointing at the reverse-WS port
+2. `cp nonebot/.env.example nonebot/.env`, set `ONEBOT_ACCESS_TOKEN` and `SUPERUSERS`
+3. `cp nonebot/config.example.yaml nonebot/config.yaml`, then set at least:
+   - `admin.user_id` — your QQ number. **If empty, memories are not written and proactive messages are off** (the startup log warns)
+   - `llm.api` / `llm.model` and the embedding endpoint
+4. Put API keys in `/opt/qqbot-data/keys.json` (mode 600)
+5. `cd nonebot && python bot.py`
+
+See [docs/02-运维.md](docs/02-运维.md) for deployment, backup and troubleshooting (Chinese).
+
+## Layout
+
+```
+nonebot/
+├─ app_core/     37 pure-logic modules (no nonebot import)
+├─ plugins/      7 plugins: chat / group / commands / admin / schedule / proactive / agent
+└─ personas/     persona for strangers (private chat)
+agentd/          agent runtime: code / tests / sandbox / docs
+docs/            system, ops, agentd, link matrix (Chinese)
+ops/             verification and ops scripts (deployed to /opt/nonebot/ops)
+templates/plugin/  new-plugin scaffold
+```
+
+## Design decisions worth knowing
+
+1. **app_core is pure logic** — plugins only do IO; every rule lives in a testable function.
+2. **Prompt has a stable prefix** — persona/digest/memories/knowledge first, history and user input last,
+   so the provider's context cache hits. That ordering is deliberate.
+3. **45-second deadline** — if generation is slow, send what exists instead of making the user wait.
+4. **Mood is state, not a counter** — three values with lazy decay; changing the dynamics means
+   recalibrating every downstream threshold (a documented pitfall).
+5. **Everything learned is persisted** — memory, corrections, profile, skills are files/SQLite;
+   they can be diffed, rolled back, and audited.
+6. **Quiet by default** — proactive messages are gated, groups are disabled, silence beats spam.
+
+## Non-goals
+
+- Single user, single process, single machine — not a multi-tenant service
+- Group chats are off by default; when on, only @mentions are answered and nothing enters memory
+- agentd does **not** share chat memory
+- No multi-agent parallelism, no browser automation, no local models
+- Sandbox state is not persisted (pip takes seconds to reinstall)
+
+## Tests
+
+```bash
+ops/verify.sh            # six suites: layering / offline / link / end-to-end / plugins / agentd
+ops/verify.sh --pre      # before restart: never touches the production DB
+ops/verify.sh --quick    # seconds: layering + link check
+```
+
+The link check actually boots nonebot and drives the plugin handlers, asserting **call counts and
+arguments** — not just "it didn't crash". See [docs/04-联动矩阵.md](docs/04-联动矩阵.md) for which
+link is guarded by which test (Chinese).
+
+## License
+
+[MIT](LICENSE)

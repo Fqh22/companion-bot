@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      .panel { fill:#ffffff; stroke:#cbd5e1; stroke-width:1.5; rx:14; }
+      .box   { fill:#f8fafc; stroke:#94a3b8; stroke-width:1.2; rx:10; }
+      .blue  { fill:#eff6ff; stroke:#60a5fa; }
+      .green { fill:#f0fdf4; stroke:#4ade80; }
+      .amber { fill:#fffbeb; stroke:#f59e0b; }
+      .title { font-size:15px; font-weight:700; fill:#0f172a; }
+      .sub   { font-size:12px; fill:#475569; }
+      .tiny  { font-size:11px; fill:#64748b; }
+      .h1    { font-size:22px; font-weight:700; fill:#0f172a; }
+      .h2    { font-size:12px; fill:#94a3b8; }
+      .edge  { stroke:#64748b; stroke-width:1.3; fill:none; marker-end:url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1200" height="820" fill="#fcfdff"/>
+  <text class="h1" x="40" y="46">companion-bot 架构</text>
+  <text class="h2" x="40" y="68">QQ companion bot · NoneBot2 + agentd</text>
+
+  <!-- 左侧：QQ 与 OneBot -->
+  <rect class="box" x="60" y="110" width="220" height="58" rx="10"/>
+  <text class="title" x="80" y="136">QQ</text>
+  <text class="sub" x="80" y="155">手机 / 桌面客户端</text>
+
+  <path class="edge" d="M170 168 L170 206"/>
+  <text class="tiny" x="178" y="192">消息</text>
+
+  <rect class="box" x="60" y="206" width="220" height="64" rx="10"/>
+  <text class="title" x="80" y="232">OneBot v11</text>
+  <text class="sub" x="80" y="251">NapCat / SnowLuma</text>
+
+  <path class="edge" d="M280 238 L352 238"/>
+  <text class="tiny" x="292" y="230">ws://</text>
+  <text class="tiny" x="292" y="252">127.0.0.1</text>
+
+  <!-- NoneBot 面板 -->
+  <rect class="panel" x="352" y="100" width="470" height="470" rx="14"/>
+  <text class="title" x="372" y="128">NoneBot 进程</text>
+  <text class="tiny" x="372" y="146">systemd · 单实例</text>
+
+  <rect class="box blue" x="372" y="164" width="200" height="96" rx="10"/>
+  <text class="title" x="388" y="188">plugins/</text>
+  <text class="sub" x="388" y="208">只做 IO：消息 ↔ 逻辑</text>
+  <text class="tiny" x="388" y="228">chat · group · agent</text>
+  <text class="tiny" x="388" y="244">commands · admin · schedule</text>
+
+  <path class="edge" d="M572 212 L628 212"/>
+  <text class="tiny" x="576" y="202">调用</text>
+
+  <rect class="box green" x="628" y="164" width="176" height="96" rx="10"/>
+  <text class="title" x="644" y="188">app_core/</text>
+  <text class="sub" x="644" y="208">37 个纯逻辑模块</text>
+  <text class="tiny" x="644" y="228">不 import nonebot</text>
+  <text class="tiny" x="644" y="244">可离线单测</text>
+
+  <rect class="box" x="372" y="310" width="200" height="70" rx="10"/>
+  <text class="title" x="388" y="334">chat.db</text>
+  <text class="tiny" x="388" y="352">消息 / 用量 / 纪要</text>
+  <text class="tiny" x="388" y="368">情绪 / 台账 / 任务</text>
+
+  <rect class="box" x="628" y="310" width="176" height="70" rx="10"/>
+  <text class="title" x="644" y="334">livingmemory.db</text>
+  <text class="tiny" x="644" y="352">记忆原子 + 向量</text>
+  <text class="tiny" x="644" y="368">软删可恢复</text>
+
+  <path class="edge" d="M472 260 L472 306"/>
+  <text class="tiny" x="480" y="288">读写</text>
+  <path class="edge" d="M716 260 L716 306"/>
+  <text class="tiny" x="724" y="288">检索</text>
+
+  <text class="tiny" x="372" y="420">prompt = 人格 · 纪要 · 记忆 · 相处状态 · 知识目录 · 纠正</text>
+  <text class="tiny" x="372" y="440">历史与本轮输入放在最后（稳定前缀，命中上下文缓存）</text>
+  <text class="tiny" x="372" y="470">45 秒硬线：超时补发已生成的部分</text>
+  <text class="tiny" x="372" y="490">流式发送：按 25 字切段，按情绪调节奏</text>
+  <text class="tiny" x="372" y="520">影子模式：只落盘、不改行为（召回 / 补句 / 自指率…）</text>
+  <text class="tiny" x="372" y="540">矛盾检测：新记忆推翻旧记忆 → superseded</text>
+
+  <!-- agentd 面板 -->
+  <rect class="panel" x="860" y="100" width="300" height="470" rx="14"/>
+  <text class="title" x="880" y="128">agentd 进程</text>
+  <text class="tiny" x="880" y="146">127.0.0.1:8100 · 独立进程</text>
+
+  <path class="edge" d="M822 212 L852 212"/>
+  <text class="tiny" x="806" y="202">HTTP</text>
+  <text class="tiny" x="812" y="230">/task</text>
+
+  <rect class="box" x="880" y="164" width="260" height="56" rx="10"/>
+  <text class="title" x="896" y="188">loop / planner</text>
+  <text class="tiny" x="896" y="206">多步计划 · 断点恢复 · 重规划</text>
+
+  <rect class="box" x="880" y="236" width="260" height="56" rx="10"/>
+  <text class="title" x="896" y="260">tools</text>
+  <text class="tiny" x="896" y="278">shell / read / write / fetch / search</text>
+
+  <path class="edge" d="M1010 292 L1010 322"/>
+
+  <rect class="box amber" x="880" y="322" width="260" height="86" rx="10"/>
+  <text class="title" x="896" y="346">docker 沙箱</text>
+  <text class="tiny" x="896" y="364">只读 rootfs · 只挂 /work</text>
+  <text class="tiny" x="896" y="380">--cap-drop ALL · pids 128</text>
+  <text class="tiny" x="896" y="396">无任何凭证</text>
+
+  <path class="edge" d="M1010 408 L1010 470"/>
+
+  <rect class="box" x="880" y="470" width="260" height="56" rx="10"/>
+  <text class="title" x="896" y="494">白名单出网代理</text>
+  <text class="tiny" x="896" y="512">只放行包源与指定域名</text>
+
+  <text class="tiny" x="880" y="552">危险命令先审批，不直接执行</text>
+
+  <!-- 外部服务 -->
+  <rect class="box" x="352" y="610" width="200" height="60" rx="10"/>
+  <text class="title" x="368" y="634">LLM API</text>
+  <text class="tiny" x="368" y="652">DeepSeek / OpenAI 兼容</text>
+
+  <rect class="box" x="628" y="610" width="176" height="60" rx="10"/>
+  <text class="title" x="644" y="634">Embedding API</text>
+  <text class="tiny" x="644" y="652">向量化记忆与知识</text>
+
+  <path class="edge" d="M472 540 L452 606"/>
+  <path class="edge" d="M716 540 L716 606"/>
+
+  <!-- 说明 -->
+  <rect x="352" y="700" width="808" height="84" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/>
+  <text class="tiny" x="372" y="724">分层红线只有一条：app_core 不 import nonebot —— 所以它能被离线测试直接驱动，不依赖框架、网络与数据库。</text>
+  <text class="tiny" x="372" y="746">聊天与 agentd 并行、互不干扰：机器人负责聊天，agentd 负责办事，两者不共享记忆。</text>
+  <text class="tiny" x="372" y="768">所有学习都落盘（SQLite + markdown），可 diff、可回滚、可被测试扫到。</text>
+</svg>

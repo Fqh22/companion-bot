@@ -5,7 +5,11 @@
 
 非腾讯官方项目，与腾讯 / QQ 无任何关联，仅用于个人自建。
 
+[English](README.en.md)
+
 ## 它是什么
+
+![对话示意](docs/assets/demo.svg)
 
 同一套代码里跑两条互不干扰的链路：
 
@@ -25,17 +29,7 @@ QQ
 
 ## 架构
 
-```
-QQ ── OneBot v11 ──▶ NoneBot
-                       ├─ plugins/   只做 IO（chat / group / agent / commands / admin / schedule / proactive）
-                       └─ app_core/  纯逻辑，不 import nonebot（可离线测）
-                             │
-                             ├─ chat.db        消息 / 用量 / 纪要 / 情绪 / 作业台账
-                             └─ livingmemory.db 记忆原子 + 向量
-                             ▲
-                             │ HTTP（127.0.0.1）
-                          agentd（独立进程，docker 沙箱 + 白名单出网）
-```
+![架构](docs/assets/architecture.svg)
 
 分层红线只有一条：**`app_core` 不 import nonebot**。所以它能在没有框架、没有网络、
 没有数据库的情况下被离线测试直接驱动。
