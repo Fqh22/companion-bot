@@ -130,6 +130,7 @@ from app_core import (  # noqa: E402
     attention as attention_mod, relational as relational_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
     maintenance as maint_mod, paths as paths_mod, review as review_mod,
+    vec as vec_mod,
     status as status_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
@@ -376,6 +377,12 @@ async def main() -> None:
             {"家庭": True}, 1_800_000_000.0)
         check("profile.update_state 变化留旧值",
               _st2["previous"]["家庭"]["text"] == "催婚")
+
+        # ---------- vec（纯向量工具） ----------
+        check("vec.打包解包往返一致",
+              vec_mod.unpack(vec_mod.pack([0.5, -0.25, 1.0])) == [0.5, -0.25, 1.0])
+        check("vec.自余弦为 1", round(vec_mod.cos([1.0, 0.0], [1.0, 0.0]), 3) == 1.0)
+        check("vec.维度不同返回 0", vec_mod.cos([1.0], [1.0, 0.0]) == 0.0)
 
         # ---------- review（复盘/周报实现，learn 只是入口） ----------
         check("review._extract_json 兼容代码块",

@@ -8,7 +8,6 @@ import json
 import logging
 import math
 import sqlite3
-import struct
 import time
 import uuid
 from pathlib import Path
@@ -18,6 +17,9 @@ from app_core import paths as _paths
 import httpx
 
 from app_core import config
+from app_core.vec import cos as _cos
+from app_core.vec import pack as _pack
+from app_core.vec import unpack as _unpack
 
 DB = _paths.MEM_DB
 KEYS = _paths.KEYS
@@ -46,22 +48,7 @@ _EMBED_CACHE: dict[str, list[float]] = {}
 EMBED_CACHE_MAX = 256
 
 
-def _pack(vec: list[float]) -> bytes:
-    return struct.pack(f"{len(vec)}f", *vec)
 
-
-def _unpack(blob: bytes) -> list[float]:
-    n = len(blob) // 4
-    return list(struct.unpack(f"{n}f", blob))
-
-
-def _cos(a: list[float], b: list[float]) -> float:
-    if len(a) != len(b):
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    na = math.sqrt(sum(x * x for x in a))
-    nb = math.sqrt(sum(y * y for y in b))
-    return dot / (na * nb) if na and nb else 0.0
 
 
 class Memory:

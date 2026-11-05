@@ -23,7 +23,8 @@ from app_core import paths as _paths
 import numpy as np
 
 from app_core import learn as learn_mod
-from app_core.memory import Memory, _pack
+from app_core.memory import Memory
+from app_core.vec import pack
 
 LEARN = _paths.LEARN
 DB = _paths.DATA / "chat.db"
@@ -195,7 +196,7 @@ async def index(max_files: int = 200) -> int:
                 c.execute(
                     "INSERT OR REPLACE INTO kb_chunks"
                     "(path, idx, project, text, vec, mtime, ts) VALUES (?,?,?,?,?,?,?)",
-                    (key, idx, project, piece, _pack(v), mtime, time.time()))
+                    (key, idx, project, piece, pack(v), mtime, time.time()))
                 done += 1
         c.close()
     if done:

@@ -11,7 +11,8 @@ from pathlib import Path
 
 from app_core import paths as _paths
 
-from app_core.memory import Memory, _cos, _pack, _unpack
+from app_core.memory import Memory
+from app_core.vec import cos, pack, unpack
 
 log = logging.getLogger("qqbot.meme")
 
@@ -178,7 +179,7 @@ async def ensure_vectors(batch: int = 16) -> int:
             for (path, _), v in zip(chunk, vecs):
                 if v:
                     c.execute("INSERT OR REPLACE INTO meme_vectors(path, vec, ts) VALUES (?,?,?)",
-                              (path, _pack(v), time.time()))
+                              (path, pack(v), time.time()))
                     done += 1
         c.close()
     return done
@@ -267,7 +268,7 @@ async def find_ex(query: str) -> tuple[str, str, float]:
                 mem = Memory()
                 qv = (await mem.embed([q]))[0]
                 if qv:
-                    scored = [(p, _cos(qv, _unpack(v))) for p, v in rows]
+                    scored = [(p, cos(qv, unpack(v))) for p, v in rows]
                     scored.sort(key=lambda x: -x[1])
                     top = [p for p, s in scored[:8] if s >= 0.30]
                     if top:
