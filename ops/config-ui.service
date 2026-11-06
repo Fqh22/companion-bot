@@ -1,0 +1,21 @@
+[Unit]
+Description=companion-bot config UI (loopback only)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/nonebot
+Environment=PYTHONUNBUFFERED=1
+Environment=QQBOT_ROOT=/opt
+ExecStart=/opt/nonebot/venv/bin/python /opt/nonebot/ops/config-ui.py --port 8110
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/nonebot
+
+[Install]
+WantedBy=multi-user.target

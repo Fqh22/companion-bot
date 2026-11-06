@@ -1,0 +1,3 @@
+# 配置面板：round-trip YAML，保存时保留 config.yaml 的注释与顺序
+# 安装：pip install -r ops/requirements-config-ui.txt
+ruamel.yaml==0.19.1

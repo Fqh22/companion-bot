@@ -2,6 +2,17 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-06 · 本地配置面板 v1
+
+`ops/config-ui.py`：只绑 127.0.0.1 的配置编辑面板。按 DEFAULTS 自动生成分组表单，
+显示当前值/默认值/说明，保存前校验、备份、出 diff；用 ruamel.yaml round-trip
+保留 config.yaml 的注释和顺序，PyYAML 做不到这一点（会把注释全冲掉）。
+
+- 未知键只读保留；非法值不落盘；备份保留最近 30 份。
+- token 鉴权 + Host/Origin 校验；不碰 keys.json、不执行任意命令。
+- v1 不做一键重启（保存后显示 `systemctl restart nonebot`），人格/watchlist 留 v2。
+- 新增 `ops/test-config-ui.py`（25 项）并接入 CI。
+
 ## 2026-11-06 · 主动询问准入：只问最近两周、像他的待办
 
 线上 30 条未关闭待办里，约一半是机器人自己的待办、他没回的问题、一次性日程和

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>companion-bot 配置</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      <div>
+        <h1>companion-bot 配置</h1>
+        <div id="status" class="status">正在读取…</div>
+      </div>
+    </div>
+    <div class="tools">
+      <input id="search" type="search" placeholder="搜索配置项…" autocomplete="off">
+      <label class="check"><input id="only-changed" type="checkbox"> 只看改动</label>
+      <button id="reload" class="ghost" type="button">重新读取</button>
+      <button id="save" class="primary" type="button" disabled>保存</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside id="nav" class="nav"></aside>
+    <main id="main" class="main">
+      <div id="banner" class="banner hidden"></div>
+      <p class="loading" id="loading">正在读取配置…</p>
+      <div id="groups"></div>
+      <section id="unknown-wrap" class="group hidden">
+        <h2>其他 / 未识别的键</h2>
+        <p class="desc">这些键不在当前 DEFAULTS 里，面板不会修改它们，保存时会原样保留。</p>
+        <div id="unknown" class="unknown"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="diff-dialog">
+    <form method="dialog">
+      <h2>确认修改</h2>
+      <p class="desc" id="diff-note"></p>
+      <pre id="diff"></pre>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost">取消</button>
+        <button id="confirm-save" value="default" class="primary">确认保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

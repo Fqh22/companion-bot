@@ -25,10 +25,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: nonebot/requirements.txt
+          cache-dependency-path: |
+            nonebot/requirements.txt
+            ops/requirements-config-ui.txt
       - name: 装依赖
-        run: pip install -r nonebot/requirements.txt
-      # 这三套都不联网、不碰生产库、几十秒跑完，天生适合当守门员
+        run: pip install -r nonebot/requirements.txt -r ops/requirements-config-ui.txt
+      # 这四套都不联网、不碰生产库、几十秒跑完，天生适合当守门员
       - name: 离线回归
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
@@ -41,3 +43,5 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: python agentd/tests/test_core.py
+      - name: 配置面板测试
+        run: python ops/test-config-ui.py

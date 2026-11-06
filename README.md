@@ -153,6 +153,7 @@ ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时�
 | 部署、备份、排障、维护 | [docs/02-运维.md](docs/02-运维.md) |
 | agentd 怎么干活（多步 / 沙箱 / 恢复 / 审批） | [docs/03-agentd.md](docs/03-agentd.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
+| 可视化改配置（本地面板） | [docs/05-配置界面.md](docs/05-配置界面.md) |
 
 ## License
 
