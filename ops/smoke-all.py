@@ -209,6 +209,9 @@ class FakeCore:
             "profile": "测试", "corrections": [], "curious": [], "diary": "今天聊了周报",
         }, ensure_ascii=False)
 
+    def private_session(self):
+        return "private:10001"
+
     async def record_assistant(self, *a, **kw):
         pass
 
@@ -242,7 +245,7 @@ async def main() -> None:
         check("diary 落盘", (TMP / "diary" / f"{day}.md").exists())
         check("diary.read", bool(diary_mod.read(day)))
         check("diary.list_days", day in diary_mod.list_days(3))
-        rows = diary_mod._day_messages(day)
+        rows = diary_mod._day_messages(day, session="private:10001")
         check("diary._day_messages", len(rows) >= 10, str(len(rows)))
         check("diary.format_rows", "第" in diary_mod.format_rows(rows))
         diary_mod.save("2026-01-01", "补写的日记")
