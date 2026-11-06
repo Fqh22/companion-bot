@@ -541,6 +541,7 @@ async def main() -> None:
         from app_core import prompt as prompt_mod
         from app_core import pacing as pacing_mod
         from app_core import proactive as pro_mod
+        from app_core import proactive_sources as pro_sources_mod
         from app_core import summarize as sum_mod
         from app_core import tool_loop as tl_mod
         from app_core import llm as llm_mod
@@ -564,6 +565,10 @@ async def main() -> None:
         check("proactive.daily_cap", pro_mod.daily_cap(None) >= 1)
         check("proactive.pick_topic",
               pro_mod.pick_topic([], [], [], set(), 0.1, 0.1) is None)
+        check("proactive_sources.followup", isinstance(pro_sources_mod.followup_candidates(), list))
+        check("proactive_sources.curious", isinstance(pro_sources_mod.curious_candidates(), list))
+        check("proactive_sources.memory",
+              pro_sources_mod.memory_candidates([{"doc_id": "x", "text": "y"}])[0][0] == "mem:x")
         check("summarize.parse", sum_mod.parse('{"summary":"x"}')["summary"] == "x")
         check("summarize.format_dialog",
               "他" in sum_mod.format_dialog([("user", "你好")]))

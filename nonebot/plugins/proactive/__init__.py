@@ -7,7 +7,6 @@ chat.db 的 proactive_log 里，重启不丢，还能算出「发出去之后他
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import random
 import sqlite3
 import time
@@ -16,8 +15,9 @@ from datetime import datetime
 from nonebot import get_bots, get_driver, logger
 
 from app_core import paths as _paths
-from app_core import followup, learn, mood
+from app_core import followup, mood
 from app_core import proactive as decide
+from app_core import proactive_sources as sources
 from plugins.chat import core
 
 CHAT_DB = _paths.DATA / "chat.db"
@@ -176,27 +176,8 @@ async def _compose(topic: str, why: str, mood_hint: str = "") -> str:
 
 
 def _candidates() -> tuple[list, list, list]:
-    """从三个存储里取候选。这里只管取数，选谁由 decide.pick_topic 决定。"""
-    fu = []
-    try:
-        for it in followup.due_for_asking(5):
-            days = max(0, int((time.time() - float(it["created"] or 0)) / 86400))
-            when = "今天" if days == 0 else f"约 {days} 天前"
-            fu.append((f"fu:{it['id']}", it["text"],
-                       f"{when}他说要做的事，顺口问问进展"))
-    except Exception:
-        pass
-    cu = [("cur:" + hashlib.sha1(x.encode("utf-8")).hexdigest()[:8], x,
-           "之前没讲清楚的事（可能有一阵子了），顺口问一句")
-          for x in learn.read_list(learn.CURIOUS) if learn.curious_ok(x)]
-    me = []
-    try:
-        for r in core.memory_forgotten(3):
-            me.append(("mem:" + r["doc_id"], r["text"][:120],
-                       "突然想起这件事，有阵子没提了"))
-    except Exception:
-        pass
-    return fu, cu, me
+    """从三个存储里取候选，归一化交给 app_core.proactive_sources。"""
+    return sources.collect(lambda: core.memory_forgotten(3))
 
 
 async def _open_threads() -> int:

@@ -14,7 +14,9 @@
   动态读 chat.DB/REPLY_MAX_TOKENS，测试补丁与流式行为不变。
 - **P4.1**：mood 拆成 mood_domain（纯规则）+ mood_store（状态/历史）+ 35 行门面；
   STATE/STATE_DIR/CHAT_DB 的测试补丁仍通过动态读取生效。
-- **下一步**：P4.2 proactive、P4.3 scheduling，P5-P7 按 Gate 继续。
+- **P4.2**：proactive 候选来源/归一化搬到 proactive_sources.py，插件只做频控、调度和发送；
+  policy 仍是纯函数。
+- **下一步**：P4.3 scheduling，P5-P7 按 Gate 继续。
 
 ## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
 
