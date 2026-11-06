@@ -31,6 +31,9 @@ DEFAULTS = {
         # 思考模式：开着回复更有内容但更慢更贵，且 temperature 会失效。
         # 2026-10-31 实测后选择开启（首字 +0.8s，每次多约 100 输出 token）。
         "thinking": True,
+        # 闲聊轮单独关思考。原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，
+        # 配置面板会把它当成未知键；补进来让「默认值」也是真的。
+        "thinking_casual": True,
     },
     "summary": {
         "model": "deepseek-chat",
@@ -107,6 +110,9 @@ DEFAULTS = {
     # 文本零等待；只有图片/文件之后等 media_settle_seconds，看他有没有补一句。
     "chat": {
         "media_settle_seconds": 1.5,
+        # 影子模式：原来同样只在 ChatCore 里用 get 兜底，没进 DEFAULTS。
+        "shadow_followup": True,
+        "shadow_sample": 0.3,
     },
     # 群聊：独立链路（见 app_core/group.py）。默认关闭，白名单为空 = 空跑。
     "group": {

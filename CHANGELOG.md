@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
+
+- 面板新增人格编辑：`data/persona.json` 与 `data/persona-stranger.json`，system_prompt + 示例对话；
+  示例对话必须成对，保存后发 `/reload_persona` 生效。
+- 新增巡检话题编辑：`data/watchlist.json`，最多 8 个，免重启；同名话题保留 last/ts 基线，
+  改名视为新话题，删除即不再巡检。
+- 配置面板的「未知键」补上 `llm.thinking_casual` / `chat.shadow_followup` / `chat.shadow_sample`：
+  这三个键原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，UI 会误报未知。
+- 测试 25 → 42 项；人格/话题都走备份 + diff + 干跑。
+
 ## 2026-11-06 · 本地配置面板 v1
 
 `ops/config-ui.py`：只绑 127.0.0.1 的配置编辑面板。按 DEFAULTS 自动生成分组表单，

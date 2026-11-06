@@ -110,6 +110,33 @@ def main():
     unknown = {u["id"] for u in mod.unknown_fields(doc2)}
     check("能识别未知键", "custom2.x" in unknown, str(unknown))
 
+    # ---- 人格 / 话题 ----
+    data_dir = TMP / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    owner = data_dir / "persona.json"
+    owner.write_text(json.dumps({
+        "system_prompt": "旧人格", "begin_dialogs": ["在吗", "在"],
+        "id": "keep-me"}, ensure_ascii=False), encoding="utf-8")
+    stranger = data_dir / "persona-stranger.json"
+    stranger.write_text(json.dumps({
+        "system_prompt": "外人版", "begin_dialogs": [],
+        "title": "小鲸鱼"}, ensure_ascii=False), encoding="utf-8")
+    watch = data_dir / "watchlist.json"
+    watch.write_text(json.dumps([
+        {"topic": "A", "last": "旧结论", "ts": 1},
+        {"topic": "B", "last": "B结论", "ts": 2},
+    ], ensure_ascii=False), encoding="utf-8")
+
+    pv, pe = mod.validate_persona({"system_prompt": "x", "begin_dialogs": ["a", "b"]})
+    check("合法人格通过", not pe, str(pe))
+    _, pe = mod.validate_persona({"system_prompt": "x", "begin_dialogs": ["a"]})
+    check("人格对话必须成对", bool(pe), str(pe))
+    _, pe = mod.validate_persona({"system_prompt": "", "begin_dialogs": []})
+    check("人格不能为空", bool(pe), str(pe))
+    merged = mod.merge_watch([{"topic": "A", "last": "旧", "ts": 1}], ["A", "C"])
+    check("话题保留同名基线", merged[0]["last"] == "旧" and merged[1]["topic"] == "C"
+          and merged[1]["last"] == "", str(merged))
+
     # ---- HTTP 鉴权 + 干跑 ----
     app = mod.App(config_path=cfg, backup_dir=backup_dir, token="test-token", port=0)
     mod.Handler.app = app
@@ -143,6 +170,49 @@ def main():
             body = json.loads(r.read())
         check("干跑返回 diff", body.get("ok") is True and "+  temperature: 1.3" in (body.get("diff") or ""))
         check("干跑不落盘", "temperature: 1.25" in cfg.read_text(encoding="utf-8"))
+
+        def post(path, obj):
+            req = urllib.request.Request(base + path, method="POST",
+                                         data=json.dumps(obj).encode(),
+                                         headers={"X-Token": "test-token",
+                                                  "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.status, json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                return e.code, json.loads(e.read() or b"{}")
+
+        req = urllib.request.Request(base + "/api/assets", headers={"X-Token": "test-token"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            assets = json.loads(r.read())
+        check("读到两个人格", len(assets.get("personas") or []) == 2, str(len(assets.get("personas") or [])))
+        check("读到巡检基线", len((assets.get("watchlist") or {}).get("topics") or []) == 2)
+
+        st, d = post("/api/persona", {"which": "owner", "system_prompt": "新人格",
+                                      "begin_dialogs": ["在吗", "在的"], "dry_run": True})
+        check("人格干跑出 diff",
+              st == 200 and "新人格" in (d.get("diff") or ""),
+              str(d.get("diff") or "")[:80])
+        st, d = post("/api/persona", {"which": "owner", "system_prompt": "新人格",
+                                      "begin_dialogs": ["在吗", "在的"]})
+        saved = json.loads(owner.read_text(encoding="utf-8"))
+        check("人格保存成功", st == 200 and d.get("ok") is True, str(d))
+        check("人格未知字段保留", saved.get("id") == "keep-me", str(saved.get("id")))
+        check("人格备份已生成", bool(d.get("backup")) and Path(d["backup"]).exists(), d.get("backup"))
+
+        st, d = post("/api/persona", {"which": "owner", "system_prompt": "x",
+                                      "begin_dialogs": ["只有一条"]})
+        check("人格奇数对话被拒", st == 400, str(d))
+
+        st, d = post("/api/watchlist", {"topics": ["A", "C"], "dry_run": True})
+        check("话题干跑出 diff", st == 200 and d.get("ok") is True, str(d)[:80])
+        st, d = post("/api/watchlist", {"topics": ["A", "C"]})
+        wl = json.loads(watch.read_text(encoding="utf-8"))
+        check("话题保存成功", st == 200 and d.get("ok") is True, str(d)[:80])
+        check("话题保留 A 的基线", wl[0]["topic"] == "A" and wl[0]["last"] == "旧结论", str(wl[0]))
+        check("新话题 C 为空基线", wl[1]["topic"] == "C" and wl[1]["last"] == "", str(wl[1]))
+        check("删掉的 B 不再写回", all(x["topic"] != "B" for x in wl), str(wl))
+        check("话题免重启标记", d.get("hot_reload") is True, str(d))
     finally:
         srv.shutdown()
         srv.server_close()

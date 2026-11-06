@@ -1,8 +1,10 @@
 "use strict";
 
 let data = null;
+let assets = null;
 let fields = [];
 let values = {};
+let personaDrafts = {};
 let pending = null;
 
 const $ = (s) => document.querySelector(s);
@@ -136,6 +138,123 @@ function buildField(f) {
   return box;
 }
 
+
+function dialogsFrom(text) {
+  const lines = (text || "").split("\n").map((x) => x.trim());
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return lines.filter((x) => x.length > 0);
+}
+
+function personaCard(p) {
+  const card = el("div", "asset-card");
+  const head = el("div", "asset-head");
+  const title = el("h3", "", p.meta && p.meta.title ? p.label + " · " + p.meta.title : p.label + "人格");
+  head.appendChild(title);
+  const meta = el("div", "asset-meta", p.path + " · " + (p.exists ? "修改于 " + p.mtime_text : "文件不存在"));
+  head.appendChild(meta);
+  card.appendChild(head);
+  if (p.error) {
+    card.appendChild(el("div", "banner error", "读取失败：" + p.error));
+    return card;
+  }
+  if (!personaDrafts[p.which]) {
+    personaDrafts[p.which] = {
+      system_prompt: p.system_prompt || "",
+      begin_dialogs: Array.isArray(p.begin_dialogs) ? p.begin_dialogs.slice() : [],
+    };
+  }
+  const draft = personaDrafts[p.which];
+
+  const l1 = el("label", "asset-label", "system_prompt（人格正文）");
+  const ta = el("textarea"); ta.rows = 12; ta.value = draft.system_prompt;
+  ta.spellcheck = false;
+  const counter = el("div", "asset-meta", draft.system_prompt.length + " 字");
+  ta.addEventListener("input", () => {
+    draft.system_prompt = ta.value;
+    counter.textContent = ta.value.length + " 字";
+  });
+  card.appendChild(l1); card.appendChild(ta); card.appendChild(counter);
+
+  const l2 = el("label", "asset-label", "begin_dialogs（示例对话，一行一条，user / assistant 交替）");
+  const td = el("textarea"); td.rows = 6; td.value = (draft.begin_dialogs || []).join("\n");
+  td.spellcheck = false;
+  const parity = el("div", "asset-meta");
+  const refresh = () => {
+    draft.begin_dialogs = dialogsFrom(td.value);
+    const n = draft.begin_dialogs.length;
+    parity.textContent = n + " 条" + (n % 2 ? "（奇数会拒绝保存）" : "（成对）");
+    parity.className = "asset-meta" + (n % 2 ? " warn" : "");
+  };
+  td.addEventListener("input", refresh); refresh();
+  card.appendChild(l2); card.appendChild(td); card.appendChild(parity);
+
+  const actions = el("div", "asset-actions");
+  const btn = el("button", "primary", "预览并保存");
+  btn.type = "button";
+  btn.addEventListener("click", () => previewPersona(p.which));
+  actions.appendChild(btn);
+  actions.appendChild(el("span", "asset-meta",
+    p.which === "owner" || p.which === "stranger" ? "保存后需在 QQ 发 /reload_persona" : ""));
+  card.appendChild(actions);
+  return card;
+}
+
+function renderPersonas() {
+  const box = $("#personas");
+  box.textContent = "";
+  if (!assets) { box.appendChild(el("p", "loading", "读取中…")); return; }
+  for (const p of assets.personas || []) box.appendChild(personaCard(p));
+}
+
+function renderWatch() {
+  const box = $("#watch-edit");
+  const base = $("#watch-baseline");
+  box.textContent = ""; base.textContent = "";
+  if (!assets) return;
+  const w = assets.watchlist || {};
+  if (w.error) {
+    box.appendChild(el("div", "banner error", "读取失败：" + w.error));
+    return;
+  }
+  const topics = (w.topics || []).map((x) => x.topic);
+  const ta = el("textarea"); ta.rows = 6; ta.value = topics.join("\n");
+  ta.spellcheck = false;
+  const note = el("div", "asset-meta", topics.length + " / " + (w.max || 8) + " 个话题 · " + w.path +
+    " · " + (w.exists ? "修改于 " + w.mtime_text : "文件不存在（保存时创建）"));
+  const upd = () => {
+    const n = ta.value.split("\n").map((x) => x.trim()).filter(Boolean).length;
+    note.textContent = n + " / " + (w.max || 8) + " 个话题 · " + w.path +
+      " · " + (w.exists ? "修改于 " + w.mtime_text : "文件不存在（保存时创建）");
+    note.className = "asset-meta" + (n > (w.max || 8) ? " warn" : "");
+  };
+  ta.addEventListener("input", upd);
+  box.appendChild(ta); box.appendChild(note);
+  const actions = el("div", "asset-actions");
+  const btn = el("button", "primary", "预览并保存");
+  btn.type = "button";
+  btn.addEventListener("click", () => previewWatch(ta.value));
+  actions.appendChild(btn);
+  actions.appendChild(el("span", "asset-meta", "免重启，下一次巡检生效；同名话题保留 last 基线"));
+  box.appendChild(actions);
+
+  if ((w.topics || []).length) {
+    const table = el("table");
+    for (const it of w.topics) {
+      const tr = el("tr");
+      tr.appendChild(el("td", "", it.topic));
+      tr.appendChild(el("td", "", it.last ? it.last : "（还没有基线）"));
+      table.appendChild(tr);
+    }
+    base.appendChild(el("p", "desc", "当前基线（保存时同名话题会保留）："));
+    base.appendChild(table);
+  }
+}
+
+function renderAssets() {
+  renderPersonas();
+  renderWatch();
+}
+
 function render() {
   fields = [];
   values = {};
@@ -154,6 +273,9 @@ function render() {
     }
     groups.appendChild(sec);
   }
+  const ap = el("a", "", "人格"); ap.href = "#persona-wrap"; nav.appendChild(ap);
+  const aw = el("a", "", "巡检话题"); aw.href = "#watch-wrap"; nav.appendChild(aw);
+  renderAssets();
   const unknown = data.unknown || [];
   const wrap = $("#unknown-wrap");
   if (unknown.length) {
@@ -187,11 +309,20 @@ function render() {
 
 async function load() {
   banner("");
-  const r = await fetch("/api/config", { credentials: "same-origin" });
-  if (r.status === 401) { banner("会话失效：请用启动日志里带 ?token= 的 URL 重新打开。", true); return; }
-  const d = await r.json();
+  const [rc, ra] = await Promise.all([
+    fetch("/api/config", { credentials: "same-origin" }),
+    fetch("/api/assets", { credentials: "same-origin" }),
+  ]);
+  if (rc.status === 401 || ra.status === 401) {
+    banner("会话失效：请用启动日志里带 ?token= 的 URL 重新打开。", true);
+    return;
+  }
+  const d = await rc.json();
+  const a = await ra.json().catch(() => ({ ok: false, personas: [], watchlist: {} }));
   if (!d.ok) { banner(d.error || "读取失败", true); return; }
   data = d;
+  assets = a.ok ? a : { personas: [], watchlist: {} };
+  personaDrafts = {};
   render();
 }
 
@@ -201,8 +332,8 @@ function collect() {
   return out;
 }
 
-async function post(payload) {
-  const r = await fetch("/api/config", {
+async function postTo(url, payload) {
+  const r = await fetch(url, {
     method: "POST", credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -212,24 +343,53 @@ async function post(payload) {
   return d;
 }
 
-async function preview() {
-  const d = await post({ values: collect(), dry_run: true });
+function showDiff(d, url, body, note) {
   if (!d.ok) {
     banner((d.errors || [d.error || "校验失败"]).join("；"), true);
     toast("校验失败，未保存", true);
     return;
   }
   if (!d.changed) { toast("没有改动"); return; }
-  pending = collect();
+  pending = { url, body, note };
   $("#diff").textContent = d.diff;
-  $("#diff-note").textContent = "保存前会备份当前 config.yaml；保存后需要重启 nonebot 才生效。";
+  $("#diff-note").textContent = note;
   const dlg = $("#diff-dialog");
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
 }
 
+async function previewConfig() {
+  const body = { values: collect() };
+  const d = await postTo("/api/config", { ...body, dry_run: true });
+  showDiff(d, "/api/config", body, "保存前备份 config.yaml；保存后需要重启 nonebot 才生效。");
+}
+
+async function previewPersona(which) {
+  const draft = personaDrafts[which];
+  if (!draft) return;
+  if (draft.begin_dialogs.length % 2) {
+    toast("示例对话必须是偶数条（user / assistant 成对）", true);
+    return;
+  }
+  const body = {
+    which,
+    system_prompt: draft.system_prompt,
+    begin_dialogs: draft.begin_dialogs,
+  };
+  const d = await postTo("/api/persona", { ...body, dry_run: true });
+  showDiff(d, "/api/persona", body,
+    "保存前备份人格文件；保存后在 QQ 发 /reload_persona（或重启 nonebot）才生效。");
+}
+
+async function previewWatch(text) {
+  const topics = (text || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const d = await postTo("/api/watchlist", { topics, dry_run: true });
+  showDiff(d, "/api/watchlist", { topics },
+    "保存前备份 watchlist.json；免重启，下一次巡检读取新文件。同名话题保留 last 基线。");
+}
+
 async function confirmSave() {
   if (!pending) return;
-  const d = await post({ values: pending });
+  const d = await postTo(pending.url, pending.body);
   const dlg = $("#diff-dialog");
   if (dlg.open) dlg.close();
   if (!d.ok) {
@@ -238,8 +398,17 @@ async function confirmSave() {
     return;
   }
   if (d.unchanged) { toast("没有改动"); pending = null; return; }
-  banner("已保存。备份：" + (d.backup || "无旧文件") + "。生效需要：" + d.restart_cmd);
-  toast("已保存，重启 nonebot 后生效");
+  const backup = d.backup || "无旧文件";
+  if (pending.url === "/api/config") {
+    banner("已保存。备份：" + backup + "。生效需要：" + d.restart_cmd);
+    toast("已保存，重启 nonebot 后生效");
+  } else if (pending.url === "/api/persona") {
+    banner("已保存。备份：" + backup + "。生效：" + d.reload_cmd);
+    toast("已保存，/reload_persona 后生效");
+  } else {
+    banner("已保存。备份：" + backup + "。" + (d.note || "免重启"));
+    toast("已保存，下一次巡检生效");
+  }
   pending = null;
   await load();
 }
@@ -263,7 +432,7 @@ function applyFilter() {
   }
 }
 
-$("#save").addEventListener("click", preview);
+$("#save").addEventListener("click", previewConfig);
 $("#reload").addEventListener("click", load);
 $("#search").addEventListener("input", applyFilter);
 $("#only-changed").addEventListener("change", applyFilter);

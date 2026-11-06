@@ -29,6 +29,22 @@
       <div id="banner" class="banner hidden"></div>
       <p class="loading" id="loading">正在读取配置…</p>
       <div id="groups"></div>
+
+      <section id="persona-wrap" class="group">
+        <h2>人格</h2>
+        <p class="desc">本人和外人版人格。<b>保存后需要在 QQ 发 /reload_persona</b>（或重启 nonebot）才生效；
+          示例对话一行一条，按 user / assistant 交替。</p>
+        <div id="personas"></div>
+      </section>
+
+      <section id="watch-wrap" class="group">
+        <h2>巡检话题</h2>
+        <p class="desc">每周日主动搜索的话题，最多 8 个。<b>免重启</b>，下一次巡检读取新文件；
+          同名话题会保留上次的 last 基线，改名视为新话题。</p>
+        <div id="watch-edit"></div>
+        <div id="watch-baseline" class="unknown"></div>
+      </section>
+
       <section id="unknown-wrap" class="group hidden">
         <h2>其他 / 未识别的键</h2>
         <p class="desc">这些键不在当前 DEFAULTS 里，面板不会修改它们，保存时会原样保留。</p>

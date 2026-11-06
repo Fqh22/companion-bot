@@ -367,52 +367,158 @@ def apply_values(doc, values: dict) -> None:
 
 
 # ------------------------------------------------------------- save ---------
-def make_diff(old: str, new: str) -> str:
+def make_diff(old: str, new: str, fromfile="config.yaml（当前）",
+              tofile="config.yaml（保存后）") -> str:
     return "".join(difflib.unified_diff(
         (old or "").splitlines(keepends=True),
         (new or "").splitlines(keepends=True),
-        fromfile="config.yaml（当前）", tofile="config.yaml（保存后）", lineterm="\n"))
+        fromfile=fromfile, tofile=tofile, lineterm="\n"))
 
 
-def backup_path(backup_dir: Path) -> Path:
+def backup_path(backup_dir: Path, prefix: str, suffix: str) -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    p = backup_dir / f"config-{stamp}.yaml"
+    p = backup_dir / f"{prefix}-{stamp}{suffix}"
     n = 1
     while p.exists():
-        p = backup_dir / f"config-{stamp}-{n}.yaml"
+        p = backup_dir / f"{prefix}-{stamp}-{n}{suffix}"
         n += 1
     return p
 
 
-def write_config(config_path: Path, backup_dir: Path, old_text: str, new_text: str) -> str:
+def write_file(path: Path, backup_dir: Path, old_text: str, new_text: str,
+               prefix: str, suffix: str) -> str:
     """备份 + 原子写。返回备份文件名（没有旧文件时为空）。"""
-    config_path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     backup = ""
-    if config_path.exists():
-        bp = backup_path(backup_dir)
-        bp.write_bytes(config_path.read_bytes())
+    if path.exists():
+        bp = backup_path(backup_dir, prefix, suffix)
+        bp.write_bytes(path.read_bytes())
         backup = str(bp)
-        # 只留最近 30 份，避免无限增长
         try:
-            olds = sorted(backup_dir.glob("config-*.yaml"), key=lambda x: x.name)
+            olds = sorted(backup_dir.glob(f"{prefix}-*{suffix}"), key=lambda x: x.name)
             for p in olds[:-30]:
                 p.unlink(missing_ok=True)
         except Exception:
             pass
-    mode = config_path.stat().st_mode & 0o777 if config_path.exists() else 0o600
-    fd, tmp = tempfile.mkstemp(prefix=".config-", suffix=".yaml", dir=str(config_path.parent))
+    mode = path.stat().st_mode & 0o777 if path.exists() else 0o600
+    fd, tmp = tempfile.mkstemp(prefix=f".{prefix}-", suffix=suffix, dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(new_text)
             fh.flush()
             os.fsync(fh.fileno())
         os.chmod(tmp, mode)
-        os.replace(tmp, config_path)
+        os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
     return backup
+
+
+def write_config(config_path: Path, backup_dir: Path, old_text: str, new_text: str) -> str:
+    return write_file(config_path, backup_dir, old_text, new_text, "config", ".yaml")
+
+
+# ------------------------------------------------------- persona / watch -----
+PERSONAS = {
+    "owner": ("本人", "persona.json"),
+    "stranger": ("外人版", "persona-stranger.json"),
+}
+MAX_WATCH_TOPICS = 8
+
+
+def data_path(app, name: str) -> Path:
+    return app.config_path.parent / "data" / name
+
+
+def read_json(path: Path):
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dump_json(obj, indent: int = 2) -> str:
+    return json.dumps(obj, ensure_ascii=False, indent=indent) + "\n"
+
+
+def validate_persona(data: dict) -> tuple[dict, list[str]]:
+    errors = []
+    prompt = data.get("system_prompt")
+    dialogs = data.get("begin_dialogs")
+    if not isinstance(prompt, str):
+        errors.append("system_prompt: 需要字符串")
+        prompt = ""
+    elif not prompt.strip():
+        errors.append("system_prompt: 不能为空")
+    elif len(prompt) > 20000:
+        errors.append("system_prompt: 最多 20000 字")
+    if not isinstance(dialogs, list):
+        errors.append("begin_dialogs: 需要列表（一行一条，user/assistant 交替）")
+        dialogs = []
+    else:
+        if len(dialogs) % 2:
+            errors.append("begin_dialogs: 条数必须是偶数（user, assistant 成对）")
+        if len(dialogs) > 200:
+            errors.append("begin_dialogs: 最多 200 条")
+        clean = []
+        for i, x in enumerate(dialogs):
+            if not isinstance(x, str):
+                errors.append(f"begin_dialogs[{i}]: 需要字符串")
+                continue
+            if len(x) > 2000:
+                errors.append(f"begin_dialogs[{i}]: 单条最多 2000 字")
+                continue
+            clean.append(x)
+        dialogs = clean
+    return {"system_prompt": prompt, "begin_dialogs": dialogs}, errors
+
+
+def apply_persona(old: dict | None, values: dict) -> dict:
+    """只改 system_prompt / begin_dialogs，其他字段原样保留。"""
+    doc = dict(old or {})
+    doc["system_prompt"] = values["system_prompt"]
+    doc["begin_dialogs"] = values["begin_dialogs"]
+    return doc
+
+
+def validate_watch(data: dict) -> tuple[list[str], list[str]]:
+    topics = data.get("topics")
+    errors = []
+    if not isinstance(topics, list):
+        return [], ["topics: 需要列表"]
+    out, seen = [], set()
+    for i, x in enumerate(topics):
+        t = str(x or "").strip()
+        if not t:
+            continue
+        if len(t) > 80:
+            errors.append(f"topics[{i}]: 最多 80 字")
+            continue
+        if t in seen:
+            errors.append(f"topics[{i}]: 重复「{t}」")
+            continue
+        seen.add(t)
+        out.append(t)
+    if len(out) > MAX_WATCH_TOPICS:
+        errors.append(f"topics: 最多 {MAX_WATCH_TOPICS} 个（watch.MAX_TOPICS）")
+    return out, errors
+
+
+def merge_watch(old_items, topics: list[str]) -> list[dict]:
+    """保留同名话题的 last/ts 基线；新话题从空开始，删掉的不再写回。"""
+    old = {}
+    for it in old_items if isinstance(old_items, list) else []:
+        if isinstance(it, str):
+            old[it.strip()] = {"topic": it.strip(), "last": "", "ts": 0}
+        elif isinstance(it, dict) and str(it.get("topic") or "").strip():
+            t = str(it["topic"]).strip()
+            old[t] = {"topic": t, "last": str(it.get("last") or ""),
+                      "ts": float(it.get("ts") or 0)}
+    out = []
+    for t in topics:
+        out.append(old.get(t) or {"topic": t, "last": "", "ts": 0})
+    return out
 
 
 # ------------------------------------------------------------- service ------
@@ -576,6 +682,13 @@ class Handler(BaseHTTPRequestHandler):
                 })
             except Exception as e:
                 return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
+        if u.path == "/api/assets":
+            if not self._auth():
+                return self._json({"ok": False, "error": "unauthorized"}, 401)
+            try:
+                return self._json(self._assets())
+            except Exception as e:
+                return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
         if u.path == "/api/backups":
             if not self._auth():
                 return self._json({"ok": False, "error": "unauthorized"}, 401)
@@ -593,35 +706,153 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": "Host 不允许"}, 421)
         if not self._origin_ok():
             return self._json({"ok": False, "error": "Origin 不允许"}, 403)
-        if urlparse(self.path).path != "/api/config":
-            return self._json({"ok": False, "error": "not found"}, 404)
         if not self._auth():
             return self._json({"ok": False, "error": "unauthorized"}, 401)
+        path = urlparse(self.path).path
         try:
             data = self._payload()
-            validated, errors = validate_payload(data.get("values") or {})
-            if errors:
-                return self._json({"ok": False, "errors": errors}, 400)
-            old_text = self.app.config_path.read_text(encoding="utf-8") if self.app.config_path.exists() else ""
-            doc = load_doc(self.app.config_path)
-            apply_values(doc, validated)
-            new_text = dump_doc(doc)
-            diff = make_diff(old_text, new_text)
-            if data.get("dry_run"):
-                return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
-            if old_text == new_text:
-                return self._json({"ok": True, "unchanged": True, "diff": ""})
-            backup = write_config(self.app.config_path, self.app.backup_dir, old_text, new_text)
-            log.info("保存配置：%s（备份 %s）", self.app.config_path, backup or "无")
-            return self._json({
-                "ok": True, "backup": backup, "diff": diff,
-                "restart_cmd": "sudo systemctl restart nonebot",
-                "service": service_status(self.app.config_path),
-            })
+            if path == "/api/config":
+                return self._save_config(data)
+            if path == "/api/persona":
+                return self._save_persona(data)
+            if path == "/api/watchlist":
+                return self._save_watch(data)
+            return self._json({"ok": False, "error": "not found"}, 404)
         except ValueError as e:
             return self._json({"ok": False, "error": str(e)}, 400)
         except Exception as e:
             return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
+
+    # ---- assets ----
+    def _assets(self):
+        personas = []
+        for which, (label, fname) in PERSONAS.items():
+            p = data_path(self.app, fname)
+            mtime = p.stat().st_mtime if p.exists() else 0
+            item = {
+                "which": which, "label": label, "path": str(p),
+                "exists": p.exists(), "mtime": mtime,
+                "mtime_text": datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S") if mtime else "—",
+                "system_prompt": "", "begin_dialogs": [], "meta": {}, "error": "",
+            }
+            if p.exists():
+                try:
+                    d = read_json(p)
+                    if not isinstance(d, dict):
+                        raise ValueError("顶层不是对象")
+                    item["system_prompt"] = str(d.get("system_prompt") or "")
+                    dialogs = d.get("begin_dialogs")
+                    item["begin_dialogs"] = [str(x) for x in dialogs] if isinstance(dialogs, list) else []
+                    item["meta"] = {k: v for k, v in d.items()
+                                    if k not in ("system_prompt", "begin_dialogs")
+                                    and isinstance(v, (str, int, float, bool))}
+                except Exception as e:
+                    item["error"] = f"{type(e).__name__}: {e}"
+            personas.append(item)
+
+        wp = data_path(self.app, "watchlist.json")
+        wmtime = wp.stat().st_mtime if wp.exists() else 0
+        items = []
+        error = ""
+        if wp.exists():
+            try:
+                raw = read_json(wp)
+                for it in raw if isinstance(raw, list) else []:
+                    if isinstance(it, str):
+                        items.append({"topic": it.strip(), "last": "", "ts": 0})
+                    elif isinstance(it, dict) and str(it.get("topic") or "").strip():
+                        items.append({"topic": str(it["topic"]).strip(),
+                                      "last": str(it.get("last") or ""),
+                                      "ts": float(it.get("ts") or 0)})
+            except Exception as e:
+                error = f"{type(e).__name__}: {e}"
+        return {
+            "ok": True,
+            "personas": personas,
+            "watchlist": {
+                "path": str(wp), "exists": wp.exists(), "mtime": wmtime,
+                "mtime_text": datetime.fromtimestamp(wmtime).strftime("%Y-%m-%d %H:%M:%S") if wmtime else "—",
+                "topics": items, "max": MAX_WATCH_TOPICS, "error": error,
+            },
+        }
+
+    # ---- save handlers ----
+    def _save_config(self, data: dict):
+        validated, errors = validate_payload(data.get("values") or {})
+        if errors:
+            return self._json({"ok": False, "errors": errors}, 400)
+        old_text = self.app.config_path.read_text(encoding="utf-8") if self.app.config_path.exists() else ""
+        doc = load_doc(self.app.config_path)
+        apply_values(doc, validated)
+        new_text = dump_doc(doc)
+        diff = make_diff(old_text, new_text)
+        if data.get("dry_run"):
+            return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
+        if old_text == new_text:
+            return self._json({"ok": True, "unchanged": True, "diff": ""})
+        backup = write_config(self.app.config_path, self.app.backup_dir, old_text, new_text)
+        log.info("保存配置：%s（备份 %s）", self.app.config_path, backup or "无")
+        return self._json({
+            "ok": True, "backup": backup, "diff": diff,
+            "restart_cmd": "sudo systemctl restart nonebot",
+            "service": service_status(self.app.config_path),
+        })
+
+    def _save_persona(self, data: dict):
+        which = str(data.get("which") or "")
+        if which not in PERSONAS:
+            return self._json({"ok": False, "error": "which 必须是 owner / stranger"}, 400)
+        values, errors = validate_persona(data)
+        if errors:
+            return self._json({"ok": False, "errors": errors}, 400)
+        label, fname = PERSONAS[which]
+        path = data_path(self.app, fname)
+        old_text = path.read_text(encoding="utf-8") if path.exists() else ""
+        try:
+            old = read_json(path) if path.exists() else {}
+        except Exception as e:
+            return self._json({"ok": False, "error": f"{fname} 不是合法 JSON：{e}"}, 400)
+        if not isinstance(old, dict):
+            return self._json({"ok": False, "error": f"{fname} 顶层不是对象"}, 400)
+        new_text = dump_json(apply_persona(old, values), 2)
+        diff = make_diff(old_text, new_text,
+                         fromfile=f"{label}人格（当前）", tofile=f"{label}人格（保存后）")
+        if data.get("dry_run"):
+            return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
+        if old_text == new_text:
+            return self._json({"ok": True, "unchanged": True, "diff": ""})
+        backup = write_file(path, self.app.backup_dir, old_text, new_text,
+                            f"persona-{which}", ".json")
+        log.info("保存人格：%s（备份 %s）", path, backup or "无")
+        return self._json({
+            "ok": True, "backup": backup, "diff": diff,
+            "reload_cmd": "在 QQ 发 /reload_persona（或重启 nonebot）",
+        })
+
+    def _save_watch(self, data: dict):
+        topics, errors = validate_watch(data)
+        if errors:
+            return self._json({"ok": False, "errors": errors}, 400)
+        path = data_path(self.app, "watchlist.json")
+        old_text = path.read_text(encoding="utf-8") if path.exists() else ""
+        try:
+            old = read_json(path) if path.exists() else []
+        except Exception as e:
+            return self._json({"ok": False, "error": f"watchlist.json 不是合法 JSON：{e}"}, 400)
+        new_text = dump_json(merge_watch(old, topics), 1)
+        diff = make_diff(old_text, new_text,
+                         fromfile="watchlist.json（当前）", tofile="watchlist.json（保存后）")
+        if data.get("dry_run"):
+            return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
+        if old_text == new_text:
+            return self._json({"ok": True, "unchanged": True, "diff": ""})
+        backup = write_file(path, self.app.backup_dir, old_text, new_text,
+                            "watchlist", ".json")
+        log.info("保存巡检话题：%s（备份 %s）", path, backup or "无")
+        return self._json({
+            "ok": True, "backup": backup, "diff": diff, "hot_reload": True,
+            "note": "免重启，下一次巡检读取这个文件",
+        })
 
 
 def load_token(path: Path) -> str:
