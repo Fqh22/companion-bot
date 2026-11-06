@@ -154,7 +154,6 @@ ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时�
 | agentd 怎么干活（多步 / 沙箱 / 恢复 / 审批） | [docs/03-agentd.md](docs/03-agentd.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
 | 可视化改配置（本地面板） | [docs/05-配置界面.md](docs/05-配置界面.md) |
-| 分层拆模块的重构规划 | [docs/06-重构规划.md](docs/06-重构规划.md) |
 
 ## License
 
