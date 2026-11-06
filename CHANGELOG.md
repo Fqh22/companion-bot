@@ -18,7 +18,9 @@
   policy 仍是纯函数。
 - **P4.3.1**：followup 拆成 followup_domain（纯信号/状态机）+ followup_store（SQLite），
   followup.py 33 行门面；DB 测试补丁仍生效。
-- **下一步**：P4.3.2 remind/scheduler，P5-P7 按 Gate 继续。
+- **P4.3.2**：remind/scheduler 实现搬进 scheduling/，顶层只留 8 行门面；
+  DB/CLEANUP_LOG 动态读取，测试补丁不变。
+- **下一步**：P5（knowledge/integrations，可选）、P6（schema/settings，最后）。
 
 ## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
 
