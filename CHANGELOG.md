@@ -8,7 +8,9 @@
 - P1：app_core/kernel（Clock/Settings/db/types），7 项测试；暂不改变现有调用。
 - P2.1：召回打分抽成 app_core/memory_score.py 纯函数，recall 只做取矩阵/取文档/touch。
 - 回归：628 离线 / 225 全链路 / 81 agentd / 48 面板；云端六件套 6/6。
-- **未做**：P2.2 store/index 拆分、P3 chat、P4-P7；按规划 Gate 分批，不一次性大爆炸。
+- **P2.2**：memory 拆成 memory_common / memory_store / memory_index / memory_embed / memory_score，
+  memory.py 从 1000+ 行降到 228 行门面；Mixin 过渡，Memory 接口与 DB 测试补丁不变。
+- **下一步**：P3 chat、P4-P7；按规划 Gate 分批，不一次性大爆炸。
 
 ## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
 
