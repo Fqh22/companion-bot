@@ -128,7 +128,9 @@ READ_ONLY_TOOLS = frozenset({
 # 判据不是读还是写，而是**碰不碰他的库**——note_list / kb_read / memory_read
 # 都是只读，但读的全是他的笔记、知识和记忆，一样不能给。
 # 发表情（meme_send）放进来是因为它只用一次、内容是他收藏的梗图，不涉及隐私。
-PUBLIC_TOOLS = frozenset({"web_search", "web_open", "meme_send"})
+# web_open 不能给：它会 learn.note_write（web.py），等于往他的知识库写东西，
+# 而且这条路径不受「插件只做 IO」约束——陌生人不该有写入口。
+PUBLIC_TOOLS = frozenset({"web_search", "meme_send"})
 
 
 async def execute(core, name: str, args: dict, images: list[str] | None = None) -> str:

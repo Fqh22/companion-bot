@@ -182,8 +182,8 @@ def check_no_hardcoded_paths() -> list[str]:
 CORE_API = {
     # 回复主入口
     "reply", "reply_deadline", "last_prompts", "mood_event",
-    # 记忆 / 人格
-    "memory", "persona", "persona_for", "reload_persona",
+    # 记忆 / 人格 / 会话身份
+    "memory", "persona", "persona_for", "reload_persona", "private_session",
     # 计数与状态
     "usage_stats", "config_issues", "config_status",
     "rate_per_minute", "cooldown", "enabled",

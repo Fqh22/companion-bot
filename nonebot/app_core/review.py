@@ -87,12 +87,24 @@ def _documents_since(days: float) -> list[str]:
             out.append(text.strip())
     return out
 # ---------- 复盘 ----------
-def _day_context(days: float = 1) -> str:
+def _owner(session: str = "") -> str:
+    """主人会话。不传就按 config 推；推不出来返回空串（不过滤）。"""
+    if session:
+        return session
+    try:
+        from app_core import config
+        return config.owner_session()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _day_context(days: float = 1, session: str = "") -> str:
     """复盘/周报的补充信号：情绪、对话量、提醒完成情况。
 
     原来只看记忆文档，等于只看到「结论」，看不到「那天是什么状态」。
     """
     parts = []
+    session = _owner(session)
     try:
         from app_core import mood
 
@@ -106,7 +118,12 @@ def _day_context(days: float = 1) -> str:
     since = time.time() - days * 86400
     try:
         con = sqlite3.connect(f"file:{learn.CHAT_DB}?mode=ro", uri=True, timeout=10)
-        n = con.execute("SELECT COUNT(*) FROM messages WHERE ts>=?", (since,)).fetchone()[0]
+        if session:
+            n = con.execute("SELECT COUNT(*) FROM messages WHERE ts>=? AND session=?",
+                            (since, session)).fetchone()[0]
+        else:
+            n = con.execute("SELECT COUNT(*) FROM messages WHERE ts>=?",
+                            (since,)).fetchone()[0]
         con.close()
         parts.append(f"对话量：{n} 条消息")
     except Exception:
@@ -125,8 +142,17 @@ def _day_context(days: float = 1) -> str:
     except Exception:
         pass
     return "\n".join(parts)
+def _session_of(core) -> str:
+    """从 core 取主人会话；测试桩没有这个方法时返回空串（不过滤）。"""
+    try:
+        return core.private_session()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 async def review(core) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
+    session = _session_of(core)
     memories = _documents_since(1)
     if not memories:
         return f"{today} 没有新记忆，跳过复盘"
@@ -135,7 +161,7 @@ async def review(core) -> str:
     joined = "\n".join(f"- {m[:220]}" for m in memories[:40])
     prompt = (
         f"【我现在的自我认知】\n{profile or '（还没有）'}\n\n"
-        f"【{today} 的状态】\n{_day_context(1) or '（没有记录）'}\n\n"
+        f"【{today} 的状态】\n{_day_context(1, session) or '（没有记录）'}\n\n"
         f"【{today} 的记忆】\n{joined}\n\n"
         f"【我还没搞懂的事】\n" + ("\n".join(f"- {x}" for x in curious_now) or "（没有）") + "\n\n"
         f"【已经记下的纠正（别重复写——换个说法也算重复）】\n"
@@ -160,30 +186,35 @@ async def review(core) -> str:
         return "复盘失败：模型没有给出可用结果"
     return f"复盘完成（{len(memories)} 条记忆，纠正 {res['corrections']} 条）"
 # ---------- 周报 ----------
-def quality_metrics(days: int = 7) -> dict:
+def quality_metrics(days: int = 7, session: str = "") -> dict:
     """自动算几个「回复好不好」的指标，给周报用。
 
     为什么要自动算：靠人工巡检会漏，而且事后想不起是哪一周开始变差的。
     全部来自 chat.db 的现成数据，不额外花 token。
+    session 非空时只统计这个会话——陌生人的私聊不该左右他的周报。
     """
     cut = time.time() - days * 86400
+    session = _owner(session)
+    # 同一段 SQL 模板，有 session 就多一个 AND。参数顺序别搞反。
+    and_s = " AND session=?" if session else ""
+    arg_s: tuple = (session,) if session else ()
     out: dict = {}
     try:
         conn = sqlite3.connect(learn.CHAT_DB, timeout=10)
         try:
             u = conn.execute(
-                "SELECT COUNT(*) FROM messages WHERE role='user' AND ts>?",
-                (cut,)).fetchone()[0]
+                "SELECT COUNT(*) FROM messages WHERE role='user' AND ts>?" + and_s,
+                (cut, *arg_s)).fetchone()[0]
             a, alen = conn.execute(
                 "SELECT COUNT(*), COALESCE(AVG(LENGTH(content)),0) FROM messages"
-                " WHERE role='assistant' AND ts>?", (cut,)).fetchone()
+                " WHERE role='assistant' AND ts>?" + and_s, (cut, *arg_s)).fetchone()
             ulen = conn.execute(
                 "SELECT COALESCE(AVG(LENGTH(content)),0) FROM messages"
-                " WHERE role='user' AND ts>?", (cut,)).fetchone()[0]
+                " WHERE role='user' AND ts>?" + and_s, (cut, *arg_s)).fetchone()[0]
             dup = conn.execute(
                 "SELECT COUNT(*) FROM (SELECT REPLACE(REPLACE(content,'？',''),'。','') k,"
-                " COUNT(*) c FROM messages WHERE role='user' AND ts>?"
-                " GROUP BY k HAVING c>1)", (cut,)).fetchone()[0]
+                " COUNT(*) c FROM messages WHERE role='user' AND ts>?" + and_s +
+                " GROUP BY k HAVING c>1)", (cut, *arg_s)).fetchone()[0]
             tok = conn.execute(
                 "SELECT COALESCE(SUM(prompt_tokens+completion_tokens),0) FROM usage"
                 " WHERE ts>?", (cut,)).fetchone()[0]
@@ -206,6 +237,7 @@ def quality_metrics(days: int = 7) -> dict:
     return out
 async def weekly(core) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
+    session = _session_of(core)
     memories = _documents_since(7)
     if not memories:
         return "这周没有新记忆，周报跳过"
@@ -217,7 +249,7 @@ async def weekly(core) -> str:
         f"【我现在的自我认知】\n{profile or '（还没有）'}\n\n"
         f"【他纠正过我、不能再犯的】\n" + ("\n".join(f"- {x}" for x in corr) or "（没有）") + "\n\n"
         f"【我还没搞懂的事】\n" + ("\n".join(f"- {x}" for x in cur) or "（没有）") + "\n\n"
-        f"【这一周的状态】\n{_day_context(7) or '（没有记录）'}\n\n"
+        f"【这一周的状态】\n{_day_context(7, session) or '（没有记录）'}\n\n"
         f"【这一周（{today} 往前 7 天）的记忆】\n{joined}\n\n"
         "写一份发给主人的记忆周报，并检查这周有没有再犯纠正清单里的错。"
     )
@@ -228,7 +260,7 @@ async def weekly(core) -> str:
     )
     if not text:
         return "周报失败：模型没有输出"
-    m = quality_metrics(7)
+    m = quality_metrics(7, session)
     if m:
         text += ("\n\n## 这周的客观指标\n"
                  + "\n".join(f"- {k}：{v}" for k, v in m.items()))

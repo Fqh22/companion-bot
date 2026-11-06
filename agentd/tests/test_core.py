@@ -382,6 +382,22 @@ async def main() -> None:
     check("custom 失败则不放行", store11.steps(t11)[0]["status"] == "blocked",
           str([s["status"] for s in store11.steps(t11)]))
 
+    # custom 验收本身也可能是一条危险命令：同样要审批，且批准前不许执行
+    store_c = Store(TMP / "data" / "t_custom_danger.db")
+    plan_c = json.dumps({"steps": [
+        {"idx": 0, "desc": "危险验收", "verify": {"custom": "rm -rf /work/1"}}]})
+    llm_c = FakeLLM(plans=[plan_c], actions=[
+        json.dumps({"tool": "write", "args": {"path": "ok.txt", "content": "x"}})])
+    sb_c = FakeSandbox(cfg, work, {"rm -rf /work/1": Observation(exit_code=0)})
+    r_c = build(store_c, cfg, llm_c, sb_c, work)
+    t_c = store_c.create_task("危险自定义验收")
+    await r_c.run_task(store_c.task(t_c))
+    pend_c = store_c.approvals("pending")
+    check("custom 里的危险命令也要审批", len(pend_c) == 1, str(pend_c))
+    check("custom 未批准不执行", not sb_c.commands, str(sb_c.commands))
+    check("custom 审批前任务不完成",
+          store_c.task(t_c)["status"] == "needs_input", store_c.task(t_c)["status"])
+
     # ---------- 批量提问 + /answer ----------
     store12 = Store(TMP / "data" / "t12.db")
     t12 = store12.create_task("会卡住的任务", project="proj1")

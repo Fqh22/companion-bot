@@ -17,6 +17,7 @@ import sqlite3
 import sys
 import tempfile
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Windows 控制台默认 GBK，打印 emoji / 生僻字会直接 UnicodeEncodeError 把测试打断。
@@ -879,7 +880,8 @@ async def main() -> None:
     _sp_tools = {((t.get("function") or {}).get("name") or "")
                  for t in (_stranger_tools[-1] or [])}
     check("陌生人拿到的是公开工具", _sp_tools <= set(tools_mod.PUBLIC_TOOLS), str(_sp_tools))
-    check("公开工具里含联网查资料", {"web_search", "web_open"} <= _sp_tools, str(_sp_tools))
+    check("公开工具里含联网搜索", "web_search" in _sp_tools, str(_sp_tools))
+    check("公开工具不含 web_open（它会写知识库）", "web_open" not in _sp_tools, str(_sp_tools))
     _danger = {"kb_read", "kb_search", "memory_read", "memory_search", "note_list",
                "note_write", "diary_read", "skill_list", "skill_read", "skill_save",
                "remind_me", "remind_list", "remind_cancel", "agent_task"}
@@ -2258,13 +2260,16 @@ async def main() -> None:
 
     # ---- 提醒去重：同一件事换个说法不能说两条 ----
     remind_mod.init()
-    _r1 = remind_mod.add("改那个主动回复不进上下文的 bug，先加日志", "2026-11-06 09:00")
-    check("第一条提醒能建", "已经有一条" not in _r1, _r1)
-    _r2 = remind_mod.add("改那个 bug——主动回复没进上下文，先加日志再复现",
-                         "2026-11-06 09:30")
+    # 时间必须从 now 派生：写死「今天 09:00」的话，跑测试时过了那个点
+    # remind.add 会以「时间已经过去了」拒绝，用例从绿变红，CI 跟着挂。
+    _t1 = (datetime.now() + timedelta(hours=1)).strftime("%Y-%m-%d %H:%M")
+    _t2 = (datetime.now() + timedelta(hours=1, minutes=10)).strftime("%Y-%m-%d %H:%M")
+    _r1 = remind_mod.add("改那个主动回复不进上下文的 bug，先加日志", _t1)
+    check("第一条提醒能建", "记下了" in _r1, _r1)
+    _r2 = remind_mod.add("改那个 bug——主动回复没进上下文，先加日志再复现", _t2)
     check("近重复提醒被拦下", "已经有一条" in _r2, _r2)
-    _r3 = remind_mod.add("买牛奶", "2026-11-06 09:00")
-    check("不同的事照常建", "已经有一条" not in _r3, _r3)
+    _r3 = remind_mod.add("买牛奶", _t1)
+    check("不同的事照常建", "记下了" in _r3, _r3)
 
     # ---- 主动问过之后，短答复要能关掉（否则过 5 天又问一遍） ----
     def _fid_of(text: str) -> int:
@@ -2382,14 +2387,25 @@ async def main() -> None:
                     ("private:t", "user", "今天好烦", base_ts))
         con.execute("INSERT INTO messages(session, role, content, ts) VALUES (?,?,?,?)",
                     ("private:t", "assistant", "怎么了", base_ts + 60))
+        # 陌生人的私聊同一天也在库里：归档/日记都不能把它当成「他说的」
+        con.execute("INSERT INTO messages(session, role, content, ts) VALUES (?,?,?,?)",
+                    ("private:stranger", "user", "陌生人的话不该出现", base_ts + 120))
     con.close()
-    msg_raw = learn_mod.archive_raw("2026-10-05")
+    msg_raw = learn_mod.archive_raw("2026-10-05", session="private:t")
     p_raw_day = learn_mod.RAW / "2026-10-05.md"
     check("原文归档写成文件", p_raw_day.exists(), msg_raw)
     txt_raw = p_raw_day.read_text(encoding="utf-8") if p_raw_day.exists() else ""
     check("原文带时间与说话人",
           "[09:30] 他：今天好烦" in txt_raw and "[09:31] 我：怎么了" in txt_raw,
           txt_raw[:50].replace("\n", " "))
+    check("原文归档不含陌生人的话", "陌生人的话不该出现" not in txt_raw,
+          txt_raw[:80].replace("\n", " "))
+    from app_core import diary as diary_mod
+    diary_mod.CHAT_DB = TMP / "chat.db"      # 日记模块也有自己的库路径，测试要指过来
+    _rows_d = diary_mod._day_messages("2026-10-05", session="private:t")
+    check("日记素材只取本人会话",
+          len(_rows_d) == 2 and all("陌生人" not in (c or "") for _, c, _ in _rows_d),
+          str([c[:8] for _, c, _ in _rows_d]))
     check("空日子不报错", "没有对话" in learn_mod.archive_raw("2026-10-06"),
           learn_mod.archive_raw("2026-10-06"))
 

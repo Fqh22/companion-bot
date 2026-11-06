@@ -48,7 +48,7 @@ If it prints `全部通过`, the code is self-consistent on your machine.
 
 
 On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
-the other 614 really run.
+the other 617 really run.
 
 ## Path convention
 

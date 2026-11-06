@@ -180,7 +180,7 @@ class ChatCore:
         reply / reply_deadline / last_prompts   一轮回复 + 截止时间 + 上轮 prompt
         mood_event                              记一次「机器人自己经历的事」
         usage_stats / config_issues / config_status
-        persona / persona_for / reload_persona
+        persona / persona_for / reload_persona / private_session
         memory / scheduler / pacing / proactive / files / group / chat
         caption_images                          图片描述
         record_assistant / append_to_message     主动消息写回历史 / 给消息补图注
@@ -268,8 +268,9 @@ class ChatCore:
         issues: list[str] = []
         if not self.admin_uid:
             issues.append(
-                "admin.user_id 未配置（空或 \"0\"）：记忆不会写入、主动消息与定时推送"
-                "全部发不出去。改 /opt/nonebot/config.yaml 后 systemctl restart nonebot")
+                "admin.user_id 未配置（空或 \"0\"）：所有人都会被当成本人（可用全部工具、"
+                "读已有记忆），但记忆不会写入、主动消息与定时推送全部发不出去。"
+                "改 /opt/nonebot/config.yaml 后 systemctl restart nonebot")
         if not str(self.api or "").strip():
             issues.append("llm.api 为空：所有对话都会失败")
         if config.stale():
@@ -510,9 +511,10 @@ class ChatCore:
             return int(cur.lastrowid or 0)
 
     async def _log_prompt(self, session: str, msgs: list[dict], **flags) -> None:
-        """留一份 prompt 指纹：出问题时能对上「当时发了什么、带了哪些块」。
+        """留一份 prompt 快照：出问题时能对上「当时到底发了什么、带了哪些块」。
 
-        只存 sha 和长度，不存全文——全文里有他的原话，没必要再抄一份。
+        存 sha/长度 + 正文前 6000 字（只留最近 100 条）。正文里有他的原话，
+        是刻意的取舍：只留哈希的话按 /prompt_last 时查不出问题；靠表行数上限控体积。
         """
         try:
             import hashlib

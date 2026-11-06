@@ -78,7 +78,18 @@ def _last_sent_ts() -> float:
     return _one("SELECT MAX(ts) FROM proactive_log")
 
 
+def _session() -> str:
+    """主人会话。陌生人的私聊也在 messages 里，不隔离会左右主动消息的闸门。"""
+    try:
+        return core.private_session()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _last_user_ts() -> float:
+    s = _session()
+    if s:
+        return _one("SELECT MAX(ts) FROM messages WHERE role='user' AND session=?", (s,))
     return _one("SELECT MAX(ts) FROM messages WHERE role='user'")
 
 
@@ -107,10 +118,17 @@ def _reply_rate(days: float = 7) -> float | None:
         if sent < 3:
             c.close()
             return None
-        replied = c.execute(
-            "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
-            " SELECT 1 FROM messages m WHERE m.role='user'"
-            " AND m.ts > p.ts AND m.ts < p.ts + ?)", (since, REPLY_WINDOW)).fetchone()
+        s = _session()
+        if s:
+            replied = c.execute(
+                "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
+                " SELECT 1 FROM messages m WHERE m.role='user' AND m.session=?"
+                " AND m.ts > p.ts AND m.ts < p.ts + ?)", (since, s, REPLY_WINDOW)).fetchone()
+        else:
+            replied = c.execute(
+                "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
+                " SELECT 1 FROM messages m WHERE m.role='user'"
+                " AND m.ts > p.ts AND m.ts < p.ts + ?)", (since, REPLY_WINDOW)).fetchone()
         c.close()
         return float(replied[0] or 0) / sent
     except Exception:

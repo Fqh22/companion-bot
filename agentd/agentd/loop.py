@@ -177,6 +177,19 @@ class Runner:
     async def _run_step(self, task: dict, step: dict, steps: list[dict]) -> None:
         tid, sid = task["id"], step["id"]
         self.store.set_step(sid, status="running", started_at=time.time())
+        # custom 验收也是 shell，必须和普通命令过同一道审批闸。
+        # 放在最前面：等批准后整步会重跑，避免主操作已经执行两遍。
+        _custom = str((step.get("verify") or {}).get("custom") or "")
+        if _custom and is_dangerous(_custom) and \
+                not self.store.approved_cmd(tid, sid, _custom):
+            aid = self.store.add_approval(tid, sid, _custom)
+            self.store.set_step(sid, status="blocked", finished_at=time.time(),
+                                error="等待审批（custom 验收）")
+            self._notify(tid, f"验收脚本要跑危险命令，等你点头（/approve {aid}）：\n"
+                              f"{_custom[:120]}")
+            self.store.add_event(tid, "error",
+                                 f"待审批 #{aid}（custom 验收）：{_custom[:120]}", sid)
+            return
         attempts = 0
         while attempts < 3:
             attempts += 1
@@ -575,7 +588,6 @@ class Runner:
     def _write_plan(self, tid: int, steps: list[dict]) -> None:
         d = self.work / str(tid)
         d.mkdir(parents=True, exist_ok=True)
-        lines = [f"# 任务 {tid}", "", f"目标：{steps and ''}"]
         lines = [f"# 任务 {tid}", ""]
         for s in steps:
             lines.append(f"{s['idx']}. [ ] {s['desc']}  `{json.dumps(s['verify'], ensure_ascii=False)}`")

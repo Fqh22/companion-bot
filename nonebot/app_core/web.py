@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app_core import paths as _paths
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -56,8 +56,10 @@ def _http() -> httpx.AsyncClient:
     cls = httpx.AsyncClient
     closed = getattr(_client, "is_closed", False) if _client is not None else True
     if _client is None or closed or cls is not _client_cls:
+        # 不自动跟随：_safe 只校验了第一个 URL，自动跳转等于把
+        # 「公网页面 302 到 127.0.0.1」的 SSRF 直接放行。重定向在 fetch 里逐跳校验。
         _client = cls(timeout=httpx.Timeout(25.0, connect=10.0),
-                      follow_redirects=True, headers={"User-Agent": UA},
+                      follow_redirects=False, headers={"User-Agent": UA},
                       limits=httpx.Limits(max_connections=4,
                                           max_keepalive_connections=2))
         _client_cls = cls
@@ -143,16 +145,38 @@ def extract_text(html: str) -> tuple[str, str]:
     return sanitize(title), sanitize(body.strip())
 
 
+MAX_REDIRECTS = 3
+
+
 async def fetch(url: str) -> tuple[str, str, int]:
+    """抓一页。重定向逐跳校验，不把「跳到内网」交给 httpx 自动跟。
+
+    之前 follow_redirects=True + 只校验首跳，公网页面 302 到
+    127.0.0.1 / 169.254.169.254 就能绕过 SSRF 防护。agentd 的 fetch
+    早就是逐跳校验（agentd/tools.py），这里对齐同一套标准。
+    """
     c = _http()
-    async with c.stream("GET", url) as r:
-        buf = bytearray()
-        async for chunk in r.aiter_bytes():
-            buf.extend(chunk)
-            if len(buf) > MAX_BYTES:
-                return "", str(r.url), 413
-        enc = r.encoding or "utf-8"
-        return bytes(buf).decode(enc, "replace"), str(r.url), r.status_code
+    cur = url
+    for hop in range(MAX_REDIRECTS + 1):
+        if not _safe(cur):
+            return "", cur, 403
+        async with c.stream("GET", cur) as r:
+            if r.status_code in (301, 302, 303, 307, 308):
+                if hop >= MAX_REDIRECTS:
+                    return "", str(r.url), 403
+                loc = r.headers.get("location") or ""
+                if not loc:
+                    return "", str(r.url), r.status_code
+                cur = urljoin(str(r.url), loc)
+                continue                      # 下一跳重新 _safe 后再发请求
+            buf = bytearray()
+            async for chunk in r.aiter_bytes():
+                buf.extend(chunk)
+                if len(buf) > MAX_BYTES:
+                    return "", str(r.url), 413
+            enc = r.encoding or "utf-8"
+            return bytes(buf).decode(enc, "replace"), str(r.url), r.status_code
+    return "", cur, 403
 
 
 async def web_open(core, url: str) -> str:

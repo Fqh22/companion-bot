@@ -707,17 +707,29 @@ def note_list(limit: int = 10) -> list[str]:
 
 
 # ---------- 对话原文归档 ----------
-def _day_messages(day: str) -> list[tuple[str, str, float]]:
+def _day_messages(day: str, session: str = "") -> list[tuple[str, str, float]]:
+    """当天原文。session 非空时只取这个会话，别把陌生人的话归档成他的原文。"""
+    if not session:
+        try:
+            from app_core import config
+            session = config.owner_session()
+        except Exception:  # noqa: BLE001
+            session = ""
+    sql = ("SELECT role, content, ts FROM messages "
+           "WHERE date(ts, 'unixepoch', 'localtime') = ?")
+    args: list = [day]
+    if session:
+        sql += " AND session=?"
+        args.append(session)
+    sql += " ORDER BY id"
     con = sqlite3.connect(CHAT_DB, timeout=15)
     try:
-        return con.execute(
-            "SELECT role, content, ts FROM messages "
-            "WHERE date(ts, 'unixepoch', 'localtime') = ? ORDER BY id", (day,)).fetchall()
+        return con.execute(sql, args).fetchall()
     finally:
         con.close()
 
 
-def archive_raw(day: str = "") -> str:
+def archive_raw(day: str = "", session: str = "") -> str:
     """把某天的对话原文落盘到 `learn/raw/YYYY-MM-DD.md`。
 
     为什么留原文：笔记、复盘、记忆全是模型二次加工的结果，出问题时要能回到
@@ -727,8 +739,14 @@ def archive_raw(day: str = "") -> str:
     默认归档昨天（凌晨跑，当天已经完整），重复调用是覆盖，可以放心重跑。
     """
     day = day or (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    if not session:
+        try:
+            from app_core import config
+            session = config.owner_session()
+        except Exception:  # noqa: BLE001
+            session = ""
     try:
-        rows = _day_messages(day)
+        rows = _day_messages(day, session=session)
     except Exception as e:  # noqa: BLE001
         return f"读会话库失败：{type(e).__name__}: {e}"
     if not rows:
@@ -764,9 +782,9 @@ async def weekly(core) -> str:
     return await _review_mod.weekly(core)
 
 
-def quality_metrics(days: int = 7) -> dict:
+def quality_metrics(days: int = 7, session: str = "") -> dict:
     from app_core import review as _review_mod
-    return _review_mod.quality_metrics(days)
+    return _review_mod.quality_metrics(days, session)
 
 
 def _extract_json(text: str) -> dict:
@@ -779,6 +797,6 @@ def _documents_since(days: float) -> list[str]:
     return _review_mod._documents_since(days)
 
 
-def _day_context(days: float = 1) -> str:
+def _day_context(days: float = 1, session: str = "") -> str:
     from app_core import review as _review_mod
-    return _review_mod._day_context(days)
+    return _review_mod._day_context(days, session)

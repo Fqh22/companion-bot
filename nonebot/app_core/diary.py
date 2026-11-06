@@ -21,16 +21,28 @@ SYSTEM = (
 )
 
 
-def _day_messages(day: str, max_chars: int = 6000) -> list[tuple[str, str, float]]:
+def _day_messages(day: str, max_chars: int = 6000,
+                  session: str = "") -> list[tuple[str, str, float]]:
+    """当天消息。session 非空时只取这个会话——日记是给他看的，
+    别人的私聊不该被写成「他今天说……」。"""
     start = datetime.strptime(day, "%Y-%m-%d").timestamp()
     end = start + 86400
     if not CHAT_DB.exists():
         return []
+    sql = "SELECT role, content, ts FROM messages WHERE ts>=? AND ts<?"
+    args: list = [start, end]
+    if not session:
+        try:
+            from app_core import config
+            session = config.owner_session()
+        except Exception:  # noqa: BLE001
+            session = ""
+    if session:
+        sql += " AND session=?"
+        args.append(session)
+    sql += " ORDER BY id"
     con = sqlite3.connect(f"file:{CHAT_DB}?mode=ro", uri=True, timeout=10)
-    rows = con.execute(
-        "SELECT role, content, ts FROM messages WHERE ts>=? AND ts<? ORDER BY id",
-        (start, end),
-    ).fetchall()
+    rows = con.execute(sql, args).fetchall()
     con.close()
     return rows
 
@@ -80,7 +92,13 @@ def save(day: str, body: str) -> None:
 async def write_day(core, day: str, force: bool = False, min_messages: int = 6) -> str:
     if not force and read(day):
         return f"{day} 的日记已经写过了"
-    rows = _day_messages(day)
+    # 只写他的对话：陌生人的私聊也在这张表里，不过滤会被写成「他今天说」。
+    session = ""
+    try:
+        session = core.private_session()
+    except Exception:  # noqa: BLE001
+        session = ""
+    rows = _day_messages(day, session=session)
     if len(rows) < min_messages:
         return f"{day} 只有 {len(rows)} 条消息，不够写"
     dialog = format_rows(rows)

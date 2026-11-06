@@ -347,7 +347,12 @@ class Scheduler:
 
     async def _run_raw_archive(self) -> None:
         """归档昨天的对话原文。写盘是阻塞 IO，丢线程里做。"""
-        msg = await asyncio.to_thread(learn.archive_raw)
+        session = ""
+        try:
+            session = self.core.private_session()
+        except Exception:  # noqa: BLE001
+            session = ""
+        msg = await asyncio.to_thread(learn.archive_raw, session=session)
         log.info("对话原文归档：%s", msg)
 
     async def _loop(self) -> None:

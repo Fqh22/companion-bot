@@ -311,5 +311,6 @@ async def _(event: MessageEvent):
     """手动归档某天的对话原文（默认昨天），补跑或回溯用。"""
     arg = _arg(event, "/raw_archive").strip()
     day = arg if len(arg) == 10 and arg.count("-") == 2 else ""
-    msg = await asyncio.to_thread(learn.archive_raw, day)
+    msg = await asyncio.to_thread(
+        learn.archive_raw, day, core.private_session())
     await raw_cmd.finish(msg)

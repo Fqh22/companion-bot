@@ -35,6 +35,11 @@ OPS="$CODE/ops"
 [ -x "$PY" ] || { echo "找不到解释器：$PY" >&2; exit 2; }
 [ -d "$OPS" ] || { echo "找不到 ops 目录：$OPS" >&2; exit 2; }
 
+# 仓库里叫 test-nonebot-offline.py，云端部署时改名为 offline-test.py。
+# 两个名字都认，别让「少跑一套」伪装成通过。
+OFFLINE="$OPS/offline-test.py"
+[ -f "$OFFLINE" ] || OFFLINE="$OPS/test-nonebot-offline.py"
+
 # 云端是 root，但测试要用 ubuntu 跑（生产库只读副本、写临时目录）。
 # 本地/切换用户后已经是 ubuntu，就别再 sudo。
 if [ "$(id -u)" = "0" ]; then
@@ -51,7 +56,13 @@ declare -a DUR=()
 
 run_suite() {
     local name="$1" script="$2"
-    [ -f "$script" ] || { echo "跳过（缺文件）：$name"; return 0; }
+    # 缺文件不算通过：以前打印「跳过」就 return 0，等于少跑一套还报绿。
+    [ -f "$script" ] || {
+        echo "  $name     FAIL  找不到脚本：$script" >&2
+        TOTAL=$((TOTAL + 1)); FAILED=$((FAILED + 1))
+        NAMES+=("$name"); STATS+=("FAIL"); DUR+=("0s")
+        return 1
+    }
 
     TOTAL=$((TOTAL + 1))
     local t0 t1 out rc
@@ -91,12 +102,12 @@ case "$MODE" in
         ;;
     pre)
         run_suite "分层检查" "$OPS/lint-plugins.py"
-        run_suite "离线回归" "$OPS/offline-test.py"
+        run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     *)
         run_suite "分层检查" "$OPS/lint-plugins.py"
-        run_suite "离线回归" "$OPS/offline-test.py"
+        run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         run_suite "全链路"   "$OPS/smoke-all.py"
         run_suite "插件启动" "$OPS/smoke-plugins.py"

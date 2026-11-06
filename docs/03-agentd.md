@@ -217,7 +217,7 @@ systemctl start agentd-guard.service
 ## 十三、验证
 
 ```
-agentd/tests/test_core.py     68 项（假 LLM + 假沙箱，不联网不碰 docker）
+agentd/tests/test_core.py     81 项（假 LLM + 假沙箱，不联网不碰 docker）
 ```
 
 覆盖：验收 DSL / 路径逃逸 / 溢出落盘 / 失败分类 / noop 拦截 / 端到端 /
