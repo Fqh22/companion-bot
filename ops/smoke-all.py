@@ -123,6 +123,7 @@ class FakeClient:
 from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
+    followup_domain as fu_domain_mod, followup_store as fu_store_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     memory_common as memory_common_mod, memory_embed as memory_embed_mod,
@@ -158,6 +159,8 @@ meme_mod.PACKS = TMP / "packs"
 meme_mod.CHAT_DB = TMP / "chat.db"
 meme_mod.RECENT_FILE = TMP / "meme-recent.json"
 fu_mod.DB = TMP / "chat.db"
+check("followup_domain 有 resolve_from", hasattr(fu_domain_mod, "resolve_from"))
+check("followup_store 有 _conn", hasattr(fu_store_mod, "_conn"))
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
 mood_mod.CHAT_DB = TMP / "chat.db"

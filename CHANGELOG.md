@@ -16,7 +16,9 @@
   STATE/STATE_DIR/CHAT_DB 的测试补丁仍通过动态读取生效。
 - **P4.2**：proactive 候选来源/归一化搬到 proactive_sources.py，插件只做频控、调度和发送；
   policy 仍是纯函数。
-- **下一步**：P4.3 scheduling，P5-P7 按 Gate 继续。
+- **P4.3.1**：followup 拆成 followup_domain（纯信号/状态机）+ followup_store（SQLite），
+  followup.py 33 行门面；DB 测试补丁仍生效。
+- **下一步**：P4.3.2 remind/scheduler，P5-P7 按 Gate 继续。
 
 ## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
 
