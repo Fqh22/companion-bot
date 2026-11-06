@@ -10,7 +10,7 @@
   改名视为新话题，删除即不再巡检。
 - 配置面板的「未知键」补上 `llm.thinking_casual` / `chat.shadow_followup` / `chat.shadow_sample`：
   这三个键原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，UI 会误报未知。
-- 测试 25 → 42 项；人格/话题都走备份 + diff + 干跑。
+- 测试 25 → 44 项；人格/话题都走备份 + diff + 干跑，内容没变不会重写文件。
 
 ## 2026-11-06 · 本地配置面板 v1
 

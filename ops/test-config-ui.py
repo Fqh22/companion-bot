@@ -188,6 +188,16 @@ def main():
         check("读到两个人格", len(assets.get("personas") or []) == 2, str(len(assets.get("personas") or [])))
         check("读到巡检基线", len((assets.get("watchlist") or {}).get("topics") or []) == 2)
 
+        p0 = assets["personas"][0]
+        st, d = post("/api/persona", {"which": p0["which"],
+                                      "system_prompt": p0["system_prompt"],
+                                      "begin_dialogs": p0["begin_dialogs"],
+                                      "dry_run": True})
+        check("人格内容没变不算改动", st == 200 and d.get("changed") is False, str(d)[:80])
+        w0 = assets["watchlist"]["topics"]
+        st, d = post("/api/watchlist", {"topics": [x["topic"] for x in w0], "dry_run": True})
+        check("话题内容没变不算改动", st == 200 and d.get("changed") is False, str(d)[:80])
+
         st, d = post("/api/persona", {"which": "owner", "system_prompt": "新人格",
                                       "begin_dialogs": ["在吗", "在的"], "dry_run": True})
         check("人格干跑出 diff",

@@ -814,12 +814,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": f"{fname} 不是合法 JSON：{e}"}, 400)
         if not isinstance(old, dict):
             return self._json({"ok": False, "error": f"{fname} 顶层不是对象"}, 400)
-        new_text = dump_json(apply_persona(old, values), 2)
+        new_doc = apply_persona(old, values)
+        new_text = dump_json(new_doc, 2)
         diff = make_diff(old_text, new_text,
                          fromfile=f"{label}人格（当前）", tofile=f"{label}人格（保存后）")
+        # 只比较内容：文件原本的缩进/换行不同，不代表用户改了人格。
+        changed = (not path.exists()) or old != new_doc
         if data.get("dry_run"):
-            return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
-        if old_text == new_text:
+            return self._json({"ok": True, "diff": diff, "changed": changed})
+        if not changed:
             return self._json({"ok": True, "unchanged": True, "diff": ""})
         backup = write_file(path, self.app.backup_dir, old_text, new_text,
                             f"persona-{which}", ".json")
@@ -839,12 +842,22 @@ class Handler(BaseHTTPRequestHandler):
             old = read_json(path) if path.exists() else []
         except Exception as e:
             return self._json({"ok": False, "error": f"watchlist.json 不是合法 JSON：{e}"}, 400)
-        new_text = dump_json(merge_watch(old, topics), 1)
+        new_items = merge_watch(old, topics)
+        old_topics = []
+        for x in old if isinstance(old, list) else []:
+            if isinstance(x, str):
+                old_topics.append(x.strip())
+            elif isinstance(x, dict) and str(x.get("topic") or "").strip():
+                old_topics.append(str(x["topic"]).strip())
+        old_items = merge_watch(old, old_topics)
+        new_text = dump_json(new_items, 1)
         diff = make_diff(old_text, new_text,
                          fromfile="watchlist.json（当前）", tofile="watchlist.json（保存后）")
+        # 只比内容：旧的缩进/浮点写法不同不算改动。删掉话题或改 last 才算。
+        changed = (not path.exists()) or old_items != new_items
         if data.get("dry_run"):
-            return self._json({"ok": True, "diff": diff, "changed": old_text != new_text})
-        if old_text == new_text:
+            return self._json({"ok": True, "diff": diff, "changed": changed})
+        if not changed:
             return self._json({"ok": True, "unchanged": True, "diff": ""})
         backup = write_file(path, self.app.backup_dir, old_text, new_text,
                             "watchlist", ".json")
