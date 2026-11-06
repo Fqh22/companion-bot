@@ -57,6 +57,11 @@ def main():
     check("schema 有嵌套计费", "pricing.deepseek-flash.in" in by_id)
     check("schema 有列表字段", by_id["group.whitelist"]["type"] == "list")
     check("schema 分组顺序保留", schema[0]["id"] == "admin" and schema[-1]["id"] == "pricing")
+    check("常用字段有分级", by_id["llm.temperature"]["tier"] == "basic")
+    check("高级字段有分级", by_id["llm.api"]["tier"] == "advanced")
+    check("高风险字段有标记", by_id["admin.user_id"]["risk"] == "high"
+          and bool(by_id["admin.user_id"]["risk_note"]))
+    check("常用字段没被误标高风险", by_id["llm.temperature"]["risk"] == "low")
 
     cfg = TMP / "config.yaml"
     cfg.write_text(

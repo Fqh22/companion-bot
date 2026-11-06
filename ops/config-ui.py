@@ -150,6 +150,36 @@ F = {
 }
 
 
+
+# 「常用」页只放改了最多影响说话方式/节奏的项；其余进「高级」。
+BASIC_FIELDS = {
+    "llm.temperature", "llm.max_tokens", "llm.thinking", "llm.thinking_casual",
+    "context.history_max_chars", "context.history_max_items",
+    "chat.media_settle_seconds", "chat.shadow_followup", "chat.shadow_sample",
+    "meme.threshold_positive", "meme.threshold_neutral", "meme.threshold_negative",
+    "image.max_side", "image.quality",
+}
+
+# 高风险项：改错会让机器人哑掉、记忆不写、或者群消息越界。
+HIGH_RISK = {
+    "admin.user_id": "留空会让所有私聊都被当成本人（可用全部工具、读已有记忆）。",
+    "llm.api": "地址写错，所有对话直接失败。",
+    "llm.model": "模型名写错，所有对话直接失败。",
+    "summary.model": "总结模型写错，记忆会静默不写入。",
+    "summary.retry_model": "重试模型写错，总结失败时没有兜底。",
+    "embedding.api": "向量地址写错，记忆召回会失效。",
+    "embedding.model": "向量模型写错，记忆召回会失效。",
+    "group.enabled": "开启后群消息会经过机器人，先确认白名单。",
+    "group.whitelist": "白名单写错，可能在不该回的群里说话。",
+    "memory.cleanup_days_important": "改小会提前归档重要记忆。",
+    "memory.cleanup_days_normal": "改小会提前归档普通记忆。",
+    "memory.cleanup_days_low": "改小会提前归档低价值记忆。",
+    "memory.cleanup_max_active": "改小会按总量淘汰活跃记忆。",
+    "memory.contradiction_check": "on 会真的把旧记忆标成 superseded。",
+    "profile.inject": "画像里是私人信息，on 会进 prompt。",
+}
+
+
 def _type_of(v) -> str:
     if isinstance(v, bool):
         return "bool"
@@ -189,6 +219,9 @@ def build_schema() -> list[dict]:
                 "id": fid, "path": list(path), "key": path[-1],
                 "label": label, "desc": desc, "type": _type_of(default),
                 "default": default,
+                "tier": "basic" if fid in BASIC_FIELDS else "advanced",
+                "risk": "high" if fid in HIGH_RISK else "low",
+                "risk_note": HIGH_RISK.get(fid, ""),
             }
             field.update(extra or {})
             fields.append(field)
@@ -637,9 +670,11 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/":
             q = parse_qs(u.query)
             if (q.get("token") or [""])[0] and self._auth():
+                tab = (q.get("tab") or [""])[0]
+                target = "/" + (f"#{tab}" if tab in ("basic", "advanced", "persona", "watch") else "")
                 self.send_response(302)
                 self.send_header("Set-Cookie", f"{COOKIE}={self.app.token}; Path=/; HttpOnly; SameSite=Strict")
-                self.send_header("Location", "/")
+                self.send_header("Location", target)
                 self.end_headers()
                 return
             if not self._auth():

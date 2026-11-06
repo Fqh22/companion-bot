@@ -6,6 +6,9 @@ let fields = [];
 let values = {};
 let personaDrafts = {};
 let pending = null;
+let basicGroups = [];
+let advancedGroups = [];
+let activeTab = "basic";
 
 const $ = (s) => document.querySelector(s);
 const el = (tag, cls, text) => {
@@ -121,6 +124,7 @@ function buildField(f) {
   const badge = el("span", "badge", f.changed ? "当前值" : (f.source === "default" ? "用默认值" : "当前值"));
   if (isChanged(f, values[f.id])) badge.classList.add("changed");
   name.appendChild(badge);
+  if (f.risk === "high") name.appendChild(el("span", "badge risk", "⚠ 高风险"));
   left.appendChild(name);
   left.appendChild(el("span", "id", f.id));
   const right = el("div", "field-control");
@@ -129,6 +133,7 @@ function buildField(f) {
   const foot = el("div", "field-foot");
   foot.appendChild(document.createTextNode("默认：" + fmt(f.default)));
   if (f.desc) foot.appendChild(document.createTextNode(" · " + f.desc));
+  if (f.risk_note) foot.appendChild(el("span", "risk-note", "⚠ " + f.risk_note));
   const reset = el("button", "reset", "恢复默认");
   reset.type = "button";
   reset.addEventListener("click", () => resetField(f, c));
@@ -255,26 +260,71 @@ function renderAssets() {
   renderWatch();
 }
 
+function renderGroup(g, container, prefix) {
+  const sec = el("section", "group");
+  sec.id = "group-" + prefix + "-" + g.id;
+  sec.appendChild(el("h2", "", g.label));
+  if (g.desc) sec.appendChild(el("p", "desc", g.desc));
+  for (const f of g.fields) sec.appendChild(buildField(f));
+  container.appendChild(sec);
+}
+
+function renderNav(tab) {
+  const nav = $("#nav");
+  nav.textContent = "";
+  if (tab !== "basic" && tab !== "advanced") return;
+  const groups = tab === "basic" ? basicGroups : advancedGroups;
+  for (const g of groups) {
+    const a = el("a", "", g.label);
+    a.href = "#group-" + tab + "-" + g.id;
+    nav.appendChild(a);
+  }
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  try { history.replaceState(null, "", "#" + tab); } catch (e) {}
+  for (const b of document.querySelectorAll("#tabs .tab")) {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  }
+  const panels = {
+    basic: "panel-basic", advanced: "panel-advanced",
+    persona: "persona-wrap", watch: "watch-wrap",
+  };
+  for (const [key, id] of Object.entries(panels)) {
+    const node = document.getElementById(id);
+    if (node) node.classList.toggle("hidden", key !== tab);
+  }
+  const isConfig = tab === "basic" || tab === "advanced";
+  $("#save").classList.toggle("hidden", !isConfig);
+  $("#search").classList.toggle("hidden", !isConfig);
+  const only = $("#only-changed").closest(".check");
+  if (only) only.classList.toggle("hidden", !isConfig);
+  $(".layout").classList.toggle("no-nav", !isConfig);
+  renderNav(tab);
+  if (isConfig) applyFilter();
+}
+
 function render() {
   fields = [];
   values = {};
-  const nav = $("#nav");
-  const groups = $("#groups");
-  nav.textContent = ""; groups.textContent = "";
+  basicGroups = [];
+  advancedGroups = [];
+  $("#groups").textContent = "";
+  $("#groups-advanced").textContent = "";
   for (const g of data.groups) {
-    const a = el("a", "", g.label); a.href = "#group-" + g.id; nav.appendChild(a);
-    const sec = el("section", "group"); sec.id = "group-" + g.id;
-    sec.appendChild(el("h2", "", g.label));
-    if (g.desc) sec.appendChild(el("p", "desc", g.desc));
+    const b = { ...g, fields: g.fields.filter((f) => f.tier === "basic") };
+    const a = { ...g, fields: g.fields.filter((f) => f.tier !== "basic") };
     for (const f of g.fields) {
       fields.push(f);
       values[f.id] = f.value;
-      sec.appendChild(buildField(f));
     }
-    groups.appendChild(sec);
+    if (b.fields.length) basicGroups.push(b);
+    if (a.fields.length) advancedGroups.push(a);
   }
-  const ap = el("a", "", "人格"); ap.href = "#persona-wrap"; nav.appendChild(ap);
-  const aw = el("a", "", "巡检话题"); aw.href = "#watch-wrap"; nav.appendChild(aw);
+  for (const g of basicGroups) renderGroup(g, $("#groups"), "basic");
+  for (const g of advancedGroups) renderGroup(g, $("#groups-advanced"), "advanced");
+
   renderAssets();
   const unknown = data.unknown || [];
   const wrap = $("#unknown-wrap");
@@ -304,7 +354,7 @@ function render() {
   $("#status").appendChild(span);
   $("#loading").classList.add("hidden");
   updateButtons();
-  applyFilter();
+  switchTab(activeTab);
 }
 
 async function load() {
@@ -323,7 +373,9 @@ async function load() {
   data = d;
   assets = a.ok ? a : { personas: [], watchlist: {} };
   personaDrafts = {};
+  const tab = (location.hash || "").replace("#", "");
   render();
+  if (["basic", "advanced", "persona", "watch"].includes(tab)) switchTab(tab);
 }
 
 function collect() {
@@ -343,7 +395,7 @@ async function postTo(url, payload) {
   return d;
 }
 
-function showDiff(d, url, body, note) {
+function showDiff(d, url, body, note, risks = []) {
   if (!d.ok) {
     banner((d.errors || [d.error || "校验失败"]).join("；"), true);
     toast("校验失败，未保存", true);
@@ -353,6 +405,19 @@ function showDiff(d, url, body, note) {
   pending = { url, body, note };
   $("#diff").textContent = d.diff;
   $("#diff-note").textContent = note;
+  const box = $("#risk-box");
+  const ack = $("#risk-ack");
+  const btn = $("#confirm-save");
+  ack.checked = false;
+  if (risks.length) {
+    box.classList.remove("hidden");
+    $("#risk-text").textContent = "你改了 " + risks.length + " 个高风险项：" + risks.join("、") +
+      "。保存后可能让机器人不可用；确认已了解后果再勾选。";
+    btn.disabled = true;
+  } else {
+    box.classList.add("hidden");
+    btn.disabled = false;
+  }
   const dlg = $("#diff-dialog");
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
 }
@@ -360,7 +425,11 @@ function showDiff(d, url, body, note) {
 async function previewConfig() {
   const body = { values: collect() };
   const d = await postTo("/api/config", { ...body, dry_run: true });
-  showDiff(d, "/api/config", body, "保存前备份 config.yaml；保存后需要重启 nonebot 才生效。");
+  const risks = fields
+    .filter((f) => f.risk === "high" && isChanged(f, values[f.id]))
+    .map((f) => f.label);
+  showDiff(d, "/api/config", body,
+    "保存前备份 config.yaml；保存后需要重启 nonebot 才生效。", risks);
 }
 
 async function previewPersona(which) {
@@ -414,6 +483,7 @@ async function confirmSave() {
 }
 
 function applyFilter() {
+  if (activeTab !== "basic" && activeTab !== "advanced") return;
   const q = ($("#search").value || "").trim().toLowerCase();
   const only = $("#only-changed").checked;
   for (const f of fields) {
@@ -424,9 +494,7 @@ function applyFilter() {
     if (only) show = show && isChanged(f, values[f.id]);
     box.classList.toggle("hidden", !show);
   }
-  for (const g of data.groups) {
-    const sec = document.getElementById("group-" + g.id);
-    if (!sec) continue;
+  for (const sec of document.querySelectorAll("#panel-basic .group, #panel-advanced .group")) {
     const any = [...sec.querySelectorAll(".field")].some((x) => !x.classList.contains("hidden"));
     sec.classList.toggle("hidden", !any);
   }
@@ -436,7 +504,18 @@ $("#save").addEventListener("click", previewConfig);
 $("#reload").addEventListener("click", load);
 $("#search").addEventListener("input", applyFilter);
 $("#only-changed").addEventListener("change", applyFilter);
+document.querySelectorAll("#tabs .tab").forEach((b) => {
+  b.addEventListener("click", () => switchTab(b.dataset.tab));
+});
+$("#risk-ack").addEventListener("change", () => {
+  const box = $("#risk-box");
+  $("#confirm-save").disabled = !box.classList.contains("hidden") && !$("#risk-ack").checked;
+});
 $("#confirm-save").addEventListener("click", (ev) => { ev.preventDefault(); confirmSave(); });
-$("#diff-dialog").addEventListener("close", () => { pending = null; });
+$("#diff-dialog").addEventListener("close", () => {
+  pending = null;
+  $("#risk-ack").checked = false;
+  $("#confirm-save").disabled = false;
+});
 
 load().catch((e) => banner("读取失败：" + e, true));

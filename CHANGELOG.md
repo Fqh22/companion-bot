@@ -8,6 +8,8 @@
   示例对话必须成对，保存后发 `/reload_persona` 生效。
 - 新增巡检话题编辑：`data/watchlist.json`，最多 8 个，免重启；同名话题保留 last/ts 基线，
   改名视为新话题，删除即不再巡检。
+- 面板分「常用 / 高级·风险 / 人格 / 巡检话题」四页：常用 14 项，高级 53 项；
+  15 项高风险（管理员、API/模型、记忆清理、群白名单、画像注入）保存前必须勾选确认。
 - 配置面板的「未知键」补上 `llm.thinking_casual` / `chat.shadow_followup` / `chat.shadow_sample`：
   这三个键原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，UI 会误报未知。
 - 测试 25 → 44 项；人格/话题都走备份 + diff + 干跑，内容没变不会重写文件。

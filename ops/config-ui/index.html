@@ -23,32 +23,49 @@
     </div>
   </header>
 
+  <nav class="tabs" id="tabs">
+    <button type="button" class="tab active" data-tab="basic">常用</button>
+    <button type="button" class="tab" data-tab="advanced">高级 / 风险</button>
+    <button type="button" class="tab" data-tab="persona">人格</button>
+    <button type="button" class="tab" data-tab="watch">巡检话题</button>
+  </nav>
+
   <div class="layout">
     <aside id="nav" class="nav"></aside>
     <main id="main" class="main">
       <div id="banner" class="banner hidden"></div>
       <p class="loading" id="loading">正在读取配置…</p>
-      <div id="groups"></div>
 
-      <section id="persona-wrap" class="group">
+      <div id="panel-basic" class="tab-panel">
+        <div id="groups"></div>
+      </div>
+
+      <div id="panel-advanced" class="tab-panel hidden">
+        <div class="banner warn">
+          <b>高级设置</b>：这里的参数影响模型接入、记忆清理、群聊和成本。
+          改动可能让机器人变慢、变哑，或者提前归档记忆；不确定的项先看默认值和说明，保存前会再让你确认。
+        </div>
+        <div id="groups-advanced"></div>
+        <section id="unknown-wrap" class="group hidden">
+          <h2>其他 / 未识别的键</h2>
+          <p class="desc">这些键不在当前 DEFAULTS 里，面板不会修改它们，保存时会原样保留。</p>
+          <div id="unknown" class="unknown"></div>
+        </section>
+      </div>
+
+      <section id="persona-wrap" class="group tab-panel hidden">
         <h2>人格</h2>
         <p class="desc">本人和外人版人格。<b>保存后需要在 QQ 发 /reload_persona</b>（或重启 nonebot）才生效；
           示例对话一行一条，按 user / assistant 交替。</p>
         <div id="personas"></div>
       </section>
 
-      <section id="watch-wrap" class="group">
+      <section id="watch-wrap" class="group tab-panel hidden">
         <h2>巡检话题</h2>
         <p class="desc">每周日主动搜索的话题，最多 8 个。<b>免重启</b>，下一次巡检读取新文件；
           同名话题会保留上次的 last 基线，改名视为新话题。</p>
         <div id="watch-edit"></div>
         <div id="watch-baseline" class="unknown"></div>
-      </section>
-
-      <section id="unknown-wrap" class="group hidden">
-        <h2>其他 / 未识别的键</h2>
-        <p class="desc">这些键不在当前 DEFAULTS 里，面板不会修改它们，保存时会原样保留。</p>
-        <div id="unknown" class="unknown"></div>
       </section>
     </main>
   </div>
@@ -58,6 +75,10 @@
       <h2>确认修改</h2>
       <p class="desc" id="diff-note"></p>
       <pre id="diff"></pre>
+      <label id="risk-box" class="risk-box hidden">
+        <input type="checkbox" id="risk-ack">
+        <span id="risk-text"></span>
+      </label>
       <div class="dialog-actions">
         <button value="cancel" class="ghost">取消</button>
         <button id="confirm-save" value="default" class="primary">确认保存</button>
