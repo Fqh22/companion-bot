@@ -17,6 +17,7 @@ from app_core import paths as _paths
 import httpx
 
 from app_core import config
+from app_core import memory_score
 from app_core.vec import cos as _cos
 from app_core.vec import pack as _pack
 from app_core.vec import unpack as _unpack
@@ -567,26 +568,11 @@ class Memory:
             return self.recent(top_k, touch=touch)
         scores = mat @ (q / nq)          # 矩阵已归一化，点积即余弦
 
-        # 时间 + 重要性调制。相似度仍是主导，时间只在「差不多相关」时起作用，
-        # 这样不会让一条很新的无关记忆挤掉一条很旧的强相关记忆。
-        #   最终分 = cos × (1 - w + w×衰减) × (1 + w_i×重要性)
-        #   衰减 = exp(-距今天数 / τ)，importance ≥ keep_important 时不做衰减（保底）
-        if self._imp is not None and self._ctime is not None:
-            age_days = np.maximum(0.0, (time.time() - self._ctime) / 86400.0)
-            rec = np.exp(-age_days / self.time_tau_days)
-            rec = np.where(self._imp >= self.keep_important, 1.0, rec)
-            final = scores * ((1.0 - self.time_w + self.time_w * rec)
-                              * (1.0 + self.imp_w * self._imp))
-        else:
-            final = scores
-
-        # 「刚说过的事」降权：一条记忆 30 分钟内被反复注入，会让对话一直绕回同一个梗。
-        # 实测一条记忆被召回 184 次（占全部召回的 6%），就是这个问题。
-        # 不硬性排除——同一话题连续几轮仍需要它，只是别每轮都排第一。
-        if self._last is not None and len(self._last) == final.shape[0]:
-            idle_min = (time.time() - self._last) / 60.0
-            fresh = np.clip((self.repeat_window_min - idle_min) / self.repeat_window_min, 0, 1)
-            final = final * (1.0 - self.repeat_penalty * fresh)
+        # 时间 + 重要性 + 重复召回降权：纯函数在 memory_score，改排序不用读整个 Memory。
+        final = memory_score.rank(
+            scores, self._imp, self._ctime, self._last, time.time(),
+            self.time_tau_days, self.time_w, self.imp_w, self.keep_important,
+            self.repeat_window_min, self.repeat_penalty)
 
         k = min(top_k, len(ids))
         # 候选放宽到 3k：已归档的记忆会在 _docs_by_ids 里被过滤掉，
