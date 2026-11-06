@@ -124,6 +124,8 @@ from app_core import (  # noqa: E402
     chat as chat_mod, diary as diary_mod, files as files_mod, followup as fu_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
+    memory_common as memory_common_mod, memory_embed as memory_embed_mod,
+    memory_index as memory_index_mod, memory_store as memory_store_mod,
     mood as mood_mod, remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     shadow as shadow_mod, summarize as summarize_mod,
@@ -629,6 +631,12 @@ async def main() -> None:
         check("memory._all_vectors", isinstance(mem._all_vectors(), list))
         _ranked = memory_score_mod.rank([0.4, 0.2, 0.1], None, None, None, time.time())
         check("memory_score.rank", len(_ranked) == 3)
+        check("memory_common 常量", memory_common_mod.SHADOW_DEDUP_COS > 0)
+        check("memory_store 有存储方法",
+              hasattr(memory_store_mod.StoreMixin, "add_document"))
+        check("memory_index 有索引方法",
+              hasattr(memory_index_mod.IndexMixin, "_matrix"))
+        check("memory_embed 有 embed", hasattr(memory_embed_mod.EmbedMixin, "embed"))
         check("memory.forgotten_important", isinstance(mem.forgotten_important(), list))
         mem.add_document("体检记忆", "private:10001", 0.9, ["体检"], ["事实"], vec=VEC)
         await call("memory.ensure_vectors", mem.ensure_vectors)
