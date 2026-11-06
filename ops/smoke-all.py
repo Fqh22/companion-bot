@@ -127,7 +127,8 @@ from app_core import (  # noqa: E402
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     memory_common as memory_common_mod, memory_embed as memory_embed_mod,
     memory_index as memory_index_mod, memory_store as memory_store_mod,
-    mood as mood_mod, remind as remind_mod, retrieval as retrieval_mod,
+    mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
+    remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     shadow as shadow_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
@@ -160,6 +161,8 @@ fu_mod.DB = TMP / "chat.db"
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
 mood_mod.CHAT_DB = TMP / "chat.db"
+check("mood_domain 有 settle", hasattr(mood_domain_mod, "settle"))
+check("mood_store 有 load", hasattr(mood_store_mod, "load"))
 files_mod.SAVE_DIR, files_mod.IMAGE_DIR = TMP / "files", TMP / "files" / "images"
 files_mod.PENDING_JSON = TMP / "last-file.json"
 files_mod.AGENT_INBOX = TMP / "agent-inbox"
