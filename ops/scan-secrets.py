@@ -23,6 +23,8 @@ RULES = [
      "把 token 直接写在代码里"),
     ("public-ip", re.compile(r"\b(?:[1-9]\d{0,2}\.){3}[1-9]\d{0,2}\b"),
      "公网 IP（文档里请用 <SERVER_IP>）"),
+    ("home-path", re.compile(r"[A-Za-z]:\\+Users\\+", re.I),
+     "本地绝对路径（会带出用户名，文档里请用相对路径）"),
 ]
 
 SKIP_SUFFIX = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".ico", ".woff", ".woff2")
