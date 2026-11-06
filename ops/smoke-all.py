@@ -121,7 +121,8 @@ class FakeClient:
 
 # ---------- 路径重定向 ----------
 from app_core import (  # noqa: E402
-    chat as chat_mod, diary as diary_mod, files as files_mod, followup as fu_mod,
+    chat as chat_mod, chat_turn as chat_turn_mod,
+    diary as diary_mod, files as files_mod, followup as fu_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     memory_common as memory_common_mod, memory_embed as memory_embed_mod,
@@ -665,6 +666,9 @@ async def main() -> None:
         await call("web.web_open", web_mod.web_open, core, "https://example.com")
 
         # ---------- chat 补充 ----------
+        check("chat_turn 流水线",
+          hasattr(chat_turn_mod.ChatTurnMixin, "_turn_prepare")
+          and bool(getattr(chat_turn_mod.Turn, "__dataclass_fields__", None)))
         real = chat_mod.ChatCore()
         real.llm.key_fn = lambda: "sk-test"
         await real.init_db()
