@@ -123,7 +123,7 @@ class FakeClient:
 from app_core import (  # noqa: E402
     chat as chat_mod, diary as diary_mod, files as files_mod, followup as fu_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
-    meme as meme_mod, memory as memory_mod,
+    meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     mood as mood_mod, remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     shadow as shadow_mod, summarize as summarize_mod,
@@ -627,6 +627,8 @@ async def main() -> None:
         check("memory.embed 结构", isinstance(emb, list) and emb and emb[0][:3] == VEC, str(emb)[:36])
         mem = core.memory
         check("memory._all_vectors", isinstance(mem._all_vectors(), list))
+        _ranked = memory_score_mod.rank([0.4, 0.2, 0.1], None, None, None, time.time())
+        check("memory_score.rank", len(_ranked) == 3)
         check("memory.forgotten_important", isinstance(mem.forgotten_important(), list))
         mem.add_document("体检记忆", "private:10001", 0.9, ["体检"], ["事实"], vec=VEC)
         await call("memory.ensure_vectors", mem.ensure_vectors)
