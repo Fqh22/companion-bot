@@ -287,6 +287,24 @@ def merge_list(path: Path, title: str, items: list[str], cap: int = 24) -> list[
     return cur
 
 
+# 「没搞懂」vs「信息缺口」。后者问出来很越界：「你家庭情况还没提过」不是问题。
+_CURIOUS_BAD = re.compile(
+    r"还没(提过|讲过|说过|确认|答|说)|没提过|没讲过|没说过|没说|一直没|没定|"
+    r"不清楚|不知道|未确认|尚未")
+
+
+def curious_ok(text: str) -> bool:
+    """这条「没搞懂的事」值不值得以后主动问。
+
+    线上清单里混进过「他的家庭情况还没提过」「投技术还是非技术一直没讲」——
+    那是信息缺口，不是他没讲清楚的问题，问出来只会让人不舒服。
+    """
+    t = (text or "").strip()
+    if not t or len(t) > 120:
+        return False
+    return not _CURIOUS_BAD.search(t)
+
+
 def resolve_curious(items: list[str]) -> int:
     cur = read_list(CURIOUS)
     if not cur or not items:
@@ -376,6 +394,7 @@ def apply_review(data: dict, day: str | None = None) -> dict:
     out["corrections"] = len(corr)
 
     cur = [str(c).strip() for c in (data.get("curious") or []) if str(c).strip()]
+    cur = [c for c in cur if curious_ok(c)]
     if cur:
         merge_list(CURIOUS, "还没搞懂的事", cur)
     out["curious"] = len(cur)

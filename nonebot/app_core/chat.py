@@ -778,7 +778,8 @@ class ChatCore:
             try:
                 followup.confirm_pending(user_text)
                 res = followup.resolve(user_text)
-                if res.get("done") or res.get("confirm") or res.get("status"):
+                if (res.get("done") or res.get("confirm")
+                        or res.get("status") or res.get("drop")):
                     followup.apply(res)
                     log.info("[chat] followup %s", res)
                 if res.get("done"):
@@ -791,6 +792,10 @@ class ChatCore:
                         turn.extra_system.append(
                             "他像是在说「%s」已经办完了，但你没把握："
                             "在回复里顺口确认一句，别直接当成已完成。" % names[0])
+                if res.get("drop"):
+                    turn.extra_system.append(
+                        "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
+                        "这轮别提它，也别追问进展。")
             except Exception:
                 pass
 

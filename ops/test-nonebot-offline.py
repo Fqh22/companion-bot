@@ -1121,6 +1121,31 @@ async def main() -> None:
     texts2 = [x["text"] for x in followup_mod.due_for_asking(1000)]
     check("问过之后进入冷却", "整理季度报告" not in texts2, str(texts2))
 
+    # 准入判据：不是所有「未关闭」都值得问
+    check("机器人自己的待办不进跟进",
+          not followup_mod.askable("我需要主动整理他讲的方法论"))
+    check("「他还没回复」的元笔记不进跟进",
+          not followup_mod.askable("他还没回复10道MBTI测试题的答案"))
+    check("一次性日程不进跟进",
+          not followup_mod.askable("当天下午3:00参加硬件检测岗面试"))
+    check("他的真实待办保留", followup_mod.askable("整理季度报告"))
+    check("add 直接拦住不合格的",
+          not followup_mod.add("我需要主动整理他讲的方法论", "memory", "doc-bad"))
+
+    followup_mod.add("三十天前的旧账", "memory", "doc-old-age")
+    _con = sqlite3.connect(TMP / "chat.db")
+    with _con:
+        _con.execute("UPDATE followups SET created_ts=? WHERE text='三十天前的旧账'",
+                     (time.time() - 30 * 86400,))
+    _con.close()
+    check("超过两周的旧账不再问",
+          "三十天前的旧账" not in [x["text"] for x in followup_mod.due_for_asking(1000)])
+    _con = sqlite3.connect(TMP / "chat.db")
+    with _con:
+        _con.execute("UPDATE followups SET status='cancelled', done=1 "
+                     "WHERE text='三十天前的旧账'")
+    _con.close()
+
     # 上一版直接 any(词 in 文本)，「还没搞定」会被判成办完 → 这件事再也不会被问。
     check("「还没搞定」不算办完", not followup_mod.resolve("季度报告还没搞定")["done"])
     check("「没交了」不算办完", not followup_mod.resolve("季度报告没交了")["done"])
@@ -2290,6 +2315,22 @@ async def main() -> None:
     check("没问过的短答复不乱归因",
           _fid_of("准备下周的分享") not in (followup_mod.resolve("改完了").get("done") or []))
 
+    # 「已经答过了」也是关闭信号：线上回过这句，但账单一直挂着，5 天后又问一遍
+    _res3 = followup_mod.resolve("已经答过了")
+    check("「已经答过了」也算关闭", _fids in (_res3.get("done") or []), str(_res3))
+
+    # 「忘了 / 算了」要关闭但不算完成，别再追问
+    followup_mod.add("那件忘了的事", "memory", "doc-drop")
+    _fidd = _fid_of("那件忘了的事")
+    followup_mod.mark_asked([_fidd])
+    _res4 = followup_mod.resolve("忘了")
+    check("「忘了」归到刚问过的那条", _fidd in (_res4.get("drop") or []), str(_res4))
+    followup_mod.apply(_res4)
+    _con = sqlite3.connect(TMP / "chat.db")
+    _st = _con.execute("SELECT status, done FROM followups WHERE id=?", (_fidd,)).fetchone()
+    _con.close()
+    check("「忘了」标成已取消而不是完成", _st == ("cancelled", 1), str(_st))
+
     _cold = prompt_fresh.style_block("嗯", [], {}, [], burst=3,
                                      recent_user_lens=[1, 1, 2])
     check("连回短句判为冷淡", "别拉长" in _cold and "可以接一句长的" not in _cold, _cold)
@@ -2792,6 +2833,10 @@ async def main() -> None:
             check("复盘写入的纠正保留原标签", "[图片] 别瞎猜糊图" in raw_corr, raw_corr[:40])
             check("没标签的纠正被补成通用", "[通用] 别一口气发太长" in raw_corr, raw_corr[-30:])
             check("apply_review 返回纠正条数", res_w["corrections"] == 3, str(res_w))
+            check("信息缺口不进好奇清单",
+                  not learn_mod.curious_ok("他的家庭情况还没提过"))
+            check("真正的技术疑问保留",
+                  learn_mod.curious_ok("跨库 join 和 livingmemory 会话语义搜索怎么解决的"))
             check("复盘日记被写出", (learn_mod.LEARN / "2026-11-03.md").exists())
             check("自我认知被更新",
                   "熟人" in learn_mod.PROFILE.read_text(encoding="utf-8"))

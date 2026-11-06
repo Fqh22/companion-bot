@@ -157,6 +157,8 @@ async def _compose(topic: str, why: str, mood_hint: str = "") -> str:
         "你在私聊里主动跟主人提一句，像突然想起来那样。"
         "15-45 字，一句话为主；不要像提醒事项，不要用「提醒你」「别忘了」这种句式；"
         "可以带一点自己的判断或关心，按你平时的人设说话。"
+        "【时间措辞】只有为什么里明确写了「今天/刚刚」才说「刚刚/你刚说」；"
+        "其余一律用「之前」。超过 3 天的事不要提具体时间，更不要假装是刚发生的。"
     )
     if mood_hint:
         system += f"\n你此刻的状态：{mood_hint}。语气和长度要跟着这个状态走。"
@@ -178,12 +180,15 @@ def _candidates() -> tuple[list, list, list]:
     fu = []
     try:
         for it in followup.due_for_asking(5):
-            fu.append((f"fu:{it['id']}", it["text"], "之前他说要做的事，顺口问问进展"))
+            days = max(0, int((time.time() - float(it["created"] or 0)) / 86400))
+            when = "今天" if days == 0 else f"约 {days} 天前"
+            fu.append((f"fu:{it['id']}", it["text"],
+                       f"{when}他说要做的事，顺口问问进展"))
     except Exception:
         pass
     cu = [("cur:" + hashlib.sha1(x.encode("utf-8")).hexdigest()[:8], x,
-           "之前没讲清楚，顺口问一句")
-          for x in learn.read_list(learn.CURIOUS)]
+           "之前没讲清楚的事（可能有一阵子了），顺口问一句")
+          for x in learn.read_list(learn.CURIOUS) if learn.curious_ok(x)]
     me = []
     try:
         for r in core.memory_forgotten(3):
