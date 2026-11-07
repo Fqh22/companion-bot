@@ -506,12 +506,13 @@ class ChatCore(ChatTurnMixin):
                        open_items: str = "",
                        profile: str = "",
                        persona: dict | None = None,
-                       style_mode: str = "rules") -> list[dict]:
+                       style_mode: str = "rules",
+                       context_format: str = "legacy") -> list[dict]:
         """拼 prompt：规则在 prompt.py，这里只负责把人格传进去。"""
         return prompt_mod.build_messages(
             persona or self.persona, history, user_text, memories, mood_text, knowledge,
             skills, images, extra_system, digest, DIGEST_MAX, lessons, open_items,
-            profile, style_mode)
+            profile, style_mode, context_format)
 
     async def complete_raw(self, *a, **kw) -> dict:
         """LLM 调用本体在 llm.py，这里只是让 ChatCore 保持原接口。"""
@@ -637,6 +638,14 @@ class ChatCore(ChatTurnMixin):
         except Exception:
             mode = "model"
         return "rules" if mode == "rules" else "model"
+
+    def _context_format(self) -> str:
+        """compact = 单背景块；legacy = 旧的分块注入。未知值按 compact。"""
+        try:
+            mode = str((config.load().get("chat") or {}).get("context_format", "compact")).lower()
+        except Exception:
+            mode = "compact"
+        return "legacy" if mode == "legacy" else "compact"
 
     def _thinking_for(self, user_text: str, images: list | None) -> bool | None:
         """这一轮要不要开思考。None = 用默认（开）。

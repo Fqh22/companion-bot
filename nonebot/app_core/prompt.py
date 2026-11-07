@@ -226,6 +226,67 @@ MODEL_FIRST_EXAMPLES = [
     ("这报错怎么改", "先看堆栈第一行，贴一下？"),
     ("我该不该换工作", "先算下手里能撑几个月，再决定。"),
 ]
+MODEL_FIRST_TAIL = (
+    "【这轮先做】先判断他是在分享、吐槽、问问题，还是让你做事。"
+    "表情、贴图、短推论：先给反应，不分析、不建议。"
+    "发送前自检：如果像分析/总结，删掉解释，改成一句反应。"
+)
+CONTEXT_CHAR_BUDGET = 1200
+
+
+def _compact_background(memories, knowledge: str, skills, lessons: str,
+                        open_items: str) -> str:
+    """把动态背景收成一块：保留来源标签，超预算从低优先级开始丢。"""
+    sections: list[tuple[str, str]] = []
+
+    mem = [m for m in (memories or []) if m.get("text")][:3]
+    if mem:
+        lines = [f"- [记忆] {age_label(m.get('age_days'))}{clip(m['text'], 160)}"
+                 for m in mem]
+        sections.append(("memory", "相关记忆：\n" + "\n".join(lines)))
+
+    if knowledge:
+        sections.append(("knowledge",
+                         "笔记索引（细节用 kb_search）：\n" + clip(knowledge, 500)))
+
+    if skills:
+        one = next((s for s in skills if s and s.strip()), "")
+        if one:
+            sections.append(("skills", "以前的做法：\n" + clip(one, 300)))
+
+    ls = [x.strip() for x in (lessons or "").splitlines() if x.strip()][:2]
+    if ls:
+        sections.append(("lessons", "他纠正过：\n" + "\n".join(
+            "- " + x.lstrip("- ")[:40] for x in ls)))
+
+    oi = [x.strip() for x in (open_items or "").splitlines() if x.strip()][:2]
+    if oi:
+        sections.append(("open", "还没跟进：\n" + "\n".join(
+            "- " + x.lstrip("- ")[:40] for x in oi)))
+
+    # 规则/记忆优先；先丢待办、纠正、技能、笔记，最后才动记忆
+    drop_order = ["open", "lessons", "skills", "knowledge"]
+    text = "\n\n".join(t for _, t in sections)
+    while len(text) > CONTEXT_CHAR_BUDGET and drop_order:
+        drop = drop_order.pop(0)
+        sections = [s for s in sections if s[0] != drop]
+        text = "\n\n".join(t for _, t in sections)
+    if len(text) > CONTEXT_CHAR_BUDGET:
+        # 还是超：记忆只留两条，再不行留一条
+        for keep in (2, 1):
+            mem = [s for s in sections if s[0] == "memory"]
+            if not mem:
+                break
+            lines = mem[0][1].splitlines()
+            head, items = lines[0], lines[1:]
+            items = items[:keep]
+            sections = [s for s in sections if s[0] != "memory"]
+            sections.insert(0, ("memory", "\n".join([head] + items)))
+            text = "\n\n".join(t for _, t in sections)
+            if len(text) <= CONTEXT_CHAR_BUDGET:
+                break
+    return text
+
 
 
 def is_reaction_turn(text: str, images: int = 0, image_fix: bool = False) -> bool:
@@ -503,7 +564,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
                    lessons: str = "",
                    open_items: str = "",
                    profile: str = "",
-                   style_mode: str = "rules") -> list[dict]:
+                   style_mode: str = "rules",
+                   context_format: str = "legacy") -> list[dict]:
     """拼 prompt。两条原则：**约束放两端、参考材料贴提问** + **稳定前缀往前放**。
 
     顺序：人格 → few-shot → 纪要 → 历史 → 情绪 → 记忆/知识索引/技能 → 当前提问。
@@ -547,36 +609,47 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
         msgs.append({"role": "user", "content": dialogs[i]})
         msgs.append({"role": "assistant", "content": dialogs[i + 1]})
     msgs.extend(history)
-    if mood_text:
-        msgs.append({"role": "system", "content": mood_text})
-    if memories:
-        block = "\n".join(f"- {age_label(m.get('age_days'))}{clip(m['text'], 220)}"
-                          for m in memories if m.get("text"))
-        if block:
-            msgs.append({"role": "system", "content": f"[你记得的事]\n{block}"})
-    if knowledge:
-        msgs.append({"role": "system", "content": (
-            f"[你的知识索引]\n{clip(knowledge, 1000)}\n"
-            "（要细节就挑一个标题用 kb_read 打开；索引里没有再用 kb_search 搜）\n"
-            "标着「未验证 / 久未复核」的是你自己以前记的，可能过时、也可能当时就记错了："
-            "当参考，别当事实断言；拿不准就直接说不确定，或者问他一句。")})
-    if skills:
-        block = "\n\n".join(clip(s, 600) for s in skills)
-        if block:
-            msgs.append({"role": "system", "content": f"[你以前总结的做法]\n{block}"})
-    if lessons:
-        # 他纠正过的事：以前只写进文件、复盘时自查，聊天时看不到，等于没学到。
-        # 放在这里（知识/技能之后、易变区之前）不影响缓存前缀。
-        msgs.append({"role": "system", "content": (
-            f"[他纠正过你的事]\n{clip(lessons, 400)}\n（这些都是真踩过的坑，别再犯。）")})
-    if open_items:
-        # 我答应过、还没跟进的事。放进 prompt 它才记得，否则只靠主动消息那条路。
-        msgs.append({"role": "system", "content": (
-            f"[我还没跟进的]\n{clip(open_items, 300)}\n"
-            "（自然聊到就提一句，别硬cue，也别一次问好几件。）")})
+    compact = str(context_format).lower() == "compact"
+    if compact:
+        if mood_text:
+            msgs.append({"role": "system", "content": "【现在】" + clip(mood_text, 200)})
+        bg = _compact_background(memories, knowledge, skills, lessons, open_items)
+        if bg:
+            msgs.append({"role": "system", "content": "【背景】\n" + bg})
+    else:
+        if mood_text:
+            msgs.append({"role": "system", "content": mood_text})
+        if memories:
+            block = "\n".join(f"- {age_label(m.get('age_days'))}{clip(m['text'], 220)}"
+                              for m in memories if m.get("text"))
+            if block:
+                msgs.append({"role": "system", "content": f"[你记得的事]\n{block}"})
+        if knowledge:
+            msgs.append({"role": "system", "content": (
+                f"[你的知识索引]\n{clip(knowledge, 1000)}\n"
+                "（要细节就挑一个标题用 kb_read 打开；索引里没有再用 kb_search 搜）\n"
+                "标着「未验证 / 久未复核」的是你自己以前记的，可能过时、也可能当时就记错了："
+                "当参考，别当事实断言；拿不准就直接说不确定，或者问他一句。")})
+        if skills:
+            block = "\n\n".join(clip(s, 600) for s in skills)
+            if block:
+                msgs.append({"role": "system", "content": f"[你以前总结的做法]\n{block}"})
+        if lessons:
+            # 他纠正过的事：以前只写进文件、复盘时自查，聊天时看不到，等于没学到。
+            # 放在这里（知识/技能之后、易变区之前）不影响缓存前缀。
+            msgs.append({"role": "system", "content": (
+                f"[他纠正过你的事]\n{clip(lessons, 400)}\n（这些都是真踩过的坑，别再犯。）")})
+        if open_items:
+            # 我答应过、还没跟进的事。放进 prompt 它才记得，否则只靠主动消息那条路。
+            msgs.append({"role": "system", "content": (
+                f"[我还没跟进的]\n{clip(open_items, 300)}\n"
+                "（自然聊到就提一句，别硬cue，也别一次问好几件。）")})
     for extra in (extra_system or []):
         if extra:
             msgs.append({"role": "system", "content": extra})
+    if str(style_mode).lower() == "model":
+        # 尾部锚点：只重复最高优先级，不把整段规则再写一遍。
+        msgs.append({"role": "system", "content": MODEL_FIRST_TAIL})
     if images:
         # 图不是"要我分析的东西"，是"他想让我知道的事"。旧提示写死了「多半是截图，
         # 帮我转录」，结果任何一张图它都一本正经地分析构图和参数。

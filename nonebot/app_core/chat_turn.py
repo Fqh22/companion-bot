@@ -260,7 +260,8 @@ class ChatTurnMixin:
                                         lessons=turn.lessons, open_items=turn.open_items,
                                         profile=turn.profile_block,
                                         persona=self.persona_for(turn.session),
-                                        style_mode=self._style_mode())
+                                        style_mode=self._style_mode(),
+                                        context_format=self._context_format())
         await self._log_prompt(turn.session, turn.msgs, digest=turn.digest,
                                images=turn.images)
         # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出

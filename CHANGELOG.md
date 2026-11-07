@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-07 · 注入压缩：compact 背景 + 尾部锚点
+
+- 新增 chat.context_format，默认 compact：记忆/笔记/技能/纠正/待办合成一个【背景】块，
+  带 [记忆] / 笔记索引 来源标签，总预算 1200 字，超了先丢待办/纠正/技能/笔记。
+- 知识索引从 1000 字压到 500 字，技能只留 1 条、纠正/待办各 2 条。
+- model 模式在用户消息前加 2 行尾部锚点，只重复最高优先级，不再复述整段规则。
+- legacy 分块注入完整保留；改 chat.context_format=legacy 可回到旧注入（通常同时 style_mode=rules）。
+- 648 离线 / 237 全链路 / 81 agentd / 48 面板；云端 6/6。
+
 ## 2026-11-07 · 回复策略：模型优先（style_mode）
 
 - 新增 chat.style_mode，默认 model：跳过 style_block / is_reaction_turn / 剪建议 / 软语气，

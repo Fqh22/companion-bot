@@ -110,7 +110,8 @@ async def main() -> None:
     # model 模式另有独立用例，避免默认值一改就整片误报。
     config_mod._cache = {
         **config_mod.load(),
-        "chat": {**(config_mod.load().get("chat") or {}), "style_mode": "rules"},
+        "chat": {**(config_mod.load().get("chat") or {}),
+                 "style_mode": "rules", "context_format": "legacy"},
     }
     _persona = TMP / "persona.json"
     _persona.write_text(json.dumps({"system_prompt": "测试人格", "begin_dialogs": []},
@@ -2300,6 +2301,35 @@ async def main() -> None:
     }
     check("style_mode 可切到 model", core._style_mode() == "model")
     config_mod._cache = _saved_style
+
+    # ---- compact 注入：一个背景块 + 尾部锚点 ----
+    _m_compact = prompt_fresh.build_messages(
+        {}, [], "在吗", style_mode="model", context_format="compact",
+        memories=[{"text": "他提过在改简历", "age_days": 3}],
+        knowledge="简历第一屏\nBOSS 打招呼",
+        skills=["先给结论"], lessons="- 别瞎猜", open_items="- 问他简历进度")
+    _sys = [m["content"] for m in _m_compact if m["role"] == "system"]
+    _bg = next((s for s in _sys if s.startswith("【背景】")), "")
+    check("compact 合并成单背景块", bool(_bg), str(_sys[-2:])[:80])
+    check("compact 不再分块注入",
+          not any("[你记得的事]" in s or "[你的知识索引]" in s for s in _sys))
+    check("compact 背景有来源标签", "[记忆]" in _bg and "笔记索引" in _bg, _bg[:80])
+    check("compact 有尾部锚点", any("【这轮先做】" in s for s in _sys))
+    check("尾部锚点在背景之后", _sys.index(_bg) < next(
+        i for i, s in enumerate(_sys) if "【这轮先做】" in s))
+    check("compact 背景不超预算", len(_bg) <= 1300, str(len(_bg)))
+    _m_legacy = prompt_fresh.build_messages(
+        {}, [], "在吗", context_format="legacy",
+        memories=[{"text": "他提过在改简历", "age_days": 3}])
+    check("legacy 仍分块", any("[你记得的事]" in str(m.get("content"))
+                                for m in _m_legacy))
+    _saved_ctx = config_mod._cache
+    config_mod._cache = {
+        **config_mod.load(),
+        "chat": {**(config_mod.load().get("chat") or {}), "context_format": "compact"},
+    }
+    check("context_format 可切到 compact", core._context_format() == "compact")
+    config_mod._cache = _saved_ctx
 
     # ---- 事后硬剪结尾建议（模型改不掉，只能剪） ----
     _c1, _h1 = prompt_fresh.strip_advice_tail("写还是串行的。你可以试试 BEGIN IMMEDIATE。")

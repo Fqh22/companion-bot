@@ -116,6 +116,9 @@ DEFAULTS = {
         # rules = 旧的长度/形式/反应规则；model = 只给人格和例子，让模型自己判断。
         # 回退时把它改成 rules 并重启，不需要回滚代码。
         "style_mode": "model",
+        # compact = 记忆/知识/技能/纠正/待办合成一个【背景】块并限预算；
+        # legacy = 旧的分块注入。回退只改这里。
+        "context_format": "compact",
     },
     # 群聊：独立链路（见 app_core/group.py）。默认关闭，白名单为空 = 空跑。
     "group": {
