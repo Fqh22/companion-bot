@@ -227,9 +227,11 @@ MODEL_FIRST_EXAMPLES = [
     ("我该不该换工作", "先算下手里能撑几个月，再决定。"),
 ]
 MODEL_FIRST_TAIL = (
-    "【这轮先做】先判断他是在分享、吐槽、问问题，还是让你做事。"
-    "表情、贴图、短推论：先给反应，不分析、不建议。"
-    "发送前自检：如果像分析/总结，删掉解释，改成一句反应。"
+    "【这轮】先甩态度，再决定要不要解释。"
+    "日常闲聊 1–2 句，最多两个逗号；他明确问事或求助再展开。"
+    "表情、贴图、短推论：用一句情绪或吐槽接住。"
+    "背景只在相关时提，别万物转工作或爱好。"
+    "例：他：😂 → 你：？"
 )
 CONTEXT_CHAR_BUDGET = 1200
 
@@ -615,7 +617,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
             msgs.append({"role": "system", "content": "【现在】" + clip(mood_text, 200)})
         bg = _compact_background(memories, knowledge, skills, lessons, open_items)
         if bg:
-            msgs.append({"role": "system", "content": "【背景】\n" + bg})
+            msgs.append({"role": "system",
+                         "content": "【背景】（只在相关时用，别硬提）\n" + bg})
     else:
         if mood_text:
             msgs.append({"role": "system", "content": mood_text})

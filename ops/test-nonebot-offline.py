@@ -2314,9 +2314,11 @@ async def main() -> None:
     check("compact 不再分块注入",
           not any("[你记得的事]" in s or "[你的知识索引]" in s for s in _sys))
     check("compact 背景有来源标签", "[记忆]" in _bg and "笔记索引" in _bg, _bg[:80])
-    check("compact 有尾部锚点", any("【这轮先做】" in s for s in _sys))
+    check("compact 有尾部锚点", any("【这轮】" in s for s in _sys))
+    check("尾部有短例子", any("😂 → 你：？" in s for s in _sys))
     check("尾部锚点在背景之后", _sys.index(_bg) < next(
-        i for i, s in enumerate(_sys) if "【这轮先做】" in s))
+        i for i, s in enumerate(_sys) if "【这轮】" in s))
+    check("背景有被动触发提示", "只在相关时用" in _bg, _bg[:40])
     check("compact 背景不超预算", len(_bg) <= 1300, str(len(_bg)))
     _m_legacy = prompt_fresh.build_messages(
         {}, [], "在吗", context_format="legacy",
