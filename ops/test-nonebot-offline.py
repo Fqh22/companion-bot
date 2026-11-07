@@ -2286,7 +2286,9 @@ async def main() -> None:
     _m_rules = prompt_fresh.build_messages({}, [], "😂", style_mode="rules")
     check("model 模式带怎么回指南",
           any("【怎么回】" in str(m.get("content")) for m in _m_model))
-    check("model 模式带例子", any(m.get("content") == "？" for m in _m_model))
+    check("model 模式不用代码例子", not any(m.get("content") == "？" for m in _m_model))
+    check("model 模式有尾部节奏例子",
+          any("他：😂 → 你：？" in str(m.get("content")) for m in _m_model))
     check("rules 模式不带模型指南",
           not any("【怎么回】" in str(m.get("content")) for m in _m_rules))
     _m_img_model = prompt_fresh.build_messages({}, [], "看这个", images=["x"],
