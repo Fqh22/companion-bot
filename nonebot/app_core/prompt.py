@@ -198,6 +198,49 @@ EXPAND_WEAK = ("怎么", "对比", "区别", "帮我")
 # 「他在说自己的事」。这类话不该被分析、被总结、被说教。
 FEELING_WORDS = ("累", "烦", "难受", "崩溃", "委屈", "郁闷", "焦虑", "睡不着", "没劲", "撑不住")
 
+# 「这条不是题目」：表情、贴图、以及冲着你来的短推论/调侃。
+# 人收到这类话的第一反应是情绪或吐槽，不是先分析再给建议；
+# 旧提示里的「图在说什么/文字在说什么/两者一致吗」会把它们全变成阅读理解。
+_REACTION_PAT = re.compile(
+    r"你(是不是|该不会|肯定|其实|就是|又|在|这|那|怎么这么)|"
+    r"(我猜|说明|看来|所以|原来|敢情|合着)你|你这")
+_EMOJI_RE = re.compile(
+    "[" + chr(0x1F000) + "-" + chr(0x1FAFF)
+    + chr(0x2600) + "-" + chr(0x27BF)
+    + chr(0xFE0F) + chr(0x200D)
+    + chr(0x2B00) + "-" + chr(0x2BFF) + "]+")
+_FACE_TOKEN_RE = re.compile(r"\[[^\[\]]{1,8}\]")
+_LAUGH_ONLY_RE = re.compile(r"^[哈嘿笑死绷草6啊这emmm233~…。！？?？\s]+$", re.I)
+
+
+def is_reaction_turn(text: str, images: int = 0, image_fix: bool = False) -> bool:
+    """这条消息是不是「只要接住」，而不是「需要分析」。
+
+    判据故意保守：只认纯表情/贴图、短调侃、冲着你来的短推论。
+    长文、求助、征求意见仍然走原来的展开逻辑。
+    """
+    t = (text or "").strip()
+    if image_fix:
+        return False
+    if images and not t:
+        return True
+    core = _FACE_TOKEN_RE.sub("", _EMOJI_RE.sub("", t))
+    core = core.strip(" \t\r\n，。！？!?~…、；：")
+    if t and not core:
+        return True
+    if wants_advice(t):
+        return False
+    # 他在纠正事实/指责瞎编时，不能当调侃接；该认错就认错。
+    if any(w in t for w in ("不对", "错了", "瞎编", "胡说", "记错", "说错", "编的")):
+        return False
+    if len(t) <= 30 and _REACTION_PAT.search(t):
+        return True
+    if len(t) <= 10 and _LAUGH_ONLY_RE.match(t):
+        return True
+    if images and len(t) <= 12:
+        return True
+    return False
+
 
 def length_hint(user_text: str, mood: dict | None = None,
                 recent_lens: list[int] | None = None, burst: int = 1,
@@ -364,6 +407,15 @@ def style_block(user_text: str, history: list[dict] | None = None,
     lines: list[str] = []
     mode = image_mode(t) if images else ""
 
+    # 表情/贴图/短推论：这一轮只要反应，不要阅读理解。
+    # 优先级高于长度和形式，否则「只做一件事：给判断」又把它推回分析。
+    if is_reaction_turn(t, images, mode == "fix"):
+        lines.append("· 这条不是题目：别分析、别解释、别给建议；直接给情绪、吐槽或反问，短一点。")
+        if images:
+            lines.append("· 图是分享/表情，接住氛围就够；别描述画面、别拆文字。")
+        return ("【这一轮怎么接】先接住他，不要先理解再回答。\n"
+                + "\n".join(lines))
+
     lhint = length_hint(t, mood, recent_lens, burst=burst,
                         recent_user_lens=recent_user_lens) if t else ""
     expand = "可以展开" in lhint
@@ -507,23 +559,23 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
     if images:
         # 图不是"要我分析的东西"，是"他想让我知道的事"。旧提示写死了「多半是截图，
         # 帮我转录」，结果任何一张图它都一本正经地分析构图和参数。
-        # 现在的结构：① 画面对比文字（一致/矛盾/无关）② 按证据选回应强度 ③ 分场景分寸。
-        hint = (
-            "（他发了图。开口前先过三件事：**图在说什么、他的文字在说什么、"
-            "两者是一致、矛盾还是无关**。\n"
-            "· 一致：顺着接。分享情绪别描述画面、别分析构图；吐槽跟他站一边；"
-            "展示成果先认可；排错认真看并逐字转录关键行；问东西说清是什么，拿不准先搜。\n"
-            "· 矛盾（「没事」配很丧的图、「哈哈哈」配崩溃截图）：**别裁决信哪个，"
-            "也别拆穿反讽**。以图的情绪理解他的状态，把文字当修辞，用「这截图……发生啥了」"
-            "这种承接+开放问；别说「看来你心情不错」，也别说「你在说反话吧」。\n"
-            "· 无关：各接一句，别硬扯到一起。\n"
-            "回应强度按证据选，**证据不足就降级**：L1 认可（默认）→ L2 关联上下文"
-            "（当前对话确实在聊相关的事才用）→ L3 情感推断（他文字里有情绪、"
-            "或连续几轮同主题才允许）。宁可平淡，不可冒犯。\n"
-            "氛围图只共情或问一句在哪拍的，**禁止**「图中显示…」这种信息提取。"
-            "多张图按组回应（「这几张连起来看…」），别逐张点评。\n"
-            "看不清就说看不清；判错了按他下一句纠正。没配文字默认按分享处理。）"
-        )
+        # 分享/表情只给一句「接住」；只有求助图才走「图-文字-一致性」的细读。
+        if image_mode(user_text) == "fix":
+            hint = (
+                "（他在发图求助。开口前先过三件事：**图在说什么、他的文字在说什么、"
+                "两者是一致、矛盾还是无关**。\n"
+                "· 一致：认真看，逐字转录关键行；排错别猜。\n"
+                "· 矛盾：别裁决信哪个，也别拆穿反讽；先问一句「这截图……发生啥了」。\n"
+                "· 无关：各接一句，别硬扯到一起。\n"
+                "问东西拿不准先搜；多图按组回应，别逐张点评。"
+                "看不清就说看不清；判错了按他下一句纠正。）"
+            )
+        else:
+            hint = (
+                "（他发的是分享/表情，不是题目。先接住情绪或笑点，直接反应；"
+                "别描述画面、别分析构图或文字、别给建议。多张图按一组接。"
+                "看不清就说看不清。）"
+            )
         content: list[dict] = [{"type": "text", "text": f"{user_text}\n{hint}"}]
         from app_core.files import to_data_url
         for p in images:

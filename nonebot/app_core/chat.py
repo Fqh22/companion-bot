@@ -638,7 +638,15 @@ class ChatCore(ChatTurnMixin):
         if not self.thinking_casual:
             return None
         t = (user_text or "").strip()
-        if images or len(t) >= 30:
+        # 表情/贴图/短推论：这类轮次先接情绪，不需要先推理再回答。
+        if prompt_mod.is_reaction_turn(
+                t, len(images or []),
+                bool(images) and prompt_mod.image_mode(t) == "fix"):
+            return False
+        if images:
+            # 求助图仍开思考；分享/表情图不开。
+            return None if prompt_mod.image_mode(t) == "fix" else False
+        if len(t) >= 30:
             return None
         if t.endswith(("？", "?")) or "？" in t or "?" in t:
             return None

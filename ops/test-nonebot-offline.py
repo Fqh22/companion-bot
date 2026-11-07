@@ -2211,6 +2211,17 @@ async def main() -> None:
     b3 = _sb("哈哈", [], {}, [], images=1)
     check("分享图给接氛围提示", "接住氛围" in b3, b3)
     check("分享图省掉时效", "时效" not in b3, b3)
+    b_emoji = _sb("😂", [], {}, [])
+    check("纯表情只要反应", "别分析" in b_emoji and "时效" not in b_emoji, b_emoji)
+    b_react = _sb("你是不是又偷偷看我了", [], {}, [])
+    check("短推论只要反应", "别分析" in b_react and "时效" not in b_react, b_react)
+    check("表情识别", prompt_fresh.is_reaction_turn("😂"))
+    check("括号表情识别", prompt_fresh.is_reaction_turn("[捂脸]"))
+    check("短推论识别", prompt_fresh.is_reaction_turn("你是不是又看我了"))
+    check("征求意见不按反应处理",
+          not prompt_fresh.is_reaction_turn("你觉得我该不该辞职"))
+    check("求助图不按反应处理",
+          not prompt_fresh.is_reaction_turn("这报错怎么改", images=1, image_fix=True))
     b5 = _sb("为什么 SQLite 的 WAL 模式在多进程下这么容易锁住，我不太理解它的机制",
              [{"role": "assistant", "content": "对，" + "很长" * 40},
               {"role": "assistant", "content": "嗯，" + "很长" * 40}], {})
@@ -2258,7 +2269,9 @@ async def main() -> None:
     check("闲聊短句关思考", core._thinking_for("今天好累", None) is False)
     check("带问号不关", core._thinking_for("你觉得呢？", None) is None)
     check("技术词不关", core._thinking_for("这个报错怎么修", None) is None)
-    check("带图不关", core._thinking_for("看这个", ["x.jpg"]) is None)
+    check("分享图关思考", core._thinking_for("看这个", ["x.jpg"]) is False)
+    check("求助图不关", core._thinking_for("这报错怎么改", ["x.jpg"]) is None)
+    check("短推论关思考", core._thinking_for("你是不是又偷偷看我了", None) is False)
     check("长句不关", core._thinking_for("我" * 40, None) is None)
 
     # ---- 事后硬剪结尾建议（模型改不掉，只能剪） ----
@@ -2509,18 +2522,21 @@ async def main() -> None:
     text_part = msgs_img[-1]["content"][0]["text"] if isinstance(
         msgs_img[-1]["content"], list) else ""
     check("带图 prompt 有转录提示", "逐字转录" in text_part, text_part[-30:])
-    # 图片要走「图文比对 + 强度分级」而不是「一律分析」
+    # 求助图才走「图文比对 + 细读」；分享图只要接住。
     check("图片提示要求比对图文", "图在说什么" in text_part and "矛盾" in text_part)
-    check("情绪类图不许分析构图", "别分析构图" in text_part)
-    check("没配文字默认按分享处理", "默认按分享处理" in text_part)
-    check("问东西时要求先搜", "拿不准先搜" in text_part)
     check("排错场景仍要求逐字转录", "逐字转录关键行" in text_part)
     check("矛盾时不拆穿反讽", "别拆穿反讽" in text_part)
-    check("回应强度有 L1/L2/L3 分级", "L1 认可" in text_part and "L3 情感推断" in text_part)
-    check("证据不足必须降级", "证据不足就降级" in text_part)
-    check("氛围图禁止信息提取式回复", "图中显示" in text_part)
-    check("多图按组回应", "别逐张点评" in text_part)
     check("判错时按他的纠正来", "按他下一句纠正" in text_part)
+    check("求助图拿不准先搜", "拿不准先搜" in text_part)
+    check("求助图多图按组", "多图按组" in text_part and "别逐张点评" in text_part)
+
+    msgs_share = core.build_messages([], "哈哈", images=[str(TMP / "nope.jpg")])
+    share_text = msgs_share[-1]["content"][0]["text"] if isinstance(
+        msgs_share[-1]["content"], list) else ""
+    check("分享图不按题目分析", "不是题目" in share_text and "别分析" in share_text,
+          share_text[-40:])
+    check("分享图接住氛围", "接住" in share_text, share_text[-40:])
+    check("分享图不拆文字", "别分析构图或文字" in share_text, share_text[-40:])
 
     # 有图的轮次要把预算提上去（思考会吃输出）
     seen_mt = {}

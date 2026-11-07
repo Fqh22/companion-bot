@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-07 · 拟人修正：表情 / 短推论先接情绪
+
+- 新增 is_reaction_turn：纯表情、贴图、短调侃、冲着你来的短推论，不再走「分析/建议」。
+- 这类轮次关思考、跳过长度/形式/时效规则，只给一句「接住情绪/吐槽/反问」。
+- 图片提示按场景分流：求助图保留图文比对；分享/表情图改成「别描述画面、别拆文字」。
+- 纠正类（不对/错了/瞎编）不按调侃处理，仍要认错。
+- 635 离线 / 237 全链路 / 81 agentd / 48 面板；云端六件套 6/6。
+
 ## 2026-11-06 · 重构第一批：P0 / P1 / P2.1
 
 - P0：新增 ops/lint-layers.py（kernel/domain 依赖方向）与 characterization 基线；CI 接入。
@@ -20,7 +28,7 @@
   followup.py 33 行门面；DB 测试补丁仍生效。
 - **P4.3.2**：remind/scheduler 实现搬进 scheduling/，顶层只留 8 行门面；
   DB/CLEANUP_LOG 动态读取，测试补丁不变。
-- **下一步**：P5（knowledge/integrations，可选）、P6（schema/settings，最后）。
+- **终止**：P5（knowledge/integrations）和 P6（schema/settings）不做，P4 为重构终点。
 
 ## 2026-11-06 · 配置面板 v2：人格 + 巡检话题
 
