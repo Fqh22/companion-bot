@@ -113,6 +113,9 @@ DEFAULTS = {
         # 影子模式：原来同样只在 ChatCore 里用 get 兜底，没进 DEFAULTS。
         "shadow_followup": True,
         "shadow_sample": 0.3,
+        # rules = 旧的长度/形式/反应规则；model = 只给人格和例子，让模型自己判断。
+        # 回退时把它改成 rules 并重启，不需要回滚代码。
+        "style_mode": "model",
     },
     # 群聊：独立链路（见 app_core/group.py）。默认关闭，白名单为空 = 空跑。
     "group": {

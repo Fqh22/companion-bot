@@ -106,6 +106,12 @@ async def main() -> None:
 
     # 全新机器上没有 /opt/nonebot/data/persona.json：给测试一份临时人格，
     # 否则 config_issues() 会一直报「人格文件异常」，和被测逻辑无关。
+    # 旧的 prompt/流式用例测的是 rules 行为；显式锁到 rules，
+    # model 模式另有独立用例，避免默认值一改就整片误报。
+    config_mod._cache = {
+        **config_mod.load(),
+        "chat": {**(config_mod.load().get("chat") or {}), "style_mode": "rules"},
+    }
     _persona = TMP / "persona.json"
     _persona.write_text(json.dumps({"system_prompt": "测试人格", "begin_dialogs": []},
                                    ensure_ascii=False), encoding="utf-8")
@@ -2273,6 +2279,27 @@ async def main() -> None:
     check("求助图不关", core._thinking_for("这报错怎么改", ["x.jpg"]) is None)
     check("短推论关思考", core._thinking_for("你是不是又偷偷看我了", None) is False)
     check("长句不关", core._thinking_for("我" * 40, None) is None)
+
+    # ---- 模型优先：style_mode=model 只给原则和例子，不注入规则块 ----
+    _m_model = prompt_fresh.build_messages({}, [], "😂", style_mode="model")
+    _m_rules = prompt_fresh.build_messages({}, [], "😂", style_mode="rules")
+    check("model 模式带怎么回指南",
+          any("【怎么回】" in str(m.get("content")) for m in _m_model))
+    check("model 模式带例子", any(m.get("content") == "？" for m in _m_model))
+    check("rules 模式不带模型指南",
+          not any("【怎么回】" in str(m.get("content")) for m in _m_rules))
+    _m_img_model = prompt_fresh.build_messages({}, [], "看这个", images=["x"],
+                                               style_mode="model")
+    _img_text = _m_img_model[-1]["content"][0]["text"]
+    check("model 图片提示不预判", "自己判断" in _img_text and "图在说什么" not in _img_text,
+          _img_text[-50:])
+    _saved_style = config_mod._cache
+    config_mod._cache = {
+        **config_mod.load(),
+        "chat": {**(config_mod.load().get("chat") or {}), "style_mode": "model"},
+    }
+    check("style_mode 可切到 model", core._style_mode() == "model")
+    config_mod._cache = _saved_style
 
     # ---- 事后硬剪结尾建议（模型改不掉，只能剪） ----
     _c1, _h1 = prompt_fresh.strip_advice_tail("写还是串行的。你可以试试 BEGIN IMMEDIATE。")

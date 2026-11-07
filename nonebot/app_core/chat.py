@@ -505,12 +505,13 @@ class ChatCore(ChatTurnMixin):
                        lessons: str = "",
                        open_items: str = "",
                        profile: str = "",
-                       persona: dict | None = None) -> list[dict]:
+                       persona: dict | None = None,
+                       style_mode: str = "rules") -> list[dict]:
         """拼 prompt：规则在 prompt.py，这里只负责把人格传进去。"""
         return prompt_mod.build_messages(
             persona or self.persona, history, user_text, memories, mood_text, knowledge,
             skills, images, extra_system, digest, DIGEST_MAX, lessons, open_items,
-            profile)
+            profile, style_mode)
 
     async def complete_raw(self, *a, **kw) -> dict:
         """LLM 调用本体在 llm.py，这里只是让 ChatCore 保持原接口。"""
@@ -628,6 +629,14 @@ class ChatCore(ChatTurnMixin):
         self._sync_llm_db()
         return await self.llm.stream(messages, tools_arg, on_text,
                                      max_tokens=max_tokens, thinking=thinking)
+
+    def _style_mode(self) -> str:
+        """rules = 旧规则；model = 只给人格和例子。未知值按 model。"""
+        try:
+            mode = str((config.load().get("chat") or {}).get("style_mode", "model")).lower()
+        except Exception:
+            mode = "model"
+        return "rules" if mode == "rules" else "model"
 
     def _thinking_for(self, user_text: str, images: list | None) -> bool | None:
         """这一轮要不要开思考。None = 用默认（开）。

@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-07 · 回复策略：模型优先（style_mode）
+
+- 新增 chat.style_mode，默认 model：跳过 style_block / is_reaction_turn / 剪建议 / 软语气，
+  只给人格、原则和 5 条 few-shot，让模型自己判断“接情绪还是展开”。
+- rules 模式完整保留；回退只需把 chat.style_mode 改成 rules 并重启，不用回滚代码。
+- 图片提示在 model 模式下不再预判求助/分享，由模型看图判断。
+- 640 离线 / 237 全链路 / 81 agentd / 48 面板；云端 6/6。
+
 ## 2026-11-07 · 拟人修正：表情 / 短推论先接情绪
 
 - 新增 is_reaction_turn：纯表情、贴图、短调侃、冲着你来的短推论，不再走「分析/建议」。

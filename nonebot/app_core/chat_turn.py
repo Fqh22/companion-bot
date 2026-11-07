@@ -221,20 +221,21 @@ class ChatTurnMixin:
         # 这一轮怎么说：长度 / 形式 / 图片 / 时效 / 纠正 合成**一条**消息。
         # 合并的原因：原来五条 system 消息会互相打架（allow_short 就是打过的补丁），
         # 现在冲突规则集中在一个函数里，可测、只需查一处。
-        try:
-            recent_lens = [len(h.get("content") or "") for h in turn.history
-                           if h.get("role") == "assistant"][-3:]
-            _user_lens = [len(h.get("content") or "") for h in turn.history
-                          if h.get("role") == "user"][-3:]
-            block = prompt_mod.style_block(
-                turn.user_text, turn.history, turn.m, recent_lens,
-                burst=turn.user_text.count("\n") + 1,
-                images=len(turn.images) if turn.images else 0,
-                recent_user_lens=_user_lens)
-            if block:
-                turn.extra_system = list(turn.extra_system) + [block]
-        except Exception as e:  # noqa: BLE001
-            log.debug("风格块生成失败：%s", e)
+        if self._style_mode() != "model":
+            try:
+                recent_lens = [len(h.get("content") or "") for h in turn.history
+                               if h.get("role") == "assistant"][-3:]
+                _user_lens = [len(h.get("content") or "") for h in turn.history
+                              if h.get("role") == "user"][-3:]
+                block = prompt_mod.style_block(
+                    turn.user_text, turn.history, turn.m, recent_lens,
+                    burst=turn.user_text.count("\n") + 1,
+                    images=len(turn.images) if turn.images else 0,
+                    recent_user_lens=_user_lens)
+                if block:
+                    turn.extra_system = list(turn.extra_system) + [block]
+            except Exception as e:  # noqa: BLE001
+                log.debug("风格块生成失败：%s", e)
 
         # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得
         try:
@@ -258,7 +259,8 @@ class ChatTurnMixin:
                                         turn.images, turn.extra_system, turn.digest,
                                         lessons=turn.lessons, open_items=turn.open_items,
                                         profile=turn.profile_block,
-                                        persona=self.persona_for(turn.session))
+                                        persona=self.persona_for(turn.session),
+                                        style_mode=self._style_mode())
         await self._log_prompt(turn.session, turn.msgs, digest=turn.digest,
                                images=turn.images)
         # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出
@@ -267,6 +269,8 @@ class ChatTurnMixin:
 
     async def _turn_generate(self, turn: Turn, on_sentence) -> None:
         """调模型（含流式、重试、降级），产出 turn.text / buffer / sent_parts。"""
+        _model_first = self._style_mode() == "model"
+
         async def sink(delta: str) -> None:
             """流式增量 → 攒够一句就交给 on_sentence 发出去。
 
@@ -279,15 +283,16 @@ class ChatTurnMixin:
             if cut >= 0 and cut < len(turn.buffer) - 1:
                 chunk, turn.buffer = turn.buffer[:cut + 1], turn.buffer[cut + 1:]
                 for part in split_reply(chunk, turn.seg_max):
-                    part = prompt_mod.soften_tone(part)      # 去掉「哈哈哈」这类轻浮语气
+                    if not _model_first:
+                        part = prompt_mod.soften_tone(part)  # 去掉「哈哈哈」这类轻浮语气
                     if not part.strip():
                         continue
                     if turn.held:
                         await on_sentence(turn.held)
                         turn.sent_parts.append(turn.held)
                         turn.held = ""
-                    # 他在征求意见时，建议是答案，不能扣
-                    if not prompt_mod.wants_advice(turn.user_text) \
+                    # 规则模式才扣结尾建议；model 模式让模型自己决定
+                    if not _model_first and not prompt_mod.wants_advice(turn.user_text) \
                             and prompt_mod.is_advice_sentence(part):
                         turn.held = part
                     else:
@@ -363,9 +368,10 @@ class ChatTurnMixin:
             except Exception:  # noqa: BLE001
                 pass
 
-        # 事后硬剪：模型仍会在结尾顺手加一句建议，规则拦不住，就在发出前剪掉。
+        # 事后硬剪只属于 rules 模式；model 模式让模型自己决定，不再二次加工。
         # **但他在征求意见时不剪**——「该不该/怎么办」的答案本身就是建议。
-        _allow_advice = prompt_mod.wants_advice(turn.user_text)
+        _model_first = self._style_mode() == "model"
+        _allow_advice = True if _model_first else prompt_mod.wants_advice(turn.user_text)
         if turn.streamed:
             if turn.held and not _allow_advice:
                 # 扣住的这句一直没等到下一句，说明它就是结尾 —— 丢掉，除非后面还有尾巴
@@ -385,7 +391,7 @@ class ChatTurnMixin:
                 except Exception:  # noqa: BLE001
                     pass
                 turn.held = ""
-        else:
+        elif not _model_first:
             try:
                 # 先去掉轻浮语气词，再剪结尾建议；顺序反了会把「哈哈，建议你…」剪歪
                 _soft = prompt_mod.soften_tone(turn.text or turn.buffer)
