@@ -9,7 +9,9 @@
 - 测试：审批 5/5、入站 6/6；651 离线 / 241 全链路 / 81 agentd / 48 面板。
 - **M5.1**：_handle 把 event_id / user_id / chat_id / reply_to 存进 Turn.meta，
   _run_turn 用 adapters/qq.to_inbound 构造 InboundMessage；adapters/ 移到 nonebot/adapters/
-  以便 bot 进程能直接 import。仍是 QQ 行为，未改审批命令。
+  以便 bot 进程能直接 import。仍是 QQ 行为。
+- **M5.2**：ApprovalPort 增加 CommandApprovalPort（ask 挂起 / resolve 命令），
+  审批测试 10/10；agentd 仍走自己的 HTTP approval，不强行改，等结构化审批再接线。
 
 ## 2026-11-10 · M0：10 条真实对话结构重放
 
