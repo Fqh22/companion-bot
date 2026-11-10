@@ -51,9 +51,10 @@ def memory_candidates(rows: list[dict] | None) -> list[tuple]:
 
 
 def collect(memory_forgotten) -> tuple[list, list, list]:
-    """给插件用的总入口；memory_forgotten 由调用方注入，避免反向依赖 chat。"""
-    try:
-        me = memory_candidates(memory_forgotten())
-    except Exception:
-        me = []
-    return followup_candidates(), curious_candidates(), me
+    """给插件用的总入口；memory_forgotten 由调用方注入，避免反向依赖 chat。
+
+    2026-11-10 按真实使用收窄：只返回 followup。11 天发了 5 条主动消息，
+    curious 3 条 + memory 1 条全部没被回复，唯一接住的是 followup。
+    两个函数保留，想恢复只改这一行；memory_forgotten 参数也为兼容保留。
+    """
+    return followup_candidates(), [], []

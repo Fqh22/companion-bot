@@ -445,7 +445,10 @@ async def main() -> None:
         _hn = help_mod.names()
         check("help 清单非空且不重复",
               len(_hn) > 20 and len(_hn) == len(set(_hn)), f"{len(_hn)} 条")
-        check("help 文案带斜杠", help_mod.text().count("/") >= len(_hn))
+        _ht = help_mod.text() + "\n" + help_mod.debug_text()
+        check("help 文案带斜杠", _ht.count("/") >= len(_hn), f"{_ht.count('/')} / {len(_hn)}")
+        check("日常清单不展开维护命令",
+              "/mem_status" not in help_mod.text() and "/mem_status" in help_mod.debug_text())
 
         # ---------- contradict（矛盾检测） ----------
         check("contradict.parse 认得 pairs",
@@ -622,9 +625,6 @@ async def main() -> None:
         for tname, args in [
             ("note_write", {"title": "工具笔记", "content": "正文", "tag": "体检"}),
             ("note_list", {}),
-            ("skill_save", {"name": "工具技能", "trigger": "工具,体检", "steps": "一步"}),
-            ("skill_list", {}),
-            ("skill_read", {"name": "工具技能"}),
             ("web_search", {"query": "test"}),
             ("web_open", {"url": "https://example.com"}),
             ("diary_read", {}),

@@ -11,6 +11,7 @@ from plugins.chat import core
 
 ping = on_command("ping", priority=5, block=True, permission=SUPERUSER)
 help_cmd = on_command("help", priority=5, block=True, permission=SUPERUSER)
+debug_cmd = on_command("debug", priority=5, block=True, permission=SUPERUSER)
 reload_cmd = on_command("reload_persona", priority=5, block=True, permission=SUPERUSER)
 profile_cmd = on_command("profile", priority=5, block=True, permission=SUPERUSER)
 forget_cmd = on_command("profile_forget", priority=5, block=True, permission=SUPERUSER)
@@ -47,6 +48,12 @@ async def _ping():
 async def _help():
     """/help 由 app_core/help.py 渲染：命令只写一处，lint 保证不漂。"""
     await help_cmd.finish(help_mod.text())
+
+
+@debug_cmd.handle()
+async def _debug():
+    """/debug：维护与排障命令全量。日常清单里只留了 11 条。"""
+    await debug_cmd.finish(help_mod.debug_text())
 
 
 @reload_cmd.handle()

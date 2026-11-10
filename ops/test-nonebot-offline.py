@@ -724,7 +724,6 @@ async def main() -> None:
     names = seen_tools[0] if seen_tools else []
     check("retry 屏蔽 meme_send", "meme_send" not in names)
     check("retry 屏蔽 note_write", "note_write" not in names)
-    check("retry 屏蔽 skill_save", "skill_save" not in names)
     check("retry 保留只读工具", "memory_search" in names, str(names))
 
     # ---------- E. 记忆总结：水位推进、不重复 ----------
@@ -1592,19 +1591,18 @@ async def main() -> None:
     check("刚聊过不打扰", not ok and "刚聊" in why, why)
     ok, why = decide.gate(15, 99999, 99999, 4, 4, {}, [0.1, 0.1, 0.1])
     check("今日已满不开口", not ok and "已满" in why, why)
-    ok, why = decide.gate(15, 99999, 99999, 0, 4, {}, [0.9, 0.1, 0.1])
-    check("抽签没过不开口", not ok and "抽签" in why, why)
-    # 2026-11-05 判据从「我心情好不好」换成「他此刻需不需要有人出现」：
-    # mood 不再决定开不开口，只决定怎么说。
+    # 2026-11-10 收窄：没有话头就不开口，不再抽签（11 天数据：泛话题 4 条 0 回复）
+    ok, why = decide.gate(15, 99999, 99999, 0, 4, {}, [0.1, 0.1, 0.1])
+    check("没有话头不没话找话", not ok and "话头" in why, why)
     ok, why = decide.gate(15, 99999, 99999, 0, 4,
-                          {"valence": -0.8, "energy": 0.2}, [0.1, 0.1, 0.1])
-    check("心情差不拦着开口了（只影响语气）", ok and why == "开口", why)
-    ok, why = decide.gate(15, 99999, 3600, 0, 4, {}, [0.1, 0.1, 0.1])
-    check("刚聊过一小时就别凑上去", not ok and "刚聊" in why, why)
+                          {"valence": -0.8, "energy": 0.2}, [0.1, 0.1, 0.1], threads=1)
+    check("心情差不拦着开口（只影响语气）", ok and "话头" in why, why)
+    ok, why = decide.gate(15, 99999, 600, 0, 4, {}, [0.1, 0.1, 0.1], threads=2)
+    check("刚聊过 10 分钟就别凑上去", not ok and "刚聊" in why, why)
     ok, why = decide.gate(15, 99999, 8 * 3600, 0, 4, {}, [0.1, 0.1, 0.1], threads=2)
     check("他留的话头还悬着就该开口", ok and "话头" in why, why)
     ok, why = decide.gate(15, 99999, 8 * 3600, 0, 4, {}, [0.1, 0.1, 0.1], threads=0)
-    check("没话头就按普通时机开口", ok and why == "开口", why)
+    check("没话头就不开口", not ok and "话头" in why, why)
 
     check("回应率 0 只给 1 条", decide.daily_cap(0.0) == 1, str(decide.daily_cap(0.0)))
     check("回应率 30% 给 2 条", decide.daily_cap(0.3) == 2)

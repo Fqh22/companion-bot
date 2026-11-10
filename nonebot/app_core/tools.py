@@ -21,23 +21,6 @@ TOOLS = [
         "description": "列出最近写过的学习笔记。",
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
-        "name": "skill_save",
-        "description": "把一套可复用的流程保存成技能。用户教了一套做法、或你总结出可复用步骤时调用。steps 要写成能直接执行的：编号步骤，关键分叉写成「如果 A 就 B，否则 C」，末尾补一行「别做：…（因为…）」。超过 1000 字就拆。",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"},
-            "trigger": {"type": "string", "description": "触发词，逗号分隔"},
-            "steps": {"type": "string", "description": "步骤正文，分点写"}},
-            "required": ["name", "trigger", "steps"]}}},
-    {"type": "function", "function": {
-        "name": "skill_list",
-        "description": "列出已有技能名。",
-        "parameters": {"type": "object", "properties": {}}}},
-    {"type": "function", "function": {
-        "name": "skill_read",
-        "description": "读一个技能的完整步骤。",
-        "parameters": {"type": "object", "properties": {"name": {"type": "string"}},
-                       "required": ["name"]}}},
-    {"type": "function", "function": {
         "name": "web_search",
         "description": "联网搜索。需要查实时信息、新闻、最新版本、你不确定的事实，或者想确认某件事时用。",
         "parameters": {"type": "object", "properties": {
@@ -133,13 +116,6 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
         if name == "note_list":
             items = learn.note_list()
             return "\n".join(items) if items else "还没有学习笔记"
-        if name == "skill_save":
-            return learn.skill_save(args.get("name", ""), args.get("trigger", ""), args.get("steps", ""))
-        if name == "skill_list":
-            items = learn.skill_list()
-            return "\n".join(items) if items else "还没有技能"
-        if name == "skill_read":
-            return learn.skill_read(args.get("name", ""))
         if name == "web_search":
             return await web.search(args.get("query", ""), args.get("count", 5) or 5)
         if name == "web_open":

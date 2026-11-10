@@ -23,7 +23,6 @@ diary_write = on_command("diary_write", priority=5, block=True, permission=SUPER
 diary_list = on_command("diary_list", priority=5, block=True, permission=SUPERUSER)
 review_now = on_command("review_now", priority=5, block=True, permission=SUPERUSER)
 weekly_now = on_command("weekly_now", priority=5, block=True, permission=SUPERUSER)
-skill_list = on_command("skill_list", priority=5, block=True, permission=SUPERUSER)
 note_list = on_command("note_list", priority=5, block=True, permission=SUPERUSER)
 kb_reindex = on_command("kb_reindex", priority=5, block=True, permission=SUPERUSER)
 meme_cmd = on_command("meme", priority=5, block=True, permission=SUPERUSER)
@@ -120,12 +119,6 @@ async def _():
 async def _():
     text = await learn.weekly(core)
     await weekly_now.finish(text[:1500])
-
-
-@skill_list.handle()
-async def _():
-    items = learn.skill_list()
-    await skill_list.finish(NL.join(items) if items else "还没有技能")
 
 
 @note_list.handle()
