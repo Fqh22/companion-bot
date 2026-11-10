@@ -36,9 +36,10 @@ from app_core import config, meme, mood, pacing, relational
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
-from app_core.engine import Engine, InboundMessage
+from app_core.engine import Engine
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
+from adapters.qq import to_inbound
 
 core = ChatCore()
 engine = Engine(core)
@@ -67,8 +68,9 @@ _pump: dict[str, asyncio.Task] = {}
 
 
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
-         file: tuple[str, str, str] | None = None) -> None:
-    _turns.add(sid, text=text, images=images, file=file)
+         file: tuple[str, str, str] | None = None,
+         meta: dict | None = None) -> None:
+    _turns.add(sid, text=text, images=images, file=file, meta=meta)
 
 
 def _take(sid: str) -> turn_mod.Turn:
@@ -156,12 +158,17 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     try:
         async with _lock(sid):
             # 总时限：模型/工具再慢也不能让用户无限等
+            msg = to_inbound(
+                session=sid,
+                user_id=str(turn.meta.get("user_id") or ""),
+                chat_id=turn.meta.get("chat_id"),
+                is_group=bool(turn.meta.get("is_group")),
+                text=prompt, images=list(turn.images or []),
+                event_id=turn.meta.get("event_id"),
+                reply_to=turn.meta.get("reply_to"),
+                store_text=stored)
             out = await asyncio.wait_for(
-                engine.handle(
-                    InboundMessage(session=sid, text=prompt,
-                                   images=list(turn.images or []),
-                                   store_text=stored),
-                    on_sentence=on_sentence, caps=QQ_CAPS),
+                engine.handle(msg, on_sentence=on_sentence, caps=QQ_CAPS),
                 timeout=core.reply_deadline)
             replies, images = out.chunks, out.images
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
@@ -294,7 +301,7 @@ async def _send_replies(replies: list[str], images: list[str] | None = None) -> 
 
 
 async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",
-                        owner: bool = False) -> None:
+                        owner: bool = False, meta: dict | None = None) -> None:
     """下载并解析文件，塞进这一轮的队列（不直接回话）。
 
     caption 是同一条消息里他自己打的字（「帮我看看这份简历」），
@@ -323,10 +330,11 @@ async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",
         await chat.finish(f"读不了这个文件：{note or '内容为空'}")
         return
     logger.info(f"[chat] file {name} -> {len(body)} chars ({note})")
-    _add(sid, text=caption.strip() or None, file=(name, body, note))
+    _add(sid, text=caption.strip() or None, file=(name, body, note), meta=meta)
 
 
-async def _collect_images(sid: str, segs: list, text: str) -> None:
+async def _collect_images(sid: str, segs: list, text: str,
+                          meta: dict | None = None) -> None:
     """下载图片，和同一条消息里的文字一起塞进队列。"""
     bot = _bot()
     if bot is None:
@@ -345,7 +353,7 @@ async def _collect_images(sid: str, segs: list, text: str) -> None:
         await chat.finish("图片没拿到，可能太大了或者格式不支持")
         return
     logger.info(f"[chat] recv {sid}: {len(paths)} 张图 + {len(text)} 字")
-    _add(sid, images=paths, text=text or None)
+    _add(sid, images=paths, text=text or None, meta=meta)
 
 
 @chat.handle()
@@ -357,6 +365,15 @@ async def _handle(event: MessageEvent):
 
     sid = _session_key(event)
     text = event.get_plaintext().strip()
+    _is_group = isinstance(event, GroupMessageEvent)
+    _reply = getattr(event, "reply", None)
+    meta = {
+        "user_id": str(event.user_id),
+        "chat_id": str(event.group_id) if _is_group else None,
+        "is_group": _is_group,
+        "event_id": str(getattr(event, "message_id", "") or ""),
+        "reply_to": str(getattr(_reply, "message_id", "") or "") or None,
+    }
     _admin = str((config.load().get("admin") or {}).get("user_id") or "0")
     _owner = _admin in ("", "0") or str(event.user_id) == _admin
 
@@ -366,7 +383,7 @@ async def _handle(event: MessageEvent):
 
     file_segs = [s for s in event.message if getattr(s, "type", "") == "file"]
     if file_segs:
-        await _collect_file(sid, file_segs[0], text, owner=_owner)
+        await _collect_file(sid, file_segs[0], text, owner=_owner, meta=meta)
         _kick(sid)
         return
 
@@ -379,12 +396,12 @@ async def _handle(event: MessageEvent):
 
     img_segs = [s for s in event.message if getattr(s, "type", "") == "image"]
     if img_segs:
-        await _collect_images(sid, img_segs, text)
+        await _collect_images(sid, img_segs, text, meta=meta)
         _kick(sid)
         return
 
     if not text or text.startswith("/"):
         return
 
-    _add(sid, text=text)
+    _add(sid, text=text, meta=meta)
     _kick(sid)

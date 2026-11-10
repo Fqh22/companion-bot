@@ -7,7 +7,9 @@
 - 新增 app_core/approval.py：ApprovalRequest / ApprovalResult / ApprovalPort，不绑定 QQ 或按钮。
 - 新增 adapters/qq.py：OneBot 字段 -> InboundMessage（私聊/群聊/事件/引用/入库文本）。
 - 测试：审批 5/5、入站 6/6；651 离线 / 241 全链路 / 81 agentd / 48 面板。
-- 尚未替换插件里的 /approve 和 _handle；M5.1 再接，先保证契约可测。
+- **M5.1**：_handle 把 event_id / user_id / chat_id / reply_to 存进 Turn.meta，
+  _run_turn 用 adapters/qq.to_inbound 构造 InboundMessage；adapters/ 移到 nonebot/adapters/
+  以便 bot 进程能直接 import。仍是 QQ 行为，未改审批命令。
 
 ## 2026-11-10 · M0：10 条真实对话结构重放
 

@@ -19,6 +19,7 @@ class Turn:
     texts: list[str] = field(default_factory=list)
     images: list[str] = field(default_factory=list)
     file: tuple[str, str, str] | None = None      # (文件名, 正文, 备注)
+    meta: dict = field(default_factory=dict)       # 平台元数据（event_id / user_id / ...）
 
     def empty(self) -> bool:
         return not (self.texts or self.images or self.file)
@@ -28,6 +29,8 @@ class Turn:
         self.images.extend(other.images)
         if other.file and not self.file:
             self.file = other.file
+        if other.meta:
+            self.meta.update(other.meta)
         return self
 
     def compose(self) -> tuple[str, str | None]:
@@ -66,7 +69,8 @@ class TurnQueue:
 
     def add(self, sid: str, *, text: str | None = None,
             images: list[str] | None = None,
-            file: tuple[str, str, str] | None = None) -> None:
+            file: tuple[str, str, str] | None = None,
+            meta: dict | None = None) -> None:
         turn = self._pending.setdefault(sid, Turn())
         if text:
             turn.texts.append(text)
@@ -74,6 +78,8 @@ class TurnQueue:
             turn.images.extend(images)
         if file:
             turn.file = file
+        if meta:
+            turn.meta.update(meta)
         self._hits[sid] = self._hits.get(sid, 0) + 1
 
     def peek(self, sid: str) -> Turn | None:
