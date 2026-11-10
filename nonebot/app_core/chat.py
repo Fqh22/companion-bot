@@ -174,7 +174,7 @@ class ChatCore(ChatTurnMixin):
         # 闲聊轮关思考：思考模式会先规划结构再写，天然产出「总—分—总」，
         # 而且它会吞掉 temperature（推理模型不采样原温度），等于 token 层没有随机性。
         # 只对**闲聊**关：有问号、够长、带技术词、带图求助的轮次仍然开。
-        self.thinking_casual = bool(llm.get("thinking_casual", True))
+        self.thinking_casual = bool(llm.get("thinking_casual", False))
         # 影子模式：只记日志不发消息。见 app_core/shadow.py
         chat_cfg = cfg.get("chat") or {}
         self.shadow_followup = bool(chat_cfg.get("shadow_followup", True))

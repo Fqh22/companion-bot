@@ -2254,8 +2254,11 @@ async def main() -> None:
     _fl = (TMP / "shadow-followup.jsonl").read_text(encoding="utf-8").strip().splitlines()
     check("补句落盘", len(_fl) == 1 and "candidate" in _fl[0], str(len(_fl)))
 
-    # ---- 闲聊关思考：只对明确闲聊生效 ----
-    check("闲聊短句关思考", core._thinking_for("今天好累", None) is False)
+    # ---- 思考模式：默认常开；分流逻辑保留在 thinking_casual=True 时 ----
+    check("默认常开：短句也开思考", core._thinking_for("今天好累", None) is None)
+    _old_tc = core.thinking_casual
+    core.thinking_casual = True
+    check("分流模式：闲聊短句关思考", core._thinking_for("今天好累", None) is False)
     check("带问号不关", core._thinking_for("你觉得呢？", None) is None)
     check("技术词不关", core._thinking_for("这个报错怎么修", None) is None)
     check("分享图关思考", core._thinking_for("看这个", ["x.jpg"]) is False)
@@ -2264,6 +2267,7 @@ async def main() -> None:
     check("长句不关", core._thinking_for("我" * 40, None) is None)
     check("中长句也开思考", core._thinking_for("现在还有什么和harness差不多价格好用的a", None) is None)
     check("推荐类短句也开思考", core._thinking_for("推荐个便宜点的", None) is None)
+    core.thinking_casual = _old_tc
 
     # ---- 模型优先：style_mode=model 只给原则和例子，不注入规则块 ----
     _m_model = prompt_fresh.build_messages({}, [], "😂", style_mode="model")

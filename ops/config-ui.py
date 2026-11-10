@@ -88,7 +88,7 @@ F = {
     "llm.max_tool_rounds": ("工具轮数", "每多一轮约 +1.5 秒；6 轮通常够用。", {"min": 1, "max": 12}),
     "llm.reply_deadline_seconds": ("回复硬线（秒）", "超时补发已生成部分，不让用户干等。", {"min": 5, "max": 300}),
     "llm.thinking": ("思考模式", "更具体但首字慢约 0.8s，且温度失效。", {}),
-    "llm.thinking_casual": ("闲聊关思考", "短句、无问号、无技术词、不带图的轮次关掉思考。", {}),
+    "llm.thinking_casual": ("闲聊关思考", "默认 false（常开）。改 true 恢复：短句、无问号、无技术词、不带图的轮次关掉思考。", {}),
     "summary.model": ("总结模型", "长 JSON 输出用 chat 更稳。", {}),
     "summary.max_tokens": ("总结上限", "总结/复盘/周报单次输出上限。", {"min": 100, "max": 4000}),
     "summary.retry_model": ("重试模型", "总结失败时换这个模型再试。", {}),

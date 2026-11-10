@@ -36,7 +36,9 @@ DEFAULTS = {
         "thinking": True,
         # 闲聊轮单独关思考。原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，
         # 配置面板会把它当成未知键；补进来让「默认值」也是真的。
-        "thinking_casual": True,
+        # 2026-11-10 用户决定常开思考：清空会话也走思考，不再按「短句/无问号」关。
+    # 分流逻辑保留在 _thinking_for 里，把这里改回 True 即可恢复。
+    "thinking_casual": False,
     },
     "summary": {
         "model": "deepseek-chat",
