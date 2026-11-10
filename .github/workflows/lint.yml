@@ -49,3 +49,5 @@ jobs:
         run: python ops/test-config-ui.py
       - name: kernel 测试
         run: python ops/test-kernel.py
+      - name: Engine 门面测试
+        run: python ops/test-engine.py

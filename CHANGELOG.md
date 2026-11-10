@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 引擎抽离 M1：Engine 门面
+
+- 新增 app_core/engine.py：InboundMessage / OutboundMessage / Engine.handle；
+  现在只包 ChatCore.reply，不搬业务代码。
+- QQ 插件改走 Engine，行为不变；旧 core.reply 仍是实现，可随时回退。
+- 新增 ops/test-engine.py（6 项）并接入 CI；全链路加 engine 覆盖。
+- 651 离线 / 238 全链路 / 81 agentd / 48 面板；云端 6/6。
+
 ## 2026-11-07 · few-shot A/B：去掉代码里的 5 条
 
 - 19 条真实场景 × 3 组（0 条 / 5 条 / 3 条代码 few-shot），同一人格 22 对例子 + 尾部锚点。

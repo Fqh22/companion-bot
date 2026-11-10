@@ -121,7 +121,7 @@ class FakeClient:
 
 # ---------- 路径重定向 ----------
 from app_core import (  # noqa: E402
-    chat as chat_mod, chat_turn as chat_turn_mod,
+    chat as chat_mod, chat_turn as chat_turn_mod, engine as engine_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
     followup_domain as fu_domain_mod, followup_store as fu_store_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
@@ -160,6 +160,8 @@ meme_mod.CHAT_DB = TMP / "chat.db"
 meme_mod.RECENT_FILE = TMP / "meme-recent.json"
 fu_mod.DB = TMP / "chat.db"
 check("followup_domain 有 resolve_from", hasattr(fu_domain_mod, "resolve_from"))
+check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
+      and hasattr(engine_mod, "InboundMessage"))
 check("followup_store 有 _conn", hasattr(fu_store_mod, "_conn"))
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
