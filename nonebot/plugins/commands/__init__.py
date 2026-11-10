@@ -9,7 +9,7 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 
-from app_core import diary, kb, learn, meme, mood, remind, wiki
+from app_core import diary, introspect, kb, learn, meme, mood, remind, wiki
 from plugins.chat import core
 
 NL = chr(10)
@@ -44,14 +44,7 @@ def _arg(event: MessageEvent, cmd: str) -> str:
 
 @mood_cmd.handle()
 async def _mood():
-    s = mood.settle(mood.load())
-    mood.save(s)
-    why = [x.get("text") for x in (s.get("why") or [])[-2:] if x.get("text")]
-    text = (f"心情 {s['valence']:+.2f}（这阵子 {s.get('valence_base', 0.0):+.2f}） / "
-            f"精力 {s['energy']:.2f} / 互动 {s['social']:.2f}")
-    if why:
-        text += "\n最近：" + "；".join(why)
-    await mood_cmd.finish(text)
+    await mood_cmd.finish(introspect.mood_text())
 
 
 @mood_hist.handle()
@@ -163,20 +156,7 @@ async def _():
 
 @usage_cmd.handle()
 async def _():
-    d1 = await core.usage_stats(1)
-    d7 = await core.usage_stats(7)
-    lines = [
-        f"今日：{d1['calls']} 次，in {d1['prompt']} / out {d1['completion']} tokens ≈ ¥{d1['cost']}",
-        f"近 7 天：{d7['calls']} 次，in {d7['prompt']} / out {d7['completion']} tokens ≈ ¥{d7['cost']}",
-        f"缓存命中：{d7['hit_rate'] * 100:.0f}%（{d7['cache_hit']} / {d7['cache_hit'] + d7['cache_miss']} tok）",
-        "按用途：" + "；".join(
-            f"{name} {calls} 次 in {pt} / out {ct}"
-            for name, calls, pt, ct in (d7.get("purposes") or [])[:5]),
-        f"平均耗时：{d7['latency']} ms",
-    ]
-    for model, calls, pt, ct, cost in d7["models"]:
-        lines.append(f"  {model}: {calls} 次, in {pt or 0} / out {ct or 0} ≈ ¥{cost}")
-    await usage_cmd.finish(NL.join(lines))
+    await usage_cmd.finish(await introspect.usage_text(core))
 
 
 @cleanup_cmd.handle()
@@ -232,10 +212,8 @@ async def _(event: MessageEvent):
 @mem_status_cmd.handle()
 async def _():
     """记忆链路健康快照：哪一环静默失败了，先从这几个数看。"""
-    from app_core import status as status_mod
-
     try:
-        await mem_status_cmd.finish(status_mod.render(status_mod.snapshot()))
+        await mem_status_cmd.finish(introspect.mem_status_text())
     except Exception as e:  # noqa: BLE001
         await mem_status_cmd.finish(f"取不到状态：{type(e).__name__}: {e}")
 

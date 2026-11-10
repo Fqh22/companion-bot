@@ -143,6 +143,7 @@ from app_core import (  # noqa: E402
     maintenance as maint_mod, paths as paths_mod, review as review_mod,
     vec as vec_mod,
     status as status_mod, runner as runner_mod,
+    commands as commands_mod, introspect as introspect_mod, runtime as runtime_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -171,6 +172,11 @@ fu_mod.DB = TMP / "chat.db"
 check("followup_domain 有 resolve_from", hasattr(fu_domain_mod, "resolve_from"))
 check("runner 有 TurnRunner/Channel", hasattr(runner_mod, "TurnRunner")
       and hasattr(runner_mod, "Channel"))
+check("commands 有注册表", hasattr(commands_mod, "CommandRegistry")
+      and hasattr(commands_mod, "default_registry"))
+check("introspect 有只读文本", hasattr(introspect_mod, "ping_text")
+      and hasattr(introspect_mod, "usage_text"))
+check("runtime 有后台入口", hasattr(runtime_mod, "start_background"))
 check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
       and hasattr(engine_mod, "InboundMessage"))
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))

@@ -6,6 +6,7 @@ from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.permission import SUPERUSER
 
 from app_core import help as help_mod
+from app_core import introspect
 from app_core import learn
 from plugins.chat import core
 
@@ -38,10 +39,7 @@ async def _ping():
     配上意义：`admin.user_id` 没填时记忆不写、主动消息不发，但服务看着一切正常。
     /ping 是唯一能一眼看出「它其实是个哑巴」的地方，所以状态挂在这里。
     """
-    issues = core.config_issues()
-    if issues:
-        await ping.finish("pong\n⚠️ " + "\n⚠️ ".join(issues))
-    await ping.finish(f"pong（{core.config_status()}）")
+    await ping.finish(introspect.ping_text(core))
 
 
 @help_cmd.handle()
@@ -65,30 +63,7 @@ async def _reload(event: MessageEvent):
 @profile_cmd.handle()
 async def _profile():
     """看当前画像：每个字段的置信度、多久没被确认、会不会被注入。"""
-    from app_core import profile as profile_mod
-
-    fields = learn.profile_fields()
-    if not fields:
-        await profile_cmd.finish("现在没有画像（或者全部过期了）")
-    conf = learn.profile_conf()
-    seen = learn.profile_seen()
-    prev = learn.profile_previous()
-
-    lines = ["现在的画像（内容｜置信度｜最后一次有证据）"]
-    for k, v in fields.items():
-        d = profile_mod.age_days(seen.get(k))
-        age = "刚确认" if d is None else (f"{d:.0f} 天前"
-                                          if d >= 1 else "今天")
-        eff = profile_mod.effective_conf(float(conf.get(k, 0.7)), d)
-        flag = "" if eff >= profile_mod.MIN_CONF else "（已过期，不注入）"
-        lines.append(f"· {k}：{v}｜{conf.get(k, 0.7):.2f}｜{age}{flag}")
-        p = prev.get(k) or {}
-        if p.get("text"):
-            pd = profile_mod.age_days(p.get("at"))
-            when = "最近" if (pd is None or pd < 1) else f"{pd:.0f} 天前"
-            lines.append(f"    ↳ 上次：{p['text']}（{when}改的）")
-    lines.append("清一个：/profile_forget 字段名｜全清：/profile_clear")
-    await profile_cmd.finish("\n".join(lines))
+    await profile_cmd.finish(introspect.profile_text(learn))
 
 
 @forget_cmd.handle()

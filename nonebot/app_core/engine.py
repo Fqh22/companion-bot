@@ -18,6 +18,8 @@ class InboundMessage:
     session: str
     text: str
     images: list[str] = field(default_factory=list)
+    files: list[str] = field(default_factory=list)
+    audio: list[str] = field(default_factory=list)
     platform: str = "qq"
     external_user_id: str = ""
     external_chat_id: str | None = None

@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 命令分发与后台入口抽出
+
+- 新增 `app_core/commands.py`：`/xxx 参数` 解析 + 注册表 + 权限；`default_registry(core)`
+  自带 7 条只读命令（ping/help/debug/mood/usage/mem_status/profile）。
+- 新增 `app_core/introspect.py`：只读命令的文本生成，QQ 插件与 console 共用，输出一致。
+- 新增 `app_core/runtime.py`：`start_background(core, send)` 启动调度，不依赖 NoneBot。
+- `InboundMessage` 补 `files` / `audio` 字段（为文件/语音通道预留）。
+- `admin` / `commands` 插件改为调用 introspect（纯移动，行为不变）。
+- 新增 `ops/test-commands.py`（11 项）；20 套本地全绿；云端 5/5。
+
 ## 2026-11-10 · 断线演练 + README 重写为「引擎优先」
 
 - 新增 `ops/drill-console.py`：临时根起终端通道，不加载 NoneBot、不连 QQ，跑真实对话。

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import sys
 
+from app_core.commands import CommandContext, default_registry
 from app_core.delivery import Capability
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.runner import TurnRunner
@@ -43,7 +44,9 @@ class ConsoleChannel:
 
     async def run(self, engine: Engine, session: str = "private:console") -> None:
         runner = TurnRunner(engine, self, caps=self.caps)
-        self.out.write("console 模式；输入 /quit 退出。\n")
+        core = getattr(engine, "core", None)
+        registry = default_registry(core) if core is not None else None
+        self.out.write("console 模式；/help 看命令，/quit 退出。\n")
         self.out.flush()
         while True:
             try:
@@ -55,4 +58,11 @@ class ConsoleChannel:
                 break
             if not text:
                 continue
+            if registry is not None and text.startswith("/"):
+                out = await registry.dispatch(
+                    text, CommandContext(session=session, is_owner=True))
+                if out is not None:
+                    self.out.write(out + "\n")
+                    self.out.flush()
+                    continue
             await runner.run(InboundMessage(session=session, text=text))

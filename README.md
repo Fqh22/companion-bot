@@ -59,7 +59,16 @@ async def on_message(platform_msg):
     await TurnRunner(engine, MyChannel(), deadline=45).run(msg)
 ```
 
-**这就完了。** 记忆、情绪、prompt、分段、停顿、45 秒硬线全部复用。
+命令也有一份现成的注册表：
+
+```python
+from app_core.commands import CommandContext, default_registry
+
+registry = default_registry(engine.core)
+reply = await registry.dispatch("/mood", CommandContext(session=my_session, is_owner=True))
+```
+
+**这就完了。** 记忆、情绪、prompt、分段、停顿、45 秒硬线、只读命令全部复用。
 完整说明见 [docs/06-移植指南.md](docs/06-移植指南.md)。
 
 ## 快速开始（不需要 QQ）
