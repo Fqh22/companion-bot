@@ -20,7 +20,7 @@ QQ
 - **Knowledge**: the bot writes its own notes with a shelf life; stale pages are flagged and audited weekly
 - **Profile**: a six-field model of *you*, with confidence and a last-evidence timestamp; it expires
 - **Contradiction check**: when a new fact replaces an old one, the old memory is soft-deleted
-- **Tasks**: `/task` goes to agentd — multi-step planning, docker sandbox, checkpoint recovery, approval for dangerous commands
+- **Tasks**: natural language/file trigger with one confirmation, or explicit `/task` — multi-step planning, docker sandbox, checkpoint recovery, approval for dangerous commands
 
 ![demo](docs/assets/demo.svg)
 

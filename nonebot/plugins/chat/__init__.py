@@ -33,12 +33,14 @@ from nonebot.adapters.onebot.v11 import (
 )
 
 from app_core import config, meme, mood, pacing, relational
+from app_core import task_intent as task_intent_mod
 from app_core import turn as turn_mod
+from app_core.agent_client import create_task
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
 from app_core.engine import Engine
-from app_core.files import (MAX_IMAGES, parse, remember_pending,
-                            save_from_segment, save_image)
+from app_core.files import (MAX_IMAGES, clear_pending, parse, pending as pending_file,
+                            remember_pending, save_from_segment, save_image)
 from adapters.qq import to_inbound
 
 core = ChatCore()
@@ -83,6 +85,74 @@ def _kick(sid: str) -> None:
     if task is not None and not task.done():
         return
     _pump[sid] = asyncio.create_task(_pump_loop(sid))
+
+
+_TASK_CONFIRM: dict[str, dict] = {}
+_TASK_CONFIRM_TTL = 120.0
+
+
+async def _maybe_task(sid: str, text: str) -> bool:
+    """自然语言任务入口：命中就发确认/建任务，返回 True 表示已接管。"""
+    now = time.time()
+    st = _TASK_CONFIRM.get(sid)
+    if st and now - float(st.get("ts") or 0) > _TASK_CONFIRM_TTL:
+        _TASK_CONFIRM.pop(sid, None)
+        st = None
+
+    if st and text:
+        if task_intent_mod.is_start(text):
+            files = list(st.get("files") or [])
+            live = [p for p in files if Path(p).is_file()]
+            if files and not live:
+                _TASK_CONFIRM.pop(sid, None)
+                await chat.finish("附件不在了，先把文件重新发我")
+                return True
+            try:
+                res = await create_task(st.get("goal") or text, sid, live)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[task] agentd 没响应：{type(e).__name__}: {e}")
+                await chat.finish("agentd 没响应，先确认服务")
+                return True
+            if not res.get("ok"):
+                await chat.finish(f"没建成：{res.get('error')}")
+                return True
+            _TASK_CONFIRM.pop(sid, None)
+            if live:
+                clear_pending()
+            await chat.finish(f"收到 #{res.get('id')}，带 {len(live)} 个文件，我先看看")
+            return True
+        if task_intent_mod.is_cancel(text):
+            _TASK_CONFIRM.pop(sid, None)
+            await chat.finish("好，继续聊")
+            return True
+
+    if not text or text.startswith("/"):
+        return False
+
+    info = pending_file()
+    files = [info["path"]] if info else []
+    if not task_intent_mod.is_task_request(text, bool(files)):
+        return False
+
+    if task_intent_mod.is_explicit(text):
+        goal = task_intent_mod.explicit_goal(text) or text
+        try:
+            res = await create_task(goal, sid, files)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[task] agentd 没响应：{type(e).__name__}: {e}")
+            await chat.finish("agentd 没响应，先确认服务")
+            return True
+        if not res.get("ok"):
+            await chat.finish(f"没建成：{res.get('error')}")
+            return True
+        if files:
+            clear_pending()
+        await chat.finish(f"收到 #{res.get('id')}，带 {len(files)} 个文件，我先看看")
+        return True
+
+    _TASK_CONFIRM[sid] = {"goal": text, "files": files, "ts": now}
+    await chat.finish(task_intent_mod.confirm_text(text, files))
+    return True
 
 
 async def _settle(sid: str, base: int, timeout: float) -> None:
@@ -384,6 +454,9 @@ async def _handle(event: MessageEvent):
     file_segs = [s for s in event.message if getattr(s, "type", "") == "file"]
     if file_segs:
         await _collect_file(sid, file_segs[0], text, owner=_owner, meta=meta)
+        if _owner and await _maybe_task(sid, text):
+            _turns.drop(sid)
+            return
         _kick(sid)
         return
 
@@ -401,6 +474,10 @@ async def _handle(event: MessageEvent):
         return
 
     if not text or text.startswith("/"):
+        return
+
+    if _owner and await _maybe_task(sid, text):
+        _turns.drop(sid)
         return
 
     _add(sid, text=text, meta=meta)

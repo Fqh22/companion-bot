@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agentd import config  # noqa: E402
 from agentd.context import Context  # noqa: E402
 from agentd.llm import extract_json  # noqa: E402
-from agentd.loop import Runner, classify, _changed_files  # noqa: E402
-from agentd.planner import Planner, noop_ratio  # noqa: E402
+from agentd.loop import Runner, attachment_hint, classify, _changed_files  # noqa: E402
+from agentd.planner import Planner, noop_ratio, sanitize_steps  # noqa: E402
 from agentd.sandbox import Sandbox, _head_tail  # noqa: E402
 from agentd.store import Store  # noqa: E402
 from agentd.tools import TOOLS_DOC, Tools  # noqa: E402
@@ -171,8 +171,21 @@ async def main() -> None:
     tid = store.create_task("测试计划")
     plan = await planner.plan(store.task(tid))
     check("noop 超比例会重写计划", len(plan) == 2 and noop_ratio(plan) == 0, str(plan))
+
     check("重写记了事件", any("noop" in (e["payload"] or "")
                               for e in store.events(tid, 20)))
+
+    # 计划里的 custom 只能引用已经创建的脚本，否则必然等一个不存在的文件
+    _bad = sanitize_steps([
+        {"idx": 0, "desc": "写脚本 /work/1/check.py",
+         "verify": {"custom": "python /work/1/check.py"}},
+        {"idx": 1, "desc": "运行别的脚本",
+         "verify": {"custom": "python /work/1/never.py"}},
+    ])
+    check("已创建的 custom 保留", _bad[0]["verify"].get("custom") is not None, _bad[0])
+    check("未创建的 custom 降级", _bad[1]["verify"] == {"exit_code": 0}, _bad[1])
+    check("附件提示认这份", attachment_hint("把这份简历重排"), "未命中")
+    check("附件提示不拦生成", not attachment_hint("生成一个 CSV"))
 
     # ---------- 端到端：两步任务 ----------
     store2 = Store(TMP / "data" / "t2.db")

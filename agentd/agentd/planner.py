@@ -5,6 +5,7 @@ noop 比例超过 40% 先让模型重写一次（§7.1）——planner 偷懒要
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from .config import Config
@@ -27,6 +28,8 @@ PLAN_SYSTEM = """你是一个执行型 agent 的规划器。把目标拆成 3–
    - {"contains":"关键词"}
    - {"regex":"\\\\d+ 条"}
    - {"custom":"python check.py"}    （自定义脚本，退出码 0 为通过）
+     custom 只能引用**前面步骤已经创建**的脚本；没有创建就用 file_exists / contains，
+     不要凭空写 check.py。
    尽量避免 {"noop":true}——只有在确实无法机械校验时才用，且必须再带一个 custom。
 3. 声明依赖：depends_on 里放前置步骤的 idx。
 4. 只输出 JSON：{"steps":[{"idx":0,"desc":"...","depends_on":[],"verify":{...}}]}
@@ -92,7 +95,32 @@ class Planner:
                 "depends_on": [int(x) for x in (s.get("depends_on") or [])],
                 "verify": s.get("verify") if isinstance(s.get("verify"), dict) else {},
             })
-        return [s for s in out if s["desc"]]
+        return sanitize_steps([s for s in out if s["desc"]])
+
+
+_SCRIPT_RE = re.compile(r"[\w./-]+\.py")
+_CREATE_RE = re.compile(r"(写|创建|生成|保存|编写).{0,64}\.py")
+
+
+def sanitize_steps(steps: list[dict]) -> list[dict]:
+    """把引用未创建脚本的 custom verify 降级成 exit_code，避免计划必死。"""
+    made: set[str] = set()
+    for s in steps:
+        desc = str(s.get("desc") or "")
+        if _CREATE_RE.search(desc):
+            for name in _SCRIPT_RE.findall(desc):
+                made.add(name)
+                made.add(Path(name).name)
+        v = s.get("verify") if isinstance(s.get("verify"), dict) else {}
+        c = v.get("custom")
+        if c:
+            refs = _SCRIPT_RE.findall(str(c))
+            missing = [r for r in refs
+                       if r not in made and Path(r).name not in made]
+            if missing:
+                v = {"exit_code": 0}
+                s["verify"] = v
+    return steps
 
 
 def noop_ratio(steps: list[dict]) -> float:

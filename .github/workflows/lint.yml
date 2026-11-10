@@ -63,5 +63,7 @@ jobs:
         run: python ops/test-approval.py
       - name: QQ 入站归一化
         run: python ops/test-inbound.py
+      - name: 任务意图
+        run: python ops/test-task-intent.py
       - name: companion-core 包门面
         run: python ops/test-package.py

@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import time
@@ -20,6 +21,14 @@ from .tools import Tools, parse_action
 from .verify import Observation, evaluate
 
 TERMINAL = ("done", "blocked", "skipped")
+_ATTACH_HINT = re.compile(
+    r"(这份|收到的|附件|上传的|发来的|读取.{0,12}(pdf|docx?|xlsx?|pptx?)|"
+    r"(pdf|docx?|xlsx?|pptx?).{0,12}(改|重排|提取|删除))", re.I)
+
+
+def attachment_hint(goal: str) -> bool:
+    """目标像是在引用一个附件，但任务没带文件时先问，不要空跑。"""
+    return bool(_ATTACH_HINT.search(goal or ""))
 BLOCKED_HINTS = ("Permission denied", "No such file", "not found", "路径越界",
                  "command not found", "cannot open")
 # 需要人工点头的命令（§十三 审批）。宁可多拦，不可漏放。
@@ -79,9 +88,22 @@ class Runner:
             steps = self.store.steps(tid)
             if not steps:
                 # 先把用户发来的文件搬进工作区，规划时才知道有什么可用
+                try:
+                    expected = json.loads(task.get("extra") or "{}").get("files") or []
+                except Exception:  # noqa: BLE001
+                    expected = []
                 n_in = self._import_files(tid)
                 if n_in:
                     self.store.add_event(tid, "note", f"收到 {n_in} 个文件")
+                if expected and n_in == 0:
+                    self._need_input(
+                        tid, "附件没有搬进工作区，先别规划。请重新发文件再 /task。")
+                    return
+                if not expected and attachment_hint(task.get("goal") or ""):
+                    self._need_input(
+                        tid, "目标看起来需要附件，但这次没收到文件。"
+                             "先发文件，再 /task；或直接说「不用附件」。")
+                    return
                 steps = await self.planner.plan(task)
                 self.store.add_steps(tid, steps)
                 steps = self.store.steps(tid)          # 重新取，带上 status/id
@@ -354,6 +376,12 @@ class Runner:
         return (f"预算用尽（tokens {t.get('tokens_used')}/{self.cfg.max_tokens}）")
 
     # ---------- 文件进出 ----------
+    def _need_input(self, tid: int, text: str) -> None:
+        self.store.set_task(tid, status="needs_input",
+                            finished_at=time.time(), report=text)
+        self.store.outbox_push(tid, text, "")
+        self.store.add_event(tid, "note", text)
+
     def _import_files(self, tid: int) -> int:
         """把 inbox 里属于这个任务的文件搬进 /work/<id>/。
 
