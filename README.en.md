@@ -21,6 +21,14 @@ QQ → OneBot v11 → NoneBot2 (adapters / Engine / ChatCore)  instant replies, 
 
 ![demo](docs/assets/demo.svg)
 
+## Portability: QQ is just one channel
+
+All business logic lives in `app_core` with **zero `import nonebot`**. A channel only has to
+implement three primitives — send text, send image, typing — while the session loop
+(streaming, pacing, 45s deadline) lives in `app_core/runner.py`.
+Switching platforms takes 3–5 days (NoneBot adapter) or 1–2 weeks (no NoneBot), with no
+business-code changes. See [docs/06-移植指南.md](docs/06-移植指南.md) (Chinese).
+
 ## Architecture
 
 ![architecture](docs/assets/architecture.svg)

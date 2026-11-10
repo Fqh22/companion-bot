@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 抽出通道无关层：QQ 只是演示
+
+- 新增 `app_core/runner.py`：`Channel` 三个原语（发文本/发图/typing）+ `TurnRunner`
+  （typing 心跳、流式分段、45 秒硬线、补发尾巴）。
+- `plugins/chat` 改用 `QQChannel` + `TurnRunner`，删掉约 300 行会话循环；行为不变。
+- `ConsoleChannel` 升级成完整参考实现（流式 + typing），`run()` 走同一个 runner。
+- 新增 `ops/test-runner.py`（7 项）并接入 CI；smoke-all 覆盖 runner。
+- 新文档 `docs/06-移植指南.md`：分层、最小通道示例、两条迁移路线、数据迁移、能力清单。
+- README / README.en 加「可移植性」一节。
+
 ## 2026-11-10 · 引用回复默认关
 
 - 加 `chat.quote_reply`（默认 false）：第一段带引用框，实测每条都挂太重，先关掉。

@@ -33,6 +33,17 @@ QQ → OneBot v11 → NoneBot2（adapters / Engine / ChatCore）  秒回、记�
 分层红线只有一条：**`app_core` 不 import nonebot**。QQ/console 通过 `adapters` 接入，
 `Engine` 收 `InboundMessage`，所以核心能在没有框架、没有网络、没有数据库的情况下被离线测试驱动。
 
+## 可移植性：QQ 只是一个通道
+
+核心逻辑全在 `app_core`，**没有一行 `import nonebot`**（lint 在守）。QQ 只是第一个接进来的通道：
+
+- 一个通道只需要实现三个原语：**发文本 / 发图 / 「正在输入」**；
+- 会话循环（流式分段、段间停顿、45 秒硬线、typing 心跳）由 `app_core/runner.py` 负责，与平台无关；
+- 现在有两个实现：`plugins/chat` 的 `QQChannel` 和 `adapters/console.py`（终端）；
+- 换到 NoneBot 的其他平台约 3–5 天，完全不用 NoneBot 约 1–2 周，**业务代码一行不改**。
+
+完整步骤、能力清单和数据迁移见 [docs/06-移植指南.md](docs/06-移植指南.md)。
+
 ## 快速开始（不需要 QQ）
 
 要求 Python **3.12**（CI 只测这个版本；`requirements.txt` 是 3.12 的冻结点，3.10/3.11 未验证）。
@@ -85,7 +96,7 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 
 ```
 nonebot/
-├─ app_core/     纯逻辑模块（不 import nonebot，约 52 个）
+├─ app_core/     纯逻辑模块（不 import nonebot，约 53 个；runner.py 是通道无关循环）
 ├─ adapters/     qq / console / fake 通道适配器
 ├─ companion_core/ 稳定入口（EngineConfig + create_engine）
 ├─ plugins/      6 个插件：chat / group / commands / admin / schedule / proactive
@@ -150,6 +161,7 @@ ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时�
 | 部署、备份、排障、维护 | [docs/02-运维.md](docs/02-运维.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
 | 可视化改配置（本地面板） | [docs/05-配置界面.md](docs/05-配置界面.md) |
+| 换掉 QQ、移植到别的平台 | [docs/06-移植指南.md](docs/06-移植指南.md) |
 
 ## License
 

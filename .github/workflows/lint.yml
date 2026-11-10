@@ -70,6 +70,11 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/smoke-plugins.py
+      # 通道无关层：换通道时真正要复用的那部分（流式/typing/超时）
+      - name: 通道无关层
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/test-runner.py
       # 真实时钟：时间相关行为被 mock 后，重启/跨天/迟到任务只有它覆盖
       - name: 真实时钟冒烟
         env:

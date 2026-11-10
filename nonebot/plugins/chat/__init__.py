@@ -37,6 +37,7 @@ from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
 from app_core.engine import Engine
+from app_core.runner import TurnRunner
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
 from adapters.qq import to_inbound
@@ -127,47 +128,56 @@ async def _pump_loop(sid: str) -> None:
             _kick(sid)          # 收尾竞态：退出瞬间又来了消息
 
 
+class QQChannel:
+    """QQ 的通道实现：三个 IO 原语，会话循环交给 app_core.runner。"""
+
+    def __init__(self) -> None:
+        self.sent: list[str] = []
+
+    async def send_text(self, session: str, text: str) -> bool:
+        # 只有第一段带引用：后面几段接在它自己那条后面才对
+        reply_id = None
+        if QUOTE_REPLY and not self.sent:
+            reply_id = _current_event_id.get(session)
+        ok = await _send_text(text, reply_id=reply_id)
+        if ok:
+            self.sent.append(text)
+        return ok
+
+    async def send_image(self, session: str, path: str) -> bool:
+        try:
+            p = Path(path)
+            if not p.exists():
+                logger.warning(f"[chat] 表情包文件不存在：{p}")
+                return False
+            # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
+            # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
+            data = await asyncio.to_thread(meme.payload, str(p))
+            await chat.send(MessageSegment.image(data))
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
+            return False
+
+    async def typing(self, session: str, on: bool) -> None:
+        await _set_typing(session, on)
+
+
+# 引用回复要用「本轮用户消息的 id」，而 runner 只认 Channel 接口。
+# 用一个按会话存放的临时表传进去，避免把 QQ 的 event 概念泄进 app_core。
+_current_event_id: dict[str, str] = {}
+
+
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     prompt, stored = turn.compose()
-    sent = 0
-    sent_parts: list[str] = []
-    started = time.monotonic()
-
-    def _left() -> float:
-        """离总时限还剩多少秒。打字停顿要给它让路，不能把预算睡光。"""
-        return core.reply_deadline - (time.monotonic() - started)
-
-    async def on_sentence(part: str) -> None:
-        """流式回调：收到一整句就发。
-
-        停顿（段间隔 + 打字）也算在 45 秒总时限里，所以要按剩余预算压缩：
-        预算见底就直接发，别让"像人在打字"把回复本身挤掉。
-        """
-        nonlocal sent
-        left = _left()
-        if left <= 0:
-            return
-        gap_s = pacing.gap_seconds(sent) if sent else 0.0
-        pace = pacing.pace_seconds(part, datetime.now().hour, mood.load(),
-                                   fast=pacing.is_fast(sent) or left < 12)
-        wait = min(gap_s + pace, max(0.0, left - 4))   # 留 4 秒给发送和收尾
-        if wait > 0:
-            await asyncio.sleep(wait)
-        # 只有第一段带引用：后面几段接在它自己那条后面才对
-        if await _send_text(
-                part,
-                reply_id=turn.meta.get("event_id") if (QUOTE_REPLY and not sent) else None):
-            sent += 1
-            sent_parts.append(part)
-
+    ch = QQChannel()
+    runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline)
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
-    typing_task: asyncio.Task | None = None
-    if sid.startswith("private:"):
-        typing_task = asyncio.create_task(_typing_loop(sid))
+    if turn.meta.get("event_id"):
+        _current_event_id[sid] = str(turn.meta["event_id"])
     try:
         async with _lock(sid):
-            # 总时限：模型/工具再慢也不能让用户无限等
             msg = to_inbound(
                 session=sid,
                 user_id=str(turn.meta.get("user_id") or ""),
@@ -177,33 +187,25 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                 event_id=turn.meta.get("event_id"),
                 reply_to=turn.meta.get("reply_to"),
                 store_text=stored)
-            out = await asyncio.wait_for(
-                engine.handle(msg, on_sentence=on_sentence, caps=QQ_CAPS),
-                timeout=core.reply_deadline)
-            replies, images = out.chunks, out.images
+            out = await runner.run(msg)
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
-            if replies or images:
-                await _send_replies(
-                    replies, images,
-                    reply_id=(turn.meta.get("event_id")
-                              if (QUOTE_REPLY and not sent) else None))
-        logger.info(f"[chat] sent {sid}: {sent} 段流式 + {len(replies or [])} 段补发")
+        logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))
     except asyncio.TimeoutError:
-        logger.error(f"[chat] 回复超时（>{core.reply_deadline:.0f}s） {sid}，已发 {sent} 段")
+        logger.error(f"[chat] 回复超时（>{core.reply_deadline:.0f}s） {sid}，已发 {len(ch.sent)} 段")
         await core.mood_event("timeout")
-        if sent_parts:
+        if ch.sent:
             # 用户已经看到这几句了，必须写回历史：否则下一轮它完全不知道自己说过什么，
             # 而 summary 也会把这条用户消息当成"没人回过"。
             try:
-                await core.remember_safe(sid, "assistant", "".join(sent_parts))
-                logger.info(f"[chat] 超时补记已发出的 {len(''.join(sent_parts))} 字")
+                await core.remember_safe(sid, "assistant", "".join(ch.sent))
+                logger.info(f"[chat] 超时补记已发出的 {len(''.join(ch.sent))} 字")
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[chat] 超时补记失败：{e}")
-        if not sent:
+        if not ch.sent:
             try:
                 await chat.finish("我这会儿有点卡，你再说一遍？")
             except Exception:
@@ -215,9 +217,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         except Exception:
             pass
     finally:
-        if typing_task is not None:
-            typing_task.cancel()
-            await _set_typing(sid, False)
+        _current_event_id.pop(sid, None)
 
 
 async def _caption_later(msg_id: int, paths: list[str]) -> None:
