@@ -263,8 +263,9 @@ class LLM:
             try:
                 await self.record_usage(self.model, usage,
                                         int((time.perf_counter() - t0) * 1000), "chat")
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001
+                # 记账失败不该打断回复，但要留痕：否则 /usage 会悄悄少计，排障时找不到原因
+                log.warning("usage 记账失败：%s", e)
 
         msg = {"content": content}
         if reasoning:

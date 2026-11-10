@@ -90,32 +90,7 @@ class ChatTurnMixin:
         else:
             turn.stored = user_text
 
-        # 他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
-        # 上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
-        if not turn.images and len(user_text) >= 2:      # 「改完了」只有 3 个字，不能因此跳过
-            try:
-                followup.confirm_pending(user_text)
-                res = followup.resolve(user_text)
-                if (res.get("done") or res.get("confirm")
-                        or res.get("status") or res.get("drop")):
-                    followup.apply(res)
-                    log.info("[chat] followup %s", res)
-                if res.get("done"):
-                    turn.extra_system.append(
-                        "他刚说这件事办完了，你已经记成完成——"
-                        "这轮别再问进展，也别再说「记得跟我说」。")
-                if res.get("confirm"):
-                    names = followup.texts_for(res["confirm"])
-                    if names:
-                        turn.extra_system.append(
-                            "他像是在说「%s」已经办完了，但你没把握："
-                            "在回复里顺口确认一句，别直接当成已完成。" % names[0])
-                if res.get("drop"):
-                    turn.extra_system.append(
-                        "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
-                        "这轮别提它，也别追问进展。")
-            except Exception:
-                pass
+        self._prepare_followup(turn, user_text)
 
         try:
             turn.digest = await self.get_digest(session)
@@ -134,8 +109,51 @@ class ChatTurnMixin:
         if not turn.user_msg_id:
             turn.degraded += 1
 
-        # 两条向量一次算完：本轮这句（判话题推进）+ 召回 query（含前几轮）。
-        # 之前分两次串行 embed，同一个 provider 要握手两遍，白等一趟 HTTP。
+        await self._prepare_vectors(turn, user_text)
+        await self._prepare_recall(turn, user_text)
+
+        await self._prepare_knowledge(turn, user_text)
+
+        self._prepare_profile(turn)
+        return turn
+
+    def _prepare_followup(self, turn: Turn, user_text: str) -> None:
+        """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
+
+        上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
+        """
+        if turn.images or len(user_text) < 2:   # 「改完了」只有 3 个字，不能因此跳过
+            return
+        try:
+            followup.confirm_pending(user_text)
+            res = followup.resolve(user_text)
+            if (res.get("done") or res.get("confirm")
+                    or res.get("status") or res.get("drop")):
+                followup.apply(res)
+                log.info("[chat] followup %s", res)
+            if res.get("done"):
+                turn.extra_system.append(
+                    "他刚说这件事办完了，你已经记成完成——"
+                    "这轮别再问进展，也别再说「记得跟我说」。")
+            if res.get("confirm"):
+                names = followup.texts_for(res["confirm"])
+                if names:
+                    turn.extra_system.append(
+                        "他像是在说「%s」已经办完了，但你没把握："
+                        "在回复里顺口确认一句，别直接当成已完成。" % names[0])
+            if res.get("drop"):
+                turn.extra_system.append(
+                    "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
+                    "这轮别提它，也别追问进展。")
+        except Exception:
+            pass
+
+    async def _prepare_vectors(self, turn: Turn, user_text: str) -> None:
+        """算本轮向量并观察情绪。
+
+        两条向量一次算完：本轮这句（判话题推进）+ 召回 query（含前几轮）。
+        之前分两次串行 embed，同一个 provider 要握手两遍，白等一趟 HTTP。
+        """
         try:
             texts = [user_text] if user_text.strip() else []
             if turn.query and turn.query != user_text:
@@ -154,6 +172,9 @@ class ChatTurnMixin:
             mood.observe(turn.m, user_text, vec=turn.mvec)
             mood.save(turn.m)
         turn.seg_max = self.seg_max(turn.m)
+
+    async def _prepare_recall(self, turn: Turn, user_text: str) -> None:
+        """召回记忆 + 二次召回影子。"""
         try:
             turn.memories = await self.memory.recall(turn.query, 5, qv=turn.qv) if turn.owner else []
         except Exception:
@@ -173,6 +194,8 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("二次召回影子失败：%s", e)
 
+    async def _prepare_knowledge(self, turn: Turn, user_text: str) -> None:
+        """知识、技能、纠正清单——只有本人才注入。"""
         # 知识：优先注入索引（省 token、短查询更准）；索引还没建好时退回向量检索。
         # 不是本人就整段跳过——知识库里全是他自己的笔记和文档。
         if turn.owner:
@@ -197,8 +220,12 @@ class ChatTurnMixin:
             except Exception:
                 turn.lessons = ""
 
-        # 画像：一周才变一次，属于稳定前缀，放在纪要之前几乎不打断缓存。
-        # 默认 shadow —— 只把「本来会注入的这 200 字」落盘，不改 messages。
+    def _prepare_profile(self, turn: Turn) -> None:
+        """画像注入准备。
+
+        画像一周才变一次，属于稳定前缀，放在纪要之前几乎不打断缓存。
+        默认 shadow —— 只把「本来会注入的这 200 字」落盘，不改 messages。
+        """
         try:
             _pfields = learn.profile_fields() if turn.owner else {}
             if _pfields:
@@ -214,7 +241,6 @@ class ChatTurnMixin:
                     shadow.record_profile(_ptext, _pfields, _pmode)
         except Exception as e:  # noqa: BLE001
             log.debug("画像注入准备失败：%s", e)
-        return turn
 
     async def _turn_compose(self, turn: Turn) -> None:
         """拼 prompt：风格块、待办、相处状态、画像、知识合成一条 system 消息。"""

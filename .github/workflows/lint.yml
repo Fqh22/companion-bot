@@ -32,7 +32,7 @@ jobs:
             ops/requirements-config-ui.txt
       - name: 装依赖
         run: pip install -r nonebot/requirements.txt -r ops/requirements-config-ui.txt
-      # 这四套都不联网、不碰生产库、几十秒跑完，天生适合当守门员
+      # 下面这些都不联网、不碰生产库、几十秒跑完，天生适合当守门员
       - name: 离线回归
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
@@ -61,3 +61,17 @@ jobs:
         run: python ops/test-inbound.py
       - name: companion-core 包门面
         run: python ops/test-package.py
+      # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04 的矩阵）
+      - name: 联动体检
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/link-check.py
+      - name: 插件启动
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/smoke-plugins.py
+      # 真实时钟：时间相关行为被 mock 后，重启/跨天/迟到任务只有它覆盖
+      - name: 真实时钟冒烟
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/smoke-clock.py

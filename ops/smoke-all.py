@@ -33,6 +33,10 @@ CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
 
 TMP = Path(tempfile.mkdtemp(prefix="smoke-"))
+# paths.py 在 import 时固化 QQBOT_ROOT：必须赶在 import app_core 之前隔离。
+# 逐个重定向覆盖了 wiki/shadow 之外的多数模块，但漏网的仍会写默认根（云端是 /opt）。
+DEFAULT_ROOT = Path(os.environ.get("QQBOT_ROOT") or "/opt")
+os.environ["QQBOT_ROOT"] = str(TMP / "root")
 RESULTS: list[tuple[str, bool, str]] = []
 VEC = [0.1, 0.2, 0.3]
 
@@ -142,6 +146,9 @@ from app_core import (  # noqa: E402
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
+
+check("默认根已指向临时目录（不写 %s）" % DEFAULT_ROOT,
+      str(paths_mod.ROOT) == str(TMP / "root"), str(paths_mod.ROOT))
 
 LEARN = TMP / "learn"
 for p in (LEARN, LEARN / "notes", LEARN / "skills", LEARN / "raw"):

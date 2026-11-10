@@ -49,8 +49,8 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 看到 `全部通过` 就说明这套代码在你机器上是自洽的。
 
 
-首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的；总数
-646 条，其余都会真跑。
+共 **647 条**。少数用例依赖生产库副本（documents / 向量），副本为空时会打印
+**SKIP** 而不是失败；有真实数据时全部真跑。
 
 ## 路径约定
 
@@ -85,7 +85,7 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 
 ```
 nonebot/
-├─ app_core/     纯逻辑模块（不 import nonebot，约 45 个）
+├─ app_core/     纯逻辑模块（不 import nonebot，约 52 个）
 ├─ adapters/     qq / console / fake 通道适配器
 ├─ companion_core/ 稳定入口（EngineConfig + create_engine）
 ├─ plugins/      6 个插件：chat / group / commands / admin / schedule / proactive

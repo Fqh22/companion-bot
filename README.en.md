@@ -44,8 +44,8 @@ python ops/test-nonebot-offline.py  # offline suite: no network, LLM and embeddi
 If it prints `全部通过`, the code is self-consistent on your machine.
 
 
-On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
-646 tests in total, the rest really run.
+The offline suite has **647 tests**. A few cases print **SKIP** when the production DB
+copy is empty (no documents/vectors); with real data they all run.
 
 ## Path convention
 

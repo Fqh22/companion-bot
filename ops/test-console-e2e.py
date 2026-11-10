@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(tempfile.mkdtemp(prefix="console-e2e-"))
-for sub in ("nonebot/data", "qqbot-data/workspace/learn", "agentd", "backup"):
+for sub in ("nonebot/data", "qqbot-data/workspace/learn", "backup"):
     (ROOT / sub).mkdir(parents=True, exist_ok=True)
 (ROOT / "nonebot" / "config.yaml").write_text(
     "admin:\n  user_id: 'console'\nllm:\n  api: 'http://127.0.0.1:9/v1/chat/completions'\n  model: 'fake'\n",

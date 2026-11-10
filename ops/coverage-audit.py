@@ -78,7 +78,7 @@ def main() -> int:
                 sources[p] = ""
         return sources[p]
 
-    # 统计每个名字出现次数：整个 nonebot + 脚本 + agentd
+    # 统计每个名字出现次数：整个 nonebot + 脚本
     scan_dirs = [CODE, HERE]
     for d in scan_dirs:
         for p in py_files(d):

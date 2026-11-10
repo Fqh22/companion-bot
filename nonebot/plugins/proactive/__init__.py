@@ -269,6 +269,7 @@ async def _loop() -> None:
 async def _start() -> None:
     try:
         _init()
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        # 建表失败不阻塞启动，但必须留痕：静默的话主动消息会「看起来正常」却一条都发不出去
+        logger.warning(f"[proactive] 初始化表失败: {type(e).__name__}: {e}")
     asyncio.create_task(_loop())

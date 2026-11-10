@@ -2,6 +2,17 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 审视后修复：测试隔离 / CI 守门 / 拆 prepare
+
+- 测试和体检统一在 import 前把 `QQBOT_ROOT` 指到临时根。以前只逐个重定向 8 个模块，
+  wiki / shadow / diary / meme / contradict / scheduler / watch 仍读默认根：本地会在
+  `C:\opt` 留 chat.db，云端每次 `verify.sh` 都会覆盖 `/opt/nonebot/data/shadow-weekly.json`，
+  下周周报的「上周对比」就失真了。新增「默认根已指向临时目录」断言（离线 647、全链路 240）。
+- CI 补三套守门员：link-check（41）、smoke-plugins（6 插件）、smoke-clock（真实时钟）。
+- `record_usage` 记账失败、proactive 建表失败不再静默吞异常，改为 warning。
+- `chat_turn._turn_prepare` 144 行拆成四个子方法（followup / vectors / recall / knowledge / profile），纯移动。
+- 清理 agentd 残留（测试临时子目录、注释），文档数字同步。
+
 ## 2026-11-10 · 移除 agentd
 
 - 停用并删除 agentd 服务、sandbox/proxy 容器、自然语言任务入口和 `/task` 插件。

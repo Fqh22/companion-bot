@@ -38,6 +38,11 @@ except Exception:  # noqa: BLE001
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
 
+# paths.py 在 import 时固化 QQBOT_ROOT：必须赶在 import app_core / plugins 之前隔离，
+# 否则插件里走默认路径的保存/日志会写 /opt —— 云端就是生产库。
+TMP = Path(tempfile.mkdtemp(prefix="link-"))
+os.environ.setdefault("QQBOT_ROOT", str(TMP))
+
 PASS = FAIL = 0
 
 
@@ -129,7 +134,7 @@ def static_checks() -> None:
 # ---------------- 动态：把 handler 真跑一遍 ----------------
 def build_harness():
     """在临时目录里 init nonebot，再导入真正的插件模块。"""
-    os.chdir(tempfile.mkdtemp(prefix="link-"))
+    os.chdir(TMP)
     os.environ.setdefault("DRIVER", "~websockets")   # 临时目录里没有 .env，得显式指定
     import nonebot
     from nonebot.adapters.onebot.v11 import Adapter

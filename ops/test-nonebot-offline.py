@@ -31,6 +31,11 @@ CODE_DIR = os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")
 sys.path.insert(0, CODE_DIR)
 
 TMP = Path(tempfile.mkdtemp(prefix="qqbot-test-"))
+# paths.py 在 import 时固化 QQBOT_ROOT：必须赶在 import app_core 之前把根指到临时目录。
+# 下面的逐个重定向只覆盖了 8 个模块，wiki / shadow / diary / meme / contradict / scheduler /
+# watch 仍读默认根；云端默认根就是 /opt —— 那等于测试直接写生产库（2026-11-10 实测）。
+DEFAULT_ROOT = Path(os.environ.get("QQBOT_ROOT") or "/opt")
+os.environ["QQBOT_ROOT"] = str(TMP / "root")
 print("代码目录:", CODE_DIR)
 print("临时目录:", TMP)
 
@@ -98,7 +103,15 @@ def check(name: str, cond: bool, extra: str = "") -> None:
     print(("PASS " if cond else "FAIL ") + name + ((" | " + extra) if extra else ""))
 
 
+def check_root_isolated() -> None:
+    """回归保护：确认 import 之前设的 QQBOT_ROOT 真的生效（有人挪了位置就会红）。"""
+    import app_core.paths as _paths
+    check("默认根已指向临时目录（不写 %s）" % DEFAULT_ROOT,
+          str(_paths.ROOT) == str(TMP / "root"), str(_paths.ROOT))
+
+
 async def main() -> None:
+    check_root_isolated()
     # ---------- A. 分段 ----------
     parts = chat_mod.split_reply("今天天气不错。你要出去吗？我觉得可以。")
     check("split_reply 分段非空且无空白项", bool(parts) and all(p.strip() for p in parts), str(parts))

@@ -56,7 +56,7 @@
 
   <rect class="box green" x="628" y="164" width="176" height="96" rx="10"/>
   <text class="title" x="644" y="188">app_core/</text>
-  <text class="sub" x="644" y="208">纯逻辑模块（约 45 个）</text>
+  <text class="sub" x="644" y="208">纯逻辑模块（约 52 个）</text>
   <text class="tiny" x="644" y="228">不 import nonebot</text>
   <text class="tiny" x="644" y="244">可离线单测</text>
 

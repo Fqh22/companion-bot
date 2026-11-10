@@ -258,8 +258,8 @@ def check_duplicate_commands() -> list[str]:
 
     为什么必须机器查：撞名**不报错**，NoneBot 只在启动日志里打一行
     `Duplicated prefix rule "/usage"`，沉在 journal 里没人看。实测 `/usage`
-    就是这样被 agent 插件（priority=4 + block=True）吞掉的——commands 里那条
-    「今日/近 7 天费用」从来没执行过，用户看到的永远是 agentd 的 token 数。
+    就是这样被一个已移除的 agent 插件（priority=4 + block=True）吞掉的——commands 里
+    那条「今日/近 7 天费用」从来没执行过，用户看到的永远是它的 token 数。
     """
     seen: dict[str, list[str]] = {}
     for f in sorted(PLUGINS.rglob("*.py")):
