@@ -28,6 +28,10 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
+# paths 在 import 时固化：先把根指到临时目录，否则 profile/学习文件会落到 /opt（云端是生产库）
+TMP = Path(tempfile.mkdtemp(prefix="clock-smoke-"))
+os.environ.setdefault("QQBOT_ROOT", str(TMP))
+
 from app_core import mood, profile, scheduler  # noqa: E402
 
 FAIL = 0
@@ -41,7 +45,7 @@ def check(name: str, cond: bool, extra: str = "") -> None:
 
 
 def main() -> int:
-    tmp = Path(tempfile.mkdtemp(prefix="clock-smoke-"))
+    tmp = TMP
     mood.STATE_DIR, mood.STATE = tmp, tmp / "state.json"
     now = time.time()
 

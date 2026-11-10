@@ -22,7 +22,13 @@ except Exception:  # noqa: BLE001
     pass
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
-os.chdir(tempfile.mkdtemp(prefix="plug-"))     # 避免读到仓库里的 .env
+TMP = Path(tempfile.mkdtemp(prefix="plug-"))
+os.chdir(TMP)     # 避免读到仓库里的 .env
+# CI 只装了 nonebot2，没有 fastapi 之类的默认 driver：显式指定 websockets，
+# 否则 nonebot.init() 会在「没有 .env」的机器上直接抛 ImportError。
+os.environ.setdefault("DRIVER", "~websockets")
+# paths 在 import 时固化：不隔离的话插件里走默认路径的写入会落到 /opt（云端是生产库）。
+os.environ.setdefault("QQBOT_ROOT", str(TMP))
 
 import nonebot  # noqa: E402
 from nonebot.adapters.onebot.v11 import Adapter  # noqa: E402
