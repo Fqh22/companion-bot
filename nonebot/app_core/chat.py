@@ -23,6 +23,7 @@ from app_core import vocab as vocab_mod
 from app_core import llm as llm_mod
 from app_core import prompt as prompt_mod
 from app_core import tool_loop
+from app_core.identity import IdentityResolver
 from app_core.memory import Memory
 
 DATA = _paths.DATA
@@ -216,6 +217,19 @@ class ChatCore(ChatTurnMixin):
         self.admin_uid = str((cfg.get("admin") or {}).get("user_id") or "").strip()
         if self.admin_uid in ("", "0"):
             self.admin_uid = ""
+        # 内部身份：QQ 继续用 QQ 号；console/其他平台走 identity_map。
+        self.identity = IdentityResolver(DB)
+        # 这里只存“额外身份”；admin_uid 仍单独保留，旧测试/旧配置直接改它。
+        self.admin_ids: list[str] = []
+        for item in ((cfg.get("admin") or {}).get("identities") or []):
+            try:
+                _iid = self.identity.resolve(
+                    str(item.get("platform") or ""),
+                    str(item.get("user_id") or ""))
+                if _iid and _iid not in self.admin_ids:
+                    self.admin_ids.append(_iid)
+            except Exception as e:  # noqa: BLE001
+                log.warning("admin.identities 解析失败：%s", e)
 
     def config_issues(self) -> list[str]:
         """启动自检：只查「不报错但静默失效」的配置。
@@ -225,10 +239,10 @@ class ChatCore(ChatTurnMixin):
         这种失败模式不该靠人记住文档，所以启动时打 ERROR、/ping 里也报。
         """
         issues: list[str] = []
-        if not self.admin_uid:
+        if not self.admin_uid and not self.admin_ids:
             issues.append(
-                "admin.user_id 未配置（空或 \"0\"）：所有人都会被当成本人（可用全部工具、"
-                "读已有记忆），但记忆不会写入、主动消息与定时推送全部发不出去。"
+                "admin.user_id / admin.identities 未配置：所有人都会被当成本人"
+                "（可用全部工具、读已有记忆），但记忆不会写入、主动消息与定时推送全部发不出去。"
                 "改 /opt/nonebot/config.yaml 后 systemctl restart nonebot")
         if not str(self.api or "").strip():
             issues.append("llm.api 为空：所有对话都会失败")
@@ -249,8 +263,8 @@ class ChatCore(ChatTurnMixin):
 
     def config_status(self) -> str:
         """一行配置状态，给 /ping 用。只报「有没有配」，不回显 QQ 号。"""
-        if not self.admin_uid:
-            return "⚠ admin.user_id 未配置（记忆不写入、主动消息不发）"
+        if not self.admin_uid and not self.admin_ids:
+            return "⚠ admin.user_id / admin.identities 未配置（记忆不写入、主动消息不发）"
         return f"管理员已配置 · 模型 {self.model} · 工具上限 {self.max_tool_rounds} 轮"
 
     def _sync_llm_db(self) -> None:
@@ -373,12 +387,14 @@ class ChatCore(ChatTurnMixin):
 
         没配 admin 时一律当本人——否则一上线整个机器人哑掉，比放开更糟。
         """
-        if not self.admin_uid:
+        ids = ([self.admin_uid] if self.admin_uid else []) + list(self.admin_ids)
+        if not ids:
             return True
-        return session == f"private:{self.admin_uid}"
+        return any(session == f"private:{uid}" for uid in ids)
 
     def private_session(self) -> str:
-        return f"private:{self.admin_uid}" if self.admin_uid else ""
+        uid = self.admin_uid or (self.admin_ids[0] if self.admin_ids else "")
+        return f"private:{uid}" if uid else ""
 
     async def record_assistant(self, session: str, text: str, kind: str = "push") -> None:
         """把机器人**主动发出**的消息也写进历史。

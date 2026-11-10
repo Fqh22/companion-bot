@@ -18,6 +18,9 @@ DEFAULTS = {
         # 管理员 QQ。仓库里是占位 "0"，部署时在云端 config.yaml 填真实号。
         # 留空或 "0" 的后果：记忆不写入、主动消息与定时推送发不出去。
         "user_id": "0",
+        # 多入口管理员：QQ 继续用 user_id；console/其他平台登记到这里。
+        # 例如 [{"platform": "console", "user_id": "local"}]
+        "identities": [],
     },
     "llm": {
         "api": "https://api.deepseek.com/v1/chat/completions",

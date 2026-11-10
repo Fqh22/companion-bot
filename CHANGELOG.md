@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 引擎抽离 M3：身份映射
+
+- 新增 app_core/identity.py：identity_map(platform, external_id, kind, internal_id)。
+- QQ 内部 ID 继续用 QQ 号，存量数据零迁移；console/其他平台生成 c-<uuid>。
+- admin 新增 identities 列表；旧 admin.user_id 继续生效，_is_owner 同时认两套。
+- 651 离线 / 239 全链路 / 81 agentd / 48 面板；identity 6/6、console e2e 9/9；云端 6/6。
+
 ## 2026-11-10 · 引擎抽离 M2：适配器边界
 
 - 新增 adapters/fake.py（记录 OutboundMessage）与 adapters/console.py（stdout 发送）。

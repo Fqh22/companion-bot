@@ -55,3 +55,5 @@ jobs:
         run: python ops/test-console.py
       - name: console 端到端
         run: python ops/test-console-e2e.py
+      - name: 身份映射测试
+        run: python ops/test-identity.py

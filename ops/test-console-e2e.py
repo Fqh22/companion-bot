@@ -87,6 +87,12 @@ async def main():
     check("数据库落盘", n == 2, n)
     check("没有 import nonebot", "nonebot" not in sys.modules)
 
+    core.admin_uid = ""
+    core.admin_ids = ["c-test"]
+    check("admin.identities 映射后是 owner", core._is_owner("private:c-test"))
+    check("admin.identities 以外不是 owner", not core._is_owner("private:other"))
+    check("private_session 用映射 ID", core.private_session() == "private:c-test")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
