@@ -48,6 +48,8 @@ driver = get_driver()
 
 _SETTLE_CFG = dict(config.load().get("chat") or {})
 SETTLE_MEDIA = float(_SETTLE_CFG.get("media_settle_seconds", 1.5))
+# 第一段是否引用他的消息。默认关：实测每条回复都挂引用框太重，只在长对话里才像接话。
+QUOTE_REPLY = bool(_SETTLE_CFG.get("quote_reply", False))
 
 _locks: dict[str, asyncio.Lock] = {}
 
@@ -152,7 +154,9 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         if wait > 0:
             await asyncio.sleep(wait)
         # 只有第一段带引用：后面几段接在它自己那条后面才对
-        if await _send_text(part, reply_id=turn.meta.get("event_id") if not sent else None):
+        if await _send_text(
+                part,
+                reply_id=turn.meta.get("event_id") if (QUOTE_REPLY and not sent) else None):
             sent += 1
             sent_parts.append(part)
 
@@ -180,8 +184,10 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
             if replies or images:
-                await _send_replies(replies, images,
-                                    reply_id=turn.meta.get("event_id") if not sent else None)
+                await _send_replies(
+                    replies, images,
+                    reply_id=(turn.meta.get("event_id")
+                              if (QUOTE_REPLY and not sent) else None))
         logger.info(f"[chat] sent {sid}: {sent} 段流式 + {len(replies or [])} 段补发")
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复

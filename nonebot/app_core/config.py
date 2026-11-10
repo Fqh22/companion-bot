@@ -118,6 +118,8 @@ DEFAULTS = {
         # 影子模式：原来同样只在 ChatCore 里用 get 兜底，没进 DEFAULTS。
         "shadow_followup": True,
         "shadow_sample": 0.3,
+        # 引用回复：第一段带「回复你那条」。默认关——用户实测觉得每条都挂引用框太重。
+        "quote_reply": False,
         # rules = 旧的长度/形式/反应规则；model = 只给人格和例子，让模型自己判断。
         # 回退时把它改成 rules 并重启，不需要回滚代码。
         "style_mode": "model",

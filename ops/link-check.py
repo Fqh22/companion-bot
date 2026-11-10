@@ -236,7 +236,15 @@ async def dynamic_checks(chat_mod) -> None:
     check("纯文本触发一次回复", len(calls) == 1 and calls[0]["text"] == "在吗",
           str(calls))
     check("纯文本立即开始（无等待）", len(calls) == 1)
-    check("第一段引用他的消息", bool(sent) and "[CQ:reply,id=1]" in sent[0], str(sent[:1])[:80])
+    check("默认不挂引用框", bool(sent) and "[CQ:reply" not in sent[0], str(sent[:1])[:80])
+    # 开关打开时才引用：配置 chat.quote_reply
+    chat_mod.QUOTE_REPLY = True
+    calls.clear(); sent.clear()
+    await chat_mod._handle(ev([], "在吗"))
+    await drain()
+    check("开启后第一段引用他的消息",
+          bool(sent) and "[CQ:reply,id=1]" in sent[0], str(sent[:1])[:80])
+    chat_mod.QUOTE_REPLY = False
 
     # 5. 图片 + 窗口内补一句
     calls.clear()
