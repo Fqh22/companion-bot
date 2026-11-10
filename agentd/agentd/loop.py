@@ -11,8 +11,10 @@ import shutil
 import time
 from pathlib import Path
 
+from . import artifacts as artifacts_mod
 from . import context as ctx_mod
 from . import planner as planner_mod
+from . import state as state_mod
 from .config import Config
 from .llm import LLM
 from .sandbox import Sandbox
@@ -78,11 +80,18 @@ class Runner:
     def stop(self) -> None:
         self._stop = True
 
+    def _set_status(self, tid: int, status: str, **kw) -> None:
+        try:
+            state_mod.transition_task(self.store, tid, status, **kw)
+        except ValueError as e:
+            self.store.add_event(tid, "error", f"状态迁移失败：{e}")
+            self.store.set_task(tid, status=status, **kw)
+
     # ---------- 单个任务 ----------
     async def run_task(self, task: dict) -> None:
         tid = task["id"]
         if task["status"] == "pending":
-            self.store.set_task(tid, status="running", started_at=time.time())
+            self._set_status(tid, "running", started_at=time.time())
             task = self.store.task(tid) or task
             self.store.add_event(tid, "note", f"开始：{task['goal'][:120]}")
             steps = self.store.steps(tid)
@@ -142,15 +151,15 @@ class Runner:
         while True:
             guard += 1
             if guard > self.cfg.max_steps * 4:      # 死循环保险
-                self.store.set_task(tid, status="failed", finished_at=time.time(),
-                                    report="循环次数异常，已强制停止")
+                self._set_status(tid, "failed", finished_at=time.time(),
+                                 report="循环次数异常，已强制停止")
                 return
             task = self.store.task(tid) or task
             if task["status"] in ("cancelled", "paused", "done", "failed"):
                 return
             if self._budget_hit(task):
-                self.store.set_task(tid, status="failed", report=self._budget_msg(task),
-                                    finished_at=time.time())
+                self._set_status(tid, "failed", report=self._budget_msg(task),
+                                 finished_at=time.time())
                 return
             step = self._next_runnable(task, steps)
             if step is None:
@@ -159,10 +168,10 @@ class Runner:
                     continue
                 self._propagate_blocked(tid, steps)
                 if all(s["status"] in TERMINAL for s in steps):
-                    self.store.set_task(tid, status="done", finished_at=time.time())
+                    self._set_status(tid, "done", finished_at=time.time())
                 else:
-                    self.store.set_task(tid, status="failed", finished_at=time.time(),
-                                        report="没有可执行的步骤（依赖全部阻塞）")
+                    self._set_status(tid, "failed", finished_at=time.time(),
+                                     report="没有可执行的步骤（依赖全部阻塞）")
                 return
             # 单步整体限时：一次 LLM 卡住时，deadline 检查永远轮不到
             left = max(30.0, float(task.get("deadline") or 0) - time.time())
@@ -377,8 +386,7 @@ class Runner:
 
     # ---------- 文件进出 ----------
     def _need_input(self, tid: int, text: str) -> None:
-        self.store.set_task(tid, status="needs_input",
-                            finished_at=time.time(), report=text)
+        self._set_status(tid, "needs_input", finished_at=time.time(), report=text)
         self.store.outbox_push(tid, text, "")
         self.store.add_event(tid, "note", text)
 
@@ -412,28 +420,20 @@ class Runner:
         return n
 
     def _collect_outputs(self, tid: int) -> list[str]:
-        """任务结束后回传的文件：任务开始后**新出现或被改过**的文件。
-
-        不按扩展名筛。改成看时间戳，是因为黑名单永远补不全，
-        而「这次任务动过的」是客观事实。
-        """
+        """任务结束后回传的文件：任务开始后**新出现或被改过**的文件。"""
         task = self.store.task(tid) or {}
         started = float(task.get("started_at") or 0)
-        out: list[str] = []
+        arts = artifacts_mod.collect(self.work / str(tid), started)
+        return artifacts_mod.paths(arts, self.work / str(tid))
+
+    def _save_artifacts(self, tid: int, arts: list) -> None:
+        task = self.store.task(tid) or {}
         try:
-            for p in sorted((self.work / str(tid)).iterdir()):
-                if not p.is_file() or p.name == "PLAN.md":
-                    continue
-                if p.stat().st_size > 20 * 1024 * 1024:
-                    continue
-                if started and p.stat().st_mtime < started - 1:
-                    continue                      # 没动过（比如原件）
-                out.append(str(p))
-                if len(out) >= 3:
-                    break
+            extra = json.loads(task.get("extra") or "{}")
         except Exception:  # noqa: BLE001
-            pass
-        return out
+            extra = {}
+        extra["artifacts"] = [a.as_dict() for a in arts]
+        self.store.set_task(tid, extra=json.dumps(extra, ensure_ascii=False))
 
     # ---------- 通道 ----------
     def _notify(self, task_id: int, text: str) -> None:
@@ -487,14 +487,15 @@ class Runner:
                 f"{i}. 第{s['idx']}步「{s['desc'][:24]}」：{str(s['error'])[:80]}"
                 for i, s in enumerate(blocked[:5], 1))
             report += f"\n需要你回答（/answer {tid} 你的答复）：\n{qs}"
-            self.store.set_task(tid, status="needs_input", finished_at=time.time(),
-                                report=report)
+            self._set_status(tid, "needs_input", finished_at=time.time(), report=report)
         else:
-            self.store.set_task(tid, status="done", finished_at=time.time(),
-                                report=report)
+            self._set_status(tid, "done", finished_at=time.time(), report=report)
         self.store.add_event(tid, "note", report[:300])
         # 产物随最后一条消息回传（file 字段是 JSON 数组，插件负责上传到 QQ）
-        outs = self._collect_outputs(tid)
+        started = float((self.store.task(tid) or task).get("started_at") or 0)
+        arts = artifacts_mod.collect(self.work / str(tid), started)
+        self._save_artifacts(tid, arts)
+        outs = artifacts_mod.paths(arts, self.work / str(tid))
         self.store.outbox_push(tid, self._final_message(task, steps, report),
                                json.dumps(outs, ensure_ascii=False) if outs else "")
         self._write_state(task)

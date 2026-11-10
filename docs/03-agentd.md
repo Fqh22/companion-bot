@@ -82,6 +82,12 @@ QQ → plugins/agent（2 秒轮询发件箱）→ HTTP 127.0.0.1:8100 → agentd
 
 **验收预检**：`custom` 验收只能引用前面步骤创建过的 `.py`；引用不存在的 `check.py` 会自动降级为 `exit_code`，不让计划因为一个不存在的脚本必死。
 
+**状态机**：`pending → running → needs_input | done | failed`；回答后
+`needs_input → pending`；非法迁移会被拒绝并记事件，不再靠循环猜。
+
+**产物清单**：收尾时扫描任务目录，把任务开始后新增/修改的文件写成
+`{path,size,sha256}` 存进 `tasks.extra.artifacts`；发 QQ 的文件列表也从这份清单来。
+
 ---
 
 ## 五、四类失败

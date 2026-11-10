@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config
+from . import state as state_mod
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -293,7 +294,10 @@ class Store:
                 self.set_step(s["id"], status="skipped", error="用户已答复，改走新方案")
                 n += 1
         self.clear_replanned(task_id)          # 给一次新的重规划机会
-        self.set_task(task_id, status="pending", finished_at=None)
+        try:
+            state_mod.transition_task(self, task_id, "pending", finished_at=None)
+        except ValueError:
+            self.set_task(task_id, status="pending", finished_at=None)
         return n
 
     def clear_replanned(self, task_id: int) -> None:

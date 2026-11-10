@@ -27,8 +27,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agentd import config  # noqa: E402
 from agentd.context import Context  # noqa: E402
 from agentd.llm import extract_json  # noqa: E402
+from agentd.artifacts import collect as collect_artifacts  # noqa: E402
 from agentd.loop import Runner, attachment_hint, classify, _changed_files  # noqa: E402
+from agentd.plan import validate_plan  # noqa: E402
 from agentd.planner import Planner, noop_ratio, sanitize_steps  # noqa: E402
+from agentd.state import can_transition, transition_task  # noqa: E402
 from agentd.sandbox import Sandbox, _head_tail  # noqa: E402
 from agentd.store import Store  # noqa: E402
 from agentd.tools import TOOLS_DOC, Tools  # noqa: E402
@@ -186,6 +189,39 @@ async def main() -> None:
     check("未创建的 custom 降级", _bad[1]["verify"] == {"exit_code": 0}, _bad[1])
     check("附件提示认这份", attachment_hint("把这份简历重排"), "未命中")
     check("附件提示不拦生成", not attachment_hint("生成一个 CSV"))
+
+    # 计划契约：空 verify 降级为 noop，非法依赖被丢掉
+    fixed = validate_plan([
+        {"idx": 0, "desc": "写 /work/1/check.py",
+         "verify": {"custom": "python /work/1/check.py"}},
+        {"idx": 1, "desc": "跑一步", "verify": {},
+         "depends_on": [0, 99]},
+    ])
+    check("计划空 verify 降级", fixed[1]["verify"] == {"noop": True}, fixed[1])
+    check("计划非法依赖被丢", fixed[1]["depends_on"] == [0], fixed[1])
+
+    # 产物清单：文件名/大小/sha 都在，PLAN.md 不进
+    ad = TMP / "artifacts"
+    ad.mkdir()
+    (ad / "a.txt").write_text("hello", encoding="utf-8")
+    (ad / "PLAN.md").write_text("plan", encoding="utf-8")
+    arts = collect_artifacts(ad, 0)
+    check("产物清单收集文件", [a.path for a in arts] == ["a.txt"], arts)
+    check("产物清单有 sha", len(arts[0].sha256) == 64, arts[0])
+
+    # 状态机：只允许声明的迁移
+    check("状态机允许 needs_input", can_transition("running", "needs_input"))
+    check("状态机拒绝 done->running", not can_transition("done", "running"))
+    st = Store(TMP / "data" / "state.db")
+    stid = st.create_task("状态测试")
+    transition_task(st, stid, "running")
+    try:
+        transition_task(st, stid, "done")
+        transition_task(st, stid, "running")
+        bad = False
+    except ValueError:
+        bad = True
+    check("状态机拒绝非法迁移", bad)
 
     # ---------- 端到端：两步任务 ----------
     store2 = Store(TMP / "data" / "t2.db")

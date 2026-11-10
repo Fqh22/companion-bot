@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · agentd v2：计划契约/状态机/产物
+
+- 新增 plan.py：PlanStep/VerifySpec；空 verify 降级 noop，非法依赖丢弃，custom 只认已创建脚本。
+- 新增 state.py：pending/running/needs_input/done/failed 显式迁移；回答走 needs_input -> pending。
+- 新增 artifacts.py：收尾写 path/size/sha256 到 tasks.extra.artifacts，QQ 回传从清单来。
+- agentd 92/92；不引入 LangGraph/Temporal/OpenHands，先按自家契约硬化。
+
 ## 2026-11-10 · SnowLuma 退路
 
 - 备份当前 SnowLuma 镜像（698M）与配置；不重建当前容器。
