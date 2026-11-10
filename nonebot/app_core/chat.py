@@ -681,12 +681,17 @@ class ChatCore(ChatTurnMixin):
         if images:
             # 求助图仍开思考；分享/表情图不开。
             return None if prompt_mod.image_mode(t) == "fix" else False
-        if len(t) >= 30:
+        # 2026-11-10 阈值从 30 降到 20：实测「dsh 和 cc 都只是一个平台…」「还有什么和
+        # harness 差不多价格好用的」这类 26–29 字的句子被当成闲聊关了思考，
+        # 结果它既不搜也不推理，直接凭印象答。长句基本都不是纯闲聊。
+        if len(t) >= 20:
             return None
         if t.endswith(("？", "?")) or "？" in t or "?" in t:
             return None
         if any(w in t for w in ("为什么", "怎么", "报错", "区别", "方案", "原理",
-                                "帮我", "查", "多少", "能不能", "是不是该")):
+                                "帮我", "查", "多少", "能不能", "是不是该",
+                                "价格", "多少钱", "推荐", "哪个好", "值不值",
+                                "合适", "搜", "找")):
             return None
         return False
 

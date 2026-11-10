@@ -2262,6 +2262,8 @@ async def main() -> None:
     check("求助图不关", core._thinking_for("这报错怎么改", ["x.jpg"]) is None)
     check("短推论关思考", core._thinking_for("你是不是又偷偷看我了", None) is False)
     check("长句不关", core._thinking_for("我" * 40, None) is None)
+    check("中长句也开思考", core._thinking_for("现在还有什么和harness差不多价格好用的a", None) is None)
+    check("推荐类短句也开思考", core._thinking_for("推荐个便宜点的", None) is None)
 
     # ---- 模型优先：style_mode=model 只给原则和例子，不注入规则块 ----
     _m_model = prompt_fresh.build_messages({}, [], "😂", style_mode="model")
