@@ -157,6 +157,9 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
 
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
+    typing_task: asyncio.Task | None = None
+    if sid.startswith("private:"):
+        typing_task = asyncio.create_task(_typing_loop(sid))
     try:
         async with _lock(sid):
             # 总时限：模型/工具再慢也不能让用户无限等
@@ -203,6 +206,10 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             await chat.finish(f"出错了：{type(e).__name__}")
         except Exception:
             pass
+    finally:
+        if typing_task is not None:
+            typing_task.cancel()
+            await _set_typing(sid, False)
 
 
 async def _caption_later(msg_id: int, paths: list[str]) -> None:
@@ -257,6 +264,35 @@ def _session_key(event: MessageEvent) -> str:
     if isinstance(event, GroupMessageEvent):
         return f"group:{event.group_id}"
     return f"private:{event.user_id}"
+
+
+async def _set_typing(sid: str, on: bool) -> None:
+    """私聊里显示「正在输入」。SnowLuma 支持 set_input_status；失败静默降级。
+
+    为什么值得做：这是整条链路里唯一一个「对方也在场」的可见信号。
+    以前只有发送前的 sleep（假装打字），但用户看不到任何状态。
+    """
+    if not sid.startswith("private:"):
+        return
+    bot = _bot()
+    if bot is None:
+        return
+    try:
+        await bot.call_api("set_input_status",
+                           user_id=int(sid.split(":", 1)[1]),
+                           event_type=1 if on else 0)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[chat] typing 设置失败：{type(e).__name__}: {e}")
+
+
+async def _typing_loop(sid: str) -> None:
+    """QQ 的「正在输入」会自己过期，5 秒续一次，直到本轮结束。"""
+    try:
+        while True:
+            await _set_typing(sid, True)
+            await asyncio.sleep(5)
+    except asyncio.CancelledError:
+        raise
 
 
 async def _pace(text: str, fast: bool = False) -> None:
