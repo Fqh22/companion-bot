@@ -59,3 +59,7 @@ jobs:
         run: python ops/test-identity.py
       - name: 投递 golden
         run: python ops/test-delivery.py
+      - name: 审批端口
+        run: python ops/test-approval.py
+      - name: QQ 入站归一化
+        run: python ops/test-inbound.py

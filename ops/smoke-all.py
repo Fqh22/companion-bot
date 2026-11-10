@@ -122,7 +122,7 @@ class FakeClient:
 # ---------- 路径重定向 ----------
 from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod, engine as engine_mod,
-    delivery as delivery_mod, identity as identity_mod,
+    approval as approval_mod, delivery as delivery_mod, identity as identity_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
     followup_domain as fu_domain_mod, followup_store as fu_store_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
@@ -165,6 +165,7 @@ check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
       and hasattr(engine_mod, "InboundMessage"))
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))
 check("delivery 有 plan_delivery", hasattr(delivery_mod, "plan_delivery"))
+check("approval 有 ApprovalRequest", hasattr(approval_mod, "ApprovalRequest"))
 check("followup_store 有 _conn", hasattr(fu_store_mod, "_conn"))
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
