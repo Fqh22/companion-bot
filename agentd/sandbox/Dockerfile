@@ -10,6 +10,6 @@ RUN apt-get update -o Acquire::Retries=3 \
 # 文档处理常用库：装进镜像，省得每个任务现装（沙箱环境不持久）。
 # 版本不锁死，pypi 白名单可达，需要新的可以现场 pip。
 RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    python-docx python-pptx openpyxl pandas xlsxwriter pillow
+    python-docx python-pptx openpyxl pandas xlsxwriter pillow pypdf pdfminer.six
 
 WORKDIR /work

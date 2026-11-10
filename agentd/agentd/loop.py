@@ -168,6 +168,9 @@ class Runner:
                     continue
                 self._propagate_blocked(tid, steps)
                 if all(s["status"] in TERMINAL for s in steps):
+                    if any(s["status"] == "blocked" for s in steps):
+                        # 让 _finish 统一生成 needs_input；不要先标 done 再回退
+                        return
                     self._set_status(tid, "done", finished_at=time.time())
                 else:
                     self._set_status(tid, "failed", finished_at=time.time(),
