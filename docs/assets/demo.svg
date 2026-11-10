@@ -47,7 +47,7 @@
 
     <!-- 6 他 -->
     <rect class="bubble-user" x="318" y="392" width="260" height="58" rx="12"/>
-    <text class="txt" x="334" y="417">/task 把这三个点整理成一页纸，</text>
+    <text class="txt" x="334" y="417">把这三个点整理成一页纸，</text>
     <text class="txt" x="334" y="439">明天带去</text>
 
     <!-- 7 它 -->
@@ -55,5 +55,5 @@
     <text class="txt" x="202" y="489">收到，跑完发你</text>
   </g>
 
-  <text class="note" x="164" y="616">示意图（非真实截图），用于说明对话形态与 /task 派活。</text>
+  <text class="note" x="164" y="616">示意图（非真实截图），用于说明对话形态。</text>
 </svg>

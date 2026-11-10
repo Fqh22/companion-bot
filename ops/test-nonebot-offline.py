@@ -87,7 +87,6 @@ followup_mod.DB = TMP / "chat.db"
 files_mod.SAVE_DIR = TMP
 files_mod.IMAGE_DIR = TMP / "images"
 files_mod.PENDING_JSON = TMP / "last-file.json"
-files_mod.AGENT_INBOX = TMP / "agent-inbox"
 # 后面的 reply 测试会把 kb.recall 换成桩，这里先留一份真的给知识库用例用
 REAL_KB_RECALL = kb_mod.recall
 
@@ -515,44 +514,18 @@ async def main() -> None:
               ["[文字] 他明确说不要连着发三条。",
                "[文字] 他明确说别用英文缩写。"])) == 2)
 
-    # ---------- B8. 文件登记：只下一遍，/task 与 chat 共用 ----------
+    # ---------- B8. 文件登记：只记路径，不复制 ----------
     _src = TMP / "发来的简历.pdf"
     _src.write_bytes(b"%PDF-1.4 fake")
     _dst = files_mod.remember_pending(_src, "发来的简历.pdf")
-    check("文件登记写入 agentd 的 inbox", _dst is not None and _dst.exists(), str(_dst))
-    try:
-        _same_inode = _src.stat().st_ino == _dst.stat().st_ino
-    except Exception:  # noqa: BLE001
-        _same_inode = False
-    check("文件登记用硬链接，不复制内容", _same_inode)
+    check("文件登记返回源路径", _dst == _src and _dst.exists(), str(_dst))
     _info = files_mod.pending()
-    check("登记表能被 /task 读到", bool(_info) and _info["path"] == str(_dst), str(_info))
-    # 删掉源文件后登记的那份还在：硬链接不是软链接
-    _src.unlink()
-    check("源文件删了 inbox 那份还在", _dst is not None and _dst.exists())
+    check("登记表能读到路径", bool(_info) and _info["path"] == str(_src), str(_info))
     files_mod.PENDING_JSON.write_text(
-        json.dumps({"path": str(_dst), "name": "x", "ts": 0}), encoding="utf-8")
+        json.dumps({"path": str(_src), "name": "x", "ts": 0}), encoding="utf-8")
     check("过期登记当没发过", files_mod.pending() is None)
     files_mod.clear_pending()
     check("清空后登记表为空", files_mod.pending() is None)
-
-    # 收件箱清理：过期删、新的留、正在等派活的不删
-    _ib = files_mod.AGENT_INBOX
-    (_ib / "old.pdf").write_bytes(b"x" * 100)
-    (_ib / "fresh.pdf").write_bytes(b"y" * 10)
-    (_ib / "waiting.pdf").write_bytes(b"z" * 10)
-    _old = time.time() - 90000      # 25 小时前
-    for _n in ("old.pdf", "waiting.pdf"):
-        os.utime(_ib / _n, (_old, _old))
-    files_mod.PENDING_JSON.write_text(json.dumps(
-        {"path": str(_ib / "waiting.pdf"), "name": "waiting.pdf", "ts": time.time()}),
-        encoding="utf-8")
-    _cr = files_mod.cleanup_inbox(24)
-    check("收件箱清理删掉过期文件", _cr["removed"] == 1 and not (_ib / "old.pdf").exists(),
-          str(_cr))
-    check("收件箱清理保留新文件", (_ib / "fresh.pdf").exists())
-    check("正在等派活的过期文件不删", (_ib / "waiting.pdf").exists())
-    files_mod.clear_pending()
 
     # ---------- B9. 相处状态（他那边） + 自指率 ----------
     from app_core import attention as attention_mod
@@ -1800,7 +1773,7 @@ async def main() -> None:
 
     # 命令清单：/help 的唯一真相源（lint 会核对注册表，这里只保证内容可用）
     from app_core import help as help_mod
-    check("help 清单够全", len(help_mod.names()) >= 36, str(len(help_mod.names())))
+    check("help 清单够全", len(help_mod.names()) >= 29, str(len(help_mod.names())))
     check("help 无重复", len(help_mod.names()) == len(set(help_mod.names())))
     check("help 文案分组", "【日常】" in help_mod.text() and "/ping" in help_mod.text())
 

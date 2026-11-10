@@ -33,7 +33,6 @@ LOG = Path("/opt/nonebot/ops/restore.log")
 EXPECT = {
     "livingmemory.db": ["documents"],
     "chat.db": ["messages"],
-    "agentd.db": ["tasks"],
 }
 # 代码文件抽检：备份里必须有，否则恢复出来起不来
 CODE_FILES = ["code/app_core/chat.py", "code/plugins/chat/__init__.py"]

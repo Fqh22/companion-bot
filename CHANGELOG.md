@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 移除 agentd
+
+- 停用并删除 agentd 服务、sandbox/proxy 容器、自然语言任务入口和 `/task` 插件。
+- 代码/数据/服务单元归档到 `/opt/backup/agentd-removed-20261110-201219.tgz` 与
+  `/opt/backup/agentd-db-20261110-201219.db`；Git 回退点 `pre-agentd-removal-20261110`。
+- 保留聊天、记忆、情绪、主动消息、OneBot 健康检查；验证改为五件套。
+- 646 离线 / 239 全链路 / 48 面板；云端 5/5。
+
 ## 2026-11-10 · agentd v2：计划契约/状态机/产物
 
 - 新增 plan.py：PlanStep/VerifySpec；空 verify 降级 noop，非法依赖丢弃，custom 只认已创建脚本。

@@ -65,11 +65,6 @@ avail=$(free -m | awk 'NR==2{print $7}')
 [ "${avail:-0}" -le 80 ] && probs+=("可用内存仅 ${avail}MB")
 
 
-# agentd：机器人能聊天不代表任务系统活着。它挂了的表现是 /task 没反应。
-if ! curl -s -m 5 http://127.0.0.1:8100/health 2>/dev/null | grep -q '"ok": *true'; then
-    probs+=("agentd 无响应")
-fi
-
 # 有消息没回：最后一条是用户消息且已经过了 15 分钟，说明回复链路卡住了。
 # 命令类消息不入库，所以不会误报。
 unanswered=$("$PY" - 2>/dev/null <<'PY'

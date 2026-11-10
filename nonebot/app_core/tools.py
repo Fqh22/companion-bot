@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from app_core import diary, kb, learn, meme, remind, web, wiki
-from app_core import paths as _paths
 
 TOOLS = [
     {"type": "function", "function": {
@@ -97,18 +96,6 @@ TOOLS = [
                    "description": "提醒编号，就是 remind_list 里方括号中的数字"}},
             "required": ["id"]}}},
     {"type": "function", "function": {
-        "name": "agent_task",
-        "description": (
-            "把**需要动手做**的事交给后台 agent：改文档/PPT/表格、写并跑代码、"
-            "抓网页整理资料、批量处理文件。它会自己拆步骤、在沙箱里跑，完成后"
-            "单独把结果和文件发过来（几分钟不等）。\n"
-            "调用后你只回一句「好，我弄一下」之类，**不要自己在聊天里做这件事**。\n"
-            "只是聊天、回答问题、查资料说结论，不要调这个。"),
-        "parameters": {"type": "object", "properties": {
-            "goal": {"type": "string",
-                     "description": "要做的事，写清楚目标和产物，一两句话"}},
-            "required": ["goal"]}}},
-    {"type": "function", "function": {
         "name": "meme_send",
         "description": "发一张表情包。他开玩笑、你自嘲、情绪明显、或者一句话太干时优先用它，别只用文字。query 写一句具体的话描述你想表达的情绪或场景（比如「被夸得很爽」「无语到笑」「累得想躺」「代码又报错了」），比只写分类名准得多；写完不用再描述这张图。每轮最多一张，别连着发。",
         "parameters": {"type": "object", "properties": {
@@ -187,8 +174,6 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
             except Exception:
                 return "编号要是数字，先调 remind_list 看方括号里的数字"
             return remind.cancel(rid)
-        if name == "agent_task":
-            return await _delegate(args.get("goal", ""), core)
         if name == "meme_send":
             path, mode, score = await meme.find_ex(args.get("query", ""))
             if not path:
@@ -203,61 +188,4 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
     return f"未知工具：{name}"
 
 
-async def _delegate(goal: str, core=None) -> str:
-    """把任务交给 agentd：自动带上相关文件 + 相关记忆，而不是把聊天全倒过去。"""
-    import asyncio
-    import json
-    from pathlib import Path as _P
 
-    from app_core import intent
-
-    goal = (goal or "").strip()
-    if not goal:
-        return "没说要干什么"
-    body: dict = {"goal": goal}
-
-    # 1) 文件：优先按句子里点名的文件名找，其次用「刚发的那个」
-    info: dict = {}
-    try:
-        info = json.loads(_paths.DATA / "last-file.json".read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        info = {}
-    named = intent.mentioned_files(goal)
-    path = str(info.get("path") or "")
-    if path and named and not any(n in _P(path).name for n in named):
-        path = ""                      # 说的是别的文件，别乱挂
-    if path:
-        body["files"] = [path]
-
-    # 2) 上下文：只挑和这句话相关的记忆/笔记，2 条以内
-    if core is not None:
-        try:
-            ctx: list[str] = []
-            for term in intent.keywords(goal, 3):
-                rows = await core.memory.recall(term, 2)
-                for r in rows:
-                    line = f"- {r['text'][:120]}"
-                    if line not in ctx:
-                        ctx.append(line)
-            if ctx:
-                body["context"] = "\n".join(ctx[:3])
-        except Exception:  # noqa: BLE001
-            pass
-
-    def _post() -> dict:
-        import httpx
-
-        with httpx.Client(timeout=10) as c:
-            return c.post("http://127.0.0.1:8100/task", json=body).json()
-
-    try:
-        res = await asyncio.to_thread(_post)
-    except Exception as e:  # noqa: BLE001
-        return f"后台没起来（{type(e).__name__}），这轮先别接"
-    if not res.get("ok"):
-        return f"派不进去：{res.get('error')}"
-    try:
-        (_paths.DATA / "last-file.json").unlink(missing_ok=True)
-    except Exception:  # noqa: BLE001
-        pass
-    return f"已派给后台（#{res['id']}），结果会单独发过来"

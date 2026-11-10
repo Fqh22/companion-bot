@@ -3,18 +3,15 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import re
-import shutil
 import time
 from pathlib import Path
 
 from app_core import paths as _paths
 
 SAVE_DIR = _paths.DATA / "files"
-# 「刚收到的文件」登记处：/task 和 agent_task 都从这里取。
+# 「刚收到的文件」登记处：给未来的任务/外部入口预留。
 PENDING_JSON = _paths.DATA / "last-file.json"
-AGENT_INBOX = _paths.AGENTD / "inbox"
 PENDING_TTL = 1800
 MAX_BYTES = 30 * 1024 * 1024   # 单文件下载上限，防止把内存和磁盘打满
 TEXT_EXT = {
@@ -303,30 +300,15 @@ def _parse_raw(path: Path) -> tuple[str, str]:
     return "", f"不支持的格式 {ext or '（无扩展名）'}"
 
 
-# ---------- 「刚收到的文件」：给 /task 和 agent_task 用 ----------
+# ---------- 「刚收到的文件」 ----------
 def remember_pending(src: Path, name: str = "") -> Path | None:
-    """把刚收到的文件登记成「下一条指令可以带上它」，并在 agentd 的 inbox 里留一份。
-
-    只占一份磁盘：优先**硬链接**（同一块盘，不复制数据），失败再复制。
-    agentd 取文件是搬进 /work/<id>/，不会原地改，所以硬链接是安全的。
-
-    这一步以前是 plugins/agent 自己重新下载一遍完成的——同一份文件下两次、
-    361KB 的 PDF 白白多走一趟网络。现在由收到文件的那一方（chat）登记，
-    agent 只读登记表。
-    """
+    """把刚收到的文件登记成「下一条指令可以带上它」。"""
     try:
-        AGENT_INBOX.mkdir(parents=True, exist_ok=True)
-        target = AGENT_INBOX / f"{int(time.time())}-{_safe_name(name or src.name)}"
-        if not target.exists():
-            try:
-                os.link(src, target)
-            except OSError:
-                shutil.copy2(src, target)
         PENDING_JSON.parent.mkdir(parents=True, exist_ok=True)
         PENDING_JSON.write_text(json.dumps(
-            {"path": str(target), "name": name or src.name, "ts": time.time()},
+            {"path": str(src), "name": name or src.name, "ts": time.time()},
             ensure_ascii=False), encoding="utf-8")
-        return target
+        return src
     except Exception:  # noqa: BLE001
         return None
 
@@ -349,37 +331,4 @@ def clear_pending() -> None:
         pass
 
 
-def cleanup_inbox(max_age_hours: float = 24, now: float | None = None) -> dict:
-    """删掉 agentd 收件箱里过期的文件。
 
-    `PENDING_TTL`（30 分钟）只管「登记表还算不算数」，**文件本身没人删**：
-    实测一天就攒了四个（12:19 的 docx、14:13 的两个 PDF），
-    而 /opt/agentd 和 bot 的数据在同一个盘上，放着只会越堆越多。
-
-    两条保护：正在等着被派活的那份不删（他可能隔了半小时才说要干什么）；
-    只按修改时间判断，不猜内容。
-    """
-    now = time.time() if now is None else now
-    cutoff = now - max_age_hours * 3600
-    keep: Path | None = None
-    info = pending()
-    if info:
-        try:
-            keep = Path(info["path"])
-        except Exception:  # noqa: BLE001
-            keep = None
-    removed, freed = 0, 0
-    try:
-        for p in AGENT_INBOX.glob("*"):
-            try:
-                if not p.is_file() or keep == p or p.stat().st_mtime > cutoff:
-                    continue
-                size = p.stat().st_size
-                p.unlink()
-                removed += 1
-                freed += size
-            except Exception:  # noqa: BLE001
-                continue
-    except Exception:  # noqa: BLE001
-        pass
-    return {"removed": removed, "freed": freed}

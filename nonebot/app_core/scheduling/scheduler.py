@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 import aiosqlite
 
 from app_core import paths as _paths
-from app_core import (config, diary, files, followup, kb, learn, mood, purge,
+from app_core import (config, diary, followup, kb, learn, mood, purge,
                       remind, watch, web, wiki)
 
 NL = chr(10)
@@ -51,7 +51,6 @@ JOBS = (
     ("cleanup", 4, 30, 240),
     ("followup-expire", 4, 30, 240),
     ("job-audit", 9, 0, 120),
-    ("agent-inbox", 4, 45, 240),
 )
 
 log = logging.getLogger("qqbot.scheduler")
@@ -467,22 +466,6 @@ class Scheduler:
             await self._run_followup_expire()
         elif name == "job-audit":
             await self._run_job_audit(day)
-        elif name == "agent-inbox":
-            await self._run_agent_inbox()
-
-    async def _run_agent_inbox(self) -> None:
-        """清掉 agentd 收件箱里超过 24 小时的文件。
-
-        收文件时只记「最近一个」，没人删文件本身；一天就能攒四个，
-        而 /opt/agentd 和 bot 的数据在同一个盘上。
-        """
-        try:
-            res = files.cleanup_inbox(24)
-            if res["removed"]:
-                log.info("agent 收件箱清理：%d 个文件，释放 %d KB",
-                         res["removed"], res["freed"] // 1024)
-        except Exception as e:  # noqa: BLE001
-            log.warning("agent 收件箱清理失败：%s", e)
 
     async def _run_job_audit(self, day: str) -> None:
         """检查前一天的任务有没有缺跑。

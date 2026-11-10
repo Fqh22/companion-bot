@@ -1,17 +1,15 @@
 # companion-bot
 
-> A self-hosted QQ companion bot with **long-term memory, mood, and a sandboxed task agent**.
+> A self-hosted QQ companion bot with **long-term memory and mood**.
 
 [中文](README.md) · Not affiliated with Tencent or QQ. Use at your own risk on your own deployment.
 
 ## What it is
 
-Two independent paths in one codebase:
+One main path:
 
 ```
-QQ
- ├─ normal messages → companion bot (NoneBot2)   instant replies, remembers you, has moods
- └─ /task           → agentd (multi-step agent)  works in a sandbox, resumes after crashes
+QQ → OneBot v11 → NoneBot2 (adapters / Engine / ChatCore)  instant replies, remembers you, has moods
 ```
 
 - **Chat**: private messages, split into 18–32-char bubbles by mood (DeliveryPolicy can override), streams as it generates
@@ -20,7 +18,6 @@ QQ
 - **Knowledge**: the bot writes its own notes with a shelf life; stale pages are flagged and audited weekly
 - **Profile**: a six-field model of *you*, with confidence and a last-evidence timestamp; it expires
 - **Contradiction check**: when a new fact replaces an old one, the old memory is soft-deleted
-- **Tasks**: natural language/file trigger with one confirmation, or explicit `/task` — multi-step planning, docker sandbox, checkpoint recovery, approval for dangerous commands
 
 ![demo](docs/assets/demo.svg)
 
@@ -48,7 +45,7 @@ If it prints `全部通过`, the code is self-consistent on your machine.
 
 
 On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
-651 tests in total, the rest really run.
+646 tests in total, the rest really run.
 
 ## Path convention
 
@@ -64,7 +61,6 @@ Everything derives from it in `nonebot/app_core/paths.py`:
 |---|---|
 | `$QQBOT_ROOT/nonebot/data` | `chat.db`, persona, shadow logs, prompt snapshots |
 | `$QQBOT_ROOT/qqbot-data` | memory DB, `keys.json`, learn material |
-| `$QQBOT_ROOT/agentd` | agent workspace and inbox |
 | `$QQBOT_ROOT/backup` | backups |
 
 The offline suite redirects every path into a temp dir, so it is unaffected.
@@ -87,10 +83,9 @@ nonebot/
 ├─ app_core/     pure-logic modules (no nonebot import, ~45 files)
 ├─ adapters/     qq / console / fake channel adapters
 ├─ companion_core/ stable entry (EngineConfig + create_engine)
-├─ plugins/      7 plugins: chat / group / commands / admin / schedule / proactive / agent
+├─ plugins/      6 plugins: chat / group / commands / admin / schedule / proactive
 └─ personas/     persona for strangers (private chat)
-agentd/          agent runtime: code / tests / sandbox / docs
-docs/            system, ops, agentd, link matrix (Chinese)
+docs/            system, ops, link matrix (Chinese)
 ops/             verification and ops scripts (deployed to /opt/nonebot/ops)
 templates/plugin/  new-plugin scaffold
 ```
@@ -111,7 +106,7 @@ templates/plugin/  new-plugin scaffold
 
 - Single user, single process, single machine — not a multi-tenant service
 - Group chats are off by default; when on, only @mentions are answered and nothing enters memory
-- agentd does **not** share chat memory
+- no multi-step task/sandbox execution; companion chat is the only main path
 - No multi-agent parallelism, no browser automation, no local models
 - Sandbox state is not persisted (pip takes seconds to reinstall)
 
@@ -132,7 +127,7 @@ If that is not acceptable, this project is not a fit — it is not something con
 ## Tests
 
 ```bash
-ops/verify.sh            # six suites: layering / offline / link / end-to-end / plugins / agentd
+ops/verify.sh            # five suites: layering / offline / link / end-to-end / plugins
 ops/verify.sh --pre      # before restart: never touches the production DB
 ops/verify.sh --quick    # seconds: layering + link check
 ```

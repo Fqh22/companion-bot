@@ -32,8 +32,8 @@ class ApprovalPort(Protocol):
 class CommandApprovalPort:
     """内存实现：ask 挂起，/approve 或 /reject 命令来 resolve。
 
-    当前 agentd 自己走 HTTP approval，不需要 Engine 阻塞等待；
-    这个实现是给未来“引擎产生审批”或 console 适配器用的。
+    生产链路目前没有需要 Engine 阻塞等待的审批；
+    这个实现留给未来的 console / 其他适配器。
     """
 
     def __init__(self) -> None:

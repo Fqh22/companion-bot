@@ -1,7 +1,7 @@
 # companion-bot
 
-> 一个自建的 QQ 陪伴机器人：**记得住、有情绪、能派活**。  
-> A self-hosted QQ companion bot with long-term memory, mood, and a sandboxed task agent.
+> 一个自建的 QQ 陪伴机器人：**记得住、有情绪**。  
+> A self-hosted QQ companion bot with long-term memory and mood.
 
 非腾讯官方项目，与腾讯 / QQ 无任何关联，仅用于个人自建。
 
@@ -13,12 +13,10 @@
 
 ![对话示意](docs/assets/demo.svg)
 
-同一套代码里跑两条互不干扰的链路：
+一条主链路：
 
 ```
-QQ
- ├─ 普通消息 → 陪伴机器人（NoneBot2）  秒回、记得你、有情绪
- └─ /task    → agentd（多步 agent）     沙箱里干活、崩溃可恢复、会问你
+QQ → OneBot v11 → NoneBot2（adapters / Engine / ChatCore）  秒回、记得你、有情绪
 ```
 
 - **聊天**：私聊为主，按情绪 18–32 字切段（DeliveryPolicy 可覆盖），边生成边发
@@ -27,7 +25,6 @@ QQ
 - **知识库**：模型自己写笔记，带保质期，过期会标「可能过时」，周日巡检
 - **画像**：复盘时写「它是怎么理解你的」，每条带置信度和最后证据时间，会过期
 - **矛盾检测**：新事实推翻旧事实时把旧的软删，避免两条互斥记忆一起进 prompt
-- **派活**：自然语言/文件触发 + 一次确认，或 `/task` 显式提交；多步规划、docker 沙箱、断点恢复、危险命令审批
 
 ## 架构
 
@@ -53,7 +50,7 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 
 
 首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的；总数
-651 条，其余都会真跑。
+646 条，其余都会真跑。
 
 ## 路径约定
 
@@ -69,7 +66,6 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 |---|---|
 | `$QQBOT_ROOT/nonebot/data` | `chat.db`、人格、影子日志、prompt 快照 |
 | `$QQBOT_ROOT/qqbot-data` | 记忆库、`keys.json`、学习资料（`workspace/learn`） |
-| `$QQBOT_ROOT/agentd` | agent 工作区与收件箱 |
 | `$QQBOT_ROOT/backup` | 备份 |
 
 离线测试不受影响：它会把落盘路径全部重定向到临时目录。
@@ -92,10 +88,9 @@ nonebot/
 ├─ app_core/     纯逻辑模块（不 import nonebot，约 45 个）
 ├─ adapters/     qq / console / fake 通道适配器
 ├─ companion_core/ 稳定入口（EngineConfig + create_engine）
-├─ plugins/      7 个插件：chat / group / commands / admin / schedule / proactive / agent
+├─ plugins/      6 个插件：chat / group / commands / admin / schedule / proactive
 └─ personas/     外人版人格（陌生人私聊用）
-agentd/          agent 运行时：代码 / 测试 / 沙箱 / 文档
-docs/            系统、运维、agentd、联动矩阵
+docs/            系统、运维、联动矩阵
 ops/             验证与运维脚本（部署到 /opt/nonebot/ops）
 templates/plugin/ 新插件脚手架（配合 ops/new-plugin.py）
 ```
@@ -118,10 +113,8 @@ templates/plugin/ 新插件脚手架（配合 ops/new-plugin.py）
 
 - 单用户、单进程、单机：不是多租户服务
 - 群聊默认关闭；开了也只有 @ 才回，且不进记忆库
-- agentd 与聊天**不共享记忆**：它只拿你这一句话和几个文件
 - 不做多 agent 并行、不做浏览器自动化、不接本地模型
-- 沙箱环境不做复原（装的包重启即失，pip 几秒能装回来）
-- 插件每 2 秒轮询 agentd 发件箱，游标落在 JSON 文件里（本质是「文件模拟队列」）。单用户够用；真出现多任务高并发或丢消息，再换 outbox 表或 Redis Stream
+- 不做多步任务/沙箱执行；陪伴聊天是唯一主链路
 
 ## 外部依赖与风险
 
@@ -133,13 +126,13 @@ QQ 没有面向个人号的官方机器人 API。接入靠的是 OneBot v11 实�
 - **换实现的成本很低**：OneBot v11 是事实标准，换一个实现只需要改 `nonebot/.env` 里的 WS 地址和 token，
   业务代码（`app_core` / `plugins`）不用动。
 - **有封号风险**：这是 ToS 层面的事，代码无法规避。**建议用独立小号跑，不要接主号**。
-- **掉线能被发现**：健康检查每 5 分钟查一次登录状态，持续失败会私聊告警。
+- **掉线能被发现**：健康检查每 2 分钟查一次容器/端口，持续失败写日志/告警。
 
 如果你不能接受这些，这个项目不适合你的场景——这不是靠配置能解决的问题。
 ## 测试
 
 ```bash
-ops/verify.sh            # 六件套：分层 / 离线 / 联动 / 全链路 / 插件 / agentd
+ops/verify.sh            # 五件套：分层 / 离线 / 联动 / 全链路 / 插件
 ops/verify.sh --pre      # 重启前：不碰生产库、不发消息
 ops/verify.sh --quick    # 秒级：分层 + 联动
 ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时间敏感链路
@@ -155,7 +148,6 @@ ops/smoke-clock.py       # 真实时钟冒烟：不 mock 时间，跑一遍时�
 |---|---|
 | 消息进来后发生什么、数据在哪、阈值多少 | [docs/01-系统.md](docs/01-系统.md) |
 | 部署、备份、排障、维护 | [docs/02-运维.md](docs/02-运维.md) |
-| agentd 怎么干活（多步 / 沙箱 / 恢复 / 审批） | [docs/03-agentd.md](docs/03-agentd.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
 | 可视化改配置（本地面板） | [docs/05-配置界面.md](docs/05-配置界面.md) |
 

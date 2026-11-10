@@ -23,7 +23,7 @@ mkdir -p "$STAGE/sqlite" "$STAGE/qqbot-data" "$STAGE/nonebot-data" "$STAGE/code"
 log "=== backup start ($TS) ==="
 
 # 1) SQLite 一致性导出
-for db in /opt/qqbot-data/livingmemory.db /opt/nonebot/data/chat.db /opt/agentd/data/agentd.db; do
+for db in /opt/qqbot-data/livingmemory.db /opt/nonebot/data/chat.db; do
     [ -f "$db" ] || continue
     rel="${db#/opt/}"
     dst="$STAGE/sqlite/$rel"
@@ -58,17 +58,7 @@ tar -C /opt/nonebot -cf - \
 cp /etc/systemd/system/nonebot.service "$STAGE/nonebot.service" 2>/dev/null || true
 cp -a /opt/nonebot/ops/*.sh "$STAGE/ops/" 2>/dev/null || true
 
-# 5) agentd：计划 + 报告 + 项目状态（都是几十 KB，产物不备份）
-if [ -d /opt/agentd/work ]; then
-    mkdir -p "$STAGE/agentd-work"
-    ( cd /opt/agentd/work \
-        && find . -maxdepth 1 -name 'PLAN.md' -o -maxdepth 1 -name 'report.md' -o -maxdepth 3 -path './projects/*/STATE.md' ) \
-        | tar -C /opt/agentd/work -cf - -T - 2>/dev/null \
-        | tar -C "$STAGE/agentd-work" -xf - || log "warn: agentd work tar"
-fi
-
-
-# 6) 打包 + 校验 + 轮转
+# 5) 打包 + 校验 + 轮转
 tar -C "$STAGE" -czf "$OUT" . || die "tar pack"
 tar -tzf "$OUT" >/dev/null 2>&1 || die "tar verify"
 rm -rf "$STAGE"

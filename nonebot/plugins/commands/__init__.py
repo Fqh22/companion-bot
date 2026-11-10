@@ -180,7 +180,6 @@ async def _():
             f"{name} {calls} 次 in {pt} / out {ct}"
             for name, calls, pt, ct in (d7.get("purposes") or [])[:5]),
         f"平均耗时：{d7['latency']} ms",
-        "（agentd 的 token：/agent_usage）",
     ]
     for model, calls, pt, ct, cost in d7["models"]:
         lines.append(f"  {model}: {calls} 次, in {pt or 0} / out {ct or 0} ≈ ¥{cost}")

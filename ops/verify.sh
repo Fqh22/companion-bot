@@ -1,5 +1,5 @@
 #!/bin/bash
-# verify.sh —— 一键跑「六件套」，任何一套失败就返回非零。
+# verify.sh —— 一键跑「五件套」，任何一套失败就返回非零。
 #
 # 用法（在云端 /opt/nonebot 下，root 或 ubuntu 都行）：
 #   ops/verify.sh            # 全量：分层 + 离线回归 + 联动体检 + 全链路 + 插件启动
@@ -114,41 +114,7 @@ case "$MODE" in
         ;;
 esac
 
-# agentd 自带测试：不在 /opt/nonebot 下，用自己的 venv 和 cwd。
-# 以前只写在文档里「agentd 自带 68 项」——测试存在不等于测试在跑。
-# 2026-11-05 实证：planner 里一个未定义变量让 /task 规划整条挂掉，
-# 因为在五套件之外，上线一天没人发现。
-run_agentd() {
-    local ad="${AGENTD_DIR:-/opt/agentd}"
-    if [ ! -d "$ad/agentd/tests" ] || [ ! -x "$ad/venv/bin/python" ]; then
-        echo "  agentd     SKIP  没有 $ad（agentd 和机器人可能不在一台机器上）"
-        return 0
-    fi
-    TOTAL=$((TOTAL + 1))
-    local t0 t1 out rc secs
-    t0=$(date +%s%N)
-    out=$(cd "$ad" && PYTHONPATH="$ad" "$ad/venv/bin/python" agentd/tests/test_core.py 2>&1)
-    rc=$?
-    t1=$(date +%s%N)
-    secs=$(awk "BEGIN{printf \"%.1f\", ($t1-$t0)/1000000000}")
-    if [ "$rc" -eq 0 ]; then
-        NAMES+=("agentd"); STATS+=("PASS"); DUR+=("${secs}s")
-        printf '  %-10s PASS  %6ss\n' "agentd" "$secs"
-    else
-        NAMES+=("agentd"); STATS+=("FAIL"); DUR+=("${secs}s")
-        FAILED=$((FAILED + 1))
-        printf '  %-10s FAIL  %6ss\n' "agentd" "$secs"
-        if [ "$VERBOSE" -eq 1 ]; then
-            echo "$out" | sed 's/^/      /'
-        else
-            echo "$out" | tail -12 | sed 's/^/      /'
-        fi
-    fi
-}
 
-if [ "$MODE" != "quick" ]; then
-    run_agentd
-fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then

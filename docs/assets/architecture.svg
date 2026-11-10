@@ -21,7 +21,7 @@
 
   <rect width="1200" height="820" fill="#fcfdff"/>
   <text class="h1" x="40" y="46">companion-bot 架构</text>
-  <text class="h2" x="40" y="68">QQ companion bot · NoneBot2 + agentd</text>
+  <text class="h2" x="40" y="68">QQ companion bot · NoneBot2</text>
 
   <!-- 左侧：QQ 与 OneBot -->
   <rect class="box" x="60" y="110" width="220" height="58" rx="10"/>
@@ -82,39 +82,6 @@
   <text class="tiny" x="372" y="520">影子模式：只落盘、不改行为（召回 / 补句 / 自指率…）</text>
   <text class="tiny" x="372" y="540">矛盾检测：新记忆推翻旧记忆 → superseded</text>
 
-  <!-- agentd 面板 -->
-  <rect class="panel" x="860" y="100" width="300" height="470" rx="14"/>
-  <text class="title" x="880" y="128">agentd 进程</text>
-  <text class="tiny" x="880" y="146">127.0.0.1:8100 · 独立进程</text>
-
-  <path class="edge" d="M822 212 L852 212"/>
-  <text class="tiny" x="806" y="202">HTTP</text>
-  <text class="tiny" x="812" y="230">/task</text>
-
-  <rect class="box" x="880" y="164" width="260" height="56" rx="10"/>
-  <text class="title" x="896" y="188">loop / planner</text>
-  <text class="tiny" x="896" y="206">多步计划 · 断点恢复 · 重规划</text>
-
-  <rect class="box" x="880" y="236" width="260" height="56" rx="10"/>
-  <text class="title" x="896" y="260">tools</text>
-  <text class="tiny" x="896" y="278">shell / read / write / fetch / search</text>
-
-  <path class="edge" d="M1010 292 L1010 322"/>
-
-  <rect class="box amber" x="880" y="322" width="260" height="86" rx="10"/>
-  <text class="title" x="896" y="346">docker 沙箱</text>
-  <text class="tiny" x="896" y="364">只读 rootfs · 只挂 /work</text>
-  <text class="tiny" x="896" y="380">--cap-drop ALL · pids 128</text>
-  <text class="tiny" x="896" y="396">无任何凭证</text>
-
-  <path class="edge" d="M1010 408 L1010 470"/>
-
-  <rect class="box" x="880" y="470" width="260" height="56" rx="10"/>
-  <text class="title" x="896" y="494">白名单出网代理</text>
-  <text class="tiny" x="896" y="512">只放行包源与指定域名</text>
-
-  <text class="tiny" x="880" y="552">危险命令先审批，不直接执行</text>
-
   <!-- 外部服务 -->
   <rect class="box" x="352" y="610" width="200" height="60" rx="10"/>
   <text class="title" x="368" y="634">LLM API</text>
@@ -130,6 +97,6 @@
   <!-- 说明 -->
   <rect x="352" y="700" width="808" height="84" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/>
   <text class="tiny" x="372" y="724">Engine 是入口：QQ/console 构造 InboundMessage；app_core 不 import nonebot，可离线驱动。</text>
-  <text class="tiny" x="372" y="746">聊天与 agentd 并行、互不干扰：机器人负责聊天，agentd 负责办事，两者不共享记忆。</text>
+  <text class="tiny" x="372" y="746">单链路：QQ 只走陪伴聊天；引擎/白名单/离线测试保证边界。</text>
   <text class="tiny" x="372" y="768">所有学习都落盘（SQLite + markdown），可 diff、可回滚、可被测试扫到。</text>
 </svg>

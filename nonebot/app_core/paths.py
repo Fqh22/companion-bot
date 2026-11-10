@@ -7,8 +7,7 @@
     QQBOT_ROOT=/opt                       # 默认
     $QQBOT_ROOT/nonebot/data              # chat.db、人格、影子日志、prompt 快照
     $QQBOT_ROOT/qqbot-data                # 记忆库、keys.json、学习资料
-    $QQBOT_ROOT/agentd                    # agent 工作区与收件箱
-    $QQBOT_ROOT/backup                    # 备份
+        $QQBOT_ROOT/backup                    # 备份
 """
 from __future__ import annotations
 
@@ -19,7 +18,6 @@ ROOT = Path(os.environ.get("QQBOT_ROOT") or "/opt")
 NB = ROOT / "nonebot"
 DATA = NB / "data"
 QDATA = ROOT / "qqbot-data"
-AGENTD = ROOT / "agentd"
 BACKUP = ROOT / "backup"
 
 KEYS = QDATA / "keys.json"

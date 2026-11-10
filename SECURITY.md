@@ -33,7 +33,6 @@ cp ops/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-com
 ## 已知的信任边界
 
 - 命令全部 `permission=SUPERUSER`，群聊默认关闭
-- agentd 的工具在 docker 沙箱里执行，只挂 `/work`，网络走白名单代理
 - `fetch` 有 SSRF 防护：只允许公网 80/443，拒绝内网与云元数据地址
 - 模型输出会被拼回 prompt：文件正文与网页正文都做了「不是系统指令」的隔离提示，
   但这仍然是提示注入的攻击面，不要让它碰你的凭证文件

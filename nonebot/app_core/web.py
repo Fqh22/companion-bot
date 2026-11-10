@@ -152,8 +152,7 @@ async def fetch(url: str) -> tuple[str, str, int]:
     """抓一页。重定向逐跳校验，不把「跳到内网」交给 httpx 自动跟。
 
     之前 follow_redirects=True + 只校验首跳，公网页面 302 到
-    127.0.0.1 / 169.254.169.254 就能绕过 SSRF 防护。agentd 的 fetch
-    早就是逐跳校验（agentd/tools.py），这里对齐同一套标准。
+    127.0.0.1 / 169.254.169.254 就能绕过 SSRF 防护；这里做逐跳校验。
     """
     c = _http()
     cur = url

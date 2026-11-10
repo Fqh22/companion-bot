@@ -122,9 +122,8 @@ class FakeClient:
 # ---------- 路径重定向 ----------
 from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod, engine as engine_mod,
-    agent_client as agent_client_mod, approval as approval_mod,
-    delivery as delivery_mod, identity as identity_mod,
-    task_intent as task_intent_mod,
+    approval as approval_mod, delivery as delivery_mod,
+    identity as identity_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
     followup_domain as fu_domain_mod, followup_store as fu_store_mod,
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
@@ -168,8 +167,6 @@ check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))
 check("delivery 有 plan_delivery", hasattr(delivery_mod, "plan_delivery"))
 check("approval 有 ApprovalRequest", hasattr(approval_mod, "ApprovalRequest"))
-check("task_intent 有 is_task_request", hasattr(task_intent_mod, "is_task_request"))
-check("agent_client 有 create_task", hasattr(agent_client_mod, "create_task"))
 check("followup_store 有 _conn", hasattr(fu_store_mod, "_conn"))
 remind_mod.DB = TMP / "chat.db"
 mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
@@ -178,7 +175,6 @@ check("mood_domain 有 settle", hasattr(mood_domain_mod, "settle"))
 check("mood_store 有 load", hasattr(mood_store_mod, "load"))
 files_mod.SAVE_DIR, files_mod.IMAGE_DIR = TMP / "files", TMP / "files" / "images"
 files_mod.PENDING_JSON = TMP / "last-file.json"
-files_mod.AGENT_INBOX = TMP / "agent-inbox"
 sched_mod.CHAT_DB = str(TMP / "chat.db")
 sched_mod.CLEANUP_LOG = str(TMP / "cleanup.log")
 
@@ -709,12 +705,11 @@ async def main() -> None:
         sch._log_cleanup({"archived": 1, "alive": 2, "details": []})
         check("scheduler._log_cleanup", (TMP / "cleanup.log").exists())
         for m in ("_run_cleanup", "_reindex", "_run_followup_expire", "_run_weekly",
-                  "_run_kb_audit", "_run_mood_snapshot", "_run_raw_archive",
-                  "_run_agent_inbox"):
+                  "_run_kb_audit", "_run_mood_snapshot", "_run_raw_archive"):
             await call(f"scheduler.{m}", getattr(sch, m))
         await call("scheduler._run_job_audit", sch._run_job_audit, day)
         for job in ("diary", "mood-snapshot", "review", "spaced", "raw-archive",
-                    "cleanup", "followup-expire", "job-audit", "agent-inbox"):
+                    "cleanup", "followup-expire", "job-audit"):
             await call(f"scheduler._run_job({job})", sch._run_job, job, day)
         await call("scheduler._reminder_text", sch._reminder_text, "交周报")
         remind_mod.add("喝水", "2030-01-01 09:00")

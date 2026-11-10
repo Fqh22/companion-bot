@@ -55,17 +55,6 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("meme", "手动发一张：/meme 开心"),
         ("meme_stats", "表情包使用统计"),
     ]),
-    ("agentd（办事）", [
-        ("task", "派活：/task 在当前目录生成平方表"),
-        ("tasks", "最近的任务和状态"),
-        ("progress", "看某个任务：/progress 12"),
-        ("answer", "回答卡住的任务：/answer 12 用 xlsx"),
-        ("approve", "批准危险命令：/approve 12"),
-        ("cancel", "取消任务：/cancel 12"),
-        ("pause", "暂停任务：/pause 12"),
-        ("resume", "继续任务：/resume 12"),
-        ("agent_usage", "agentd 今天的 token（/usage 是聊天那条）"),
-    ]),
 ]
 
 

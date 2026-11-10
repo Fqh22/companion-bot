@@ -1,4 +1,4 @@
-"""插件启动体检：真的把 5 个插件加载一遍。
+"""插件启动体检：真的把 6 个插件加载一遍。
 
 离线回归只测 app_core；插件（消息接入、命令、调度、主动消息）一行没跑过。
 插件导入失败 = 整个机器人起不来，所以这层必须单独验。
@@ -51,7 +51,6 @@ EXPECT = {
     "plugins.admin": ["ping", "help_cmd", "reload_cmd"],
     "plugins.schedule": ["sched", "_send"],
     "plugins.proactive": ["_tick", "_compose"],
-    "plugins.agent": ["_task_cmd", "_poll_once", "_loop", "_control"],
 }
 EXPECT_COUNT = len(EXPECT)      # 加插件时只改 EXPECT，不用再找魔数
 missing = []
