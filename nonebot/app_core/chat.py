@@ -23,6 +23,7 @@ from app_core import vocab as vocab_mod
 from app_core import llm as llm_mod
 from app_core import prompt as prompt_mod
 from app_core import tool_loop
+from app_core.delivery import Capability, DeliveryPolicy, plan_delivery
 from app_core.identity import IdentityResolver
 from app_core.memory import Memory
 
@@ -729,7 +730,9 @@ class ChatCore(ChatTurnMixin):
     async def reply(self, session: str, user_text: str,
                     images: list | None = None,
                     on_sentence=None,
-                    store_text: str | None = None) -> tuple[list[str], list[str]]:
+                    store_text: str | None = None,
+                    caps: Capability | None = None,
+                    delivery_policy: DeliveryPolicy | None = None) -> tuple[list[str], list[str]]:
         """返回 (分段后的回复, 待发送的图片路径)。
 
         images：本轮用户发来的图片本地路径。只注入当前这轮，历史里只留文字标记。
@@ -744,11 +747,16 @@ class ChatCore(ChatTurnMixin):
         await self._turn_compose(turn)
         await self._turn_generate(turn, on_sentence)
         await self._turn_commit(turn, on_sentence)
+
+        def _plan(text: str) -> list[str]:
+            policy = delivery_policy or DeliveryPolicy(max_chars=turn.seg_max)
+            return plan_delivery(text, policy, caps)
+
         if on_sentence and turn.streamed:
             # 流式已经发出去的不再返回，只把没说完的尾巴交回去
-            tail = split_reply(turn.buffer, turn.seg_max) if turn.buffer.strip() else []
+            tail = _plan(turn.buffer) if turn.buffer.strip() else []
             return tail, turn.ai_images
-        return split_reply(turn.text, turn.seg_max), turn.ai_images
+        return _plan(turn.text), turn.ai_images
 
     def seg_max(self, m: dict) -> int:
         """情绪决定一条消息多长：累了碎一点，有精神可以连成句。

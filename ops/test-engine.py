@@ -12,6 +12,7 @@ if not (CODE / "app_core").is_dir():
     CODE = HERE.parent
 sys.path.insert(0, str(CODE))
 
+from app_core.delivery import Capability, DeliveryPolicy  # noqa: E402
 from app_core.engine import Engine, InboundMessage  # noqa: E402
 
 PASS = FAIL = 0
@@ -32,8 +33,8 @@ class FakeCore:
         self.calls = []
 
     async def reply(self, session, text, images=None, on_sentence=None,
-                    store_text=None):
-        self.calls.append((session, text, images, store_text))
+                    store_text=None, caps=None, delivery_policy=None):
+        self.calls.append((session, text, images, store_text, caps, delivery_policy))
         if on_sentence:
             await on_sentence("第一句")
         return ["第一句", "第二句"], ["img.png"]
@@ -53,13 +54,19 @@ async def main():
     check("返回 chunks", out.chunks == ["第一句", "第二句"], out.chunks)
     check("返回 images", out.images == ["img.png"], out.images)
     check("流式回调透传", seen == ["第一句"], seen)
-    check("参数透传", core.calls == [("private:1", "在吗", ["a.jpg"], "入库版")],
+    check("参数透传", core.calls[0][:4] == ("private:1", "在吗", ["a.jpg"], "入库版"),
           core.calls)
 
     core2 = FakeCore()
     out2 = await Engine(core2).handle(InboundMessage(session="s", text="x"))
     check("空图片传 None", core2.calls[0][2] is None, core2.calls)
     check("空回复归一成 list", out2.chunks == ["第一句", "第二句"], out2.chunks)
+
+    cap = Capability(name="console", max_text_chars=100)
+    pol = DeliveryPolicy(max_chars=10)
+    await Engine(core2).handle(InboundMessage(session="s", text="x"),
+                               caps=cap, delivery_policy=pol)
+    check("caps/policy 透传", core2.calls[-1][4:] == (cap, pol), core2.calls[-1])
 
 
 if __name__ == "__main__":

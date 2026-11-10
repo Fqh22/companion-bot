@@ -7,7 +7,8 @@
 - 新增 app_core/delivery.py：Capability（平台硬限制）与 DeliveryPolicy（段长/段数/间隔/时限）分离。
 - plan_delivery 默认与当前 QQ split_reply 一致；平台 max_text_chars 是硬截断。
 - 新增 ops/test-delivery.py：10 条分段 golden + 平台上限，共 24/24。
-- 尚未接入 QQ 发送链路；M4.1 再替换，先保证契约可测。
+- **M4.1**：ChatCore.reply 改用 plan_delivery；默认 policy 用 turn.seg_max，动态段长 18–32 不变。
+  Engine.handle 新增可选 caps/delivery_policy，现由 console/后续适配器显式传，QQ 默认走原行为。
 
 ## 2026-11-10 · 引擎抽离 M3：身份映射
 
