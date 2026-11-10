@@ -4,12 +4,15 @@ from __future__ import annotations
 import asyncio
 import sys
 
+from app_core.delivery import Capability
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 
 
 class ConsoleChannel:
-    def __init__(self, out=None) -> None:
+    def __init__(self, out=None, caps: Capability | None = None) -> None:
         self.out = out or sys.stdout
+        self.caps = caps or Capability(
+            name="console", max_text_chars=2000, max_parts=4, supports_images=True)
 
     async def send(self, out: OutboundMessage) -> None:
         for chunk in out.chunks:
@@ -28,5 +31,6 @@ class ConsoleChannel:
                 break
             if not text:
                 continue
-            out = await engine.handle(InboundMessage(session=session, text=text))
+            out = await engine.handle(InboundMessage(session=session, text=text),
+                                      caps=self.caps)
             await self.send(out)

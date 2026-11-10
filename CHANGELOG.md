@@ -9,6 +9,8 @@
 - 新增 ops/test-delivery.py：10 条分段 golden + 平台上限，共 24/24。
 - **M4.1**：ChatCore.reply 改用 plan_delivery；默认 policy 用 turn.seg_max，动态段长 18–32 不变。
   Engine.handle 新增可选 caps/delivery_policy，现由 console/后续适配器显式传，QQ 默认走原行为。
+- **M4.2**：QQ 插件显式传 Capability(name="qq")；ConsoleChannel 传 console 能力
+  （max_text_chars=2000 / max_parts=4）；QQ capability 对 10 条 golden 不改变分段。
 
 ## 2026-11-10 · 引擎抽离 M3：身份映射
 

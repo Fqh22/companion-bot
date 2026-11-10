@@ -54,6 +54,9 @@ async def main():
     check("Engine -> Channel 文本", ch.sent[-1].chunks == ["收到", "第二句"])
     check("Engine -> Channel 图片", ch.sent[-1].images == ["img.png"])
 
+    check("ConsoleChannel 有 console capability",
+          ConsoleChannel(io.StringIO()).caps.name == "console")
+
     buf = io.StringIO()
     await ConsoleChannel(buf).send(OutboundMessage(chunks=["在"], images=["a.jpg"]))
     text = buf.getvalue()

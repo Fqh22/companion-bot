@@ -50,6 +50,11 @@ def main():
         check(f"golden {i}: 分段一致", got == expected, got)
         check(f"golden {i}: 不丢内容", "".join(got) == text, "".join(got))
 
+    qq = Capability(name="qq")
+    bad = [(t, plan_delivery(t, caps=qq), e) for t, e in CASES
+           if plan_delivery(t, caps=qq) != e]
+    check("QQ capability 不改变分段", not bad, bad[:1])
+
     cap = Capability(max_parts=2)
     got = plan_delivery(CASES[2][0], caps=cap)
     check("平台 max_parts 生效", len(got) <= 2, got)

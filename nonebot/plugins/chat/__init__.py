@@ -35,12 +35,14 @@ from nonebot.adapters.onebot.v11 import (
 from app_core import config, meme, mood, pacing, relational
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
+from app_core.delivery import Capability
 from app_core.engine import Engine, InboundMessage
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
 
 core = ChatCore()
 engine = Engine(core)
+QQ_CAPS = Capability(name="qq")
 driver = get_driver()
 
 _SETTLE_CFG = dict(config.load().get("chat") or {})
@@ -159,7 +161,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                     InboundMessage(session=sid, text=prompt,
                                    images=list(turn.images or []),
                                    store_text=stored),
-                    on_sentence=on_sentence),
+                    on_sentence=on_sentence, caps=QQ_CAPS),
                 timeout=core.reply_deadline)
             replies, images = out.chunks, out.images
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
