@@ -151,7 +151,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         wait = min(gap_s + pace, max(0.0, left - 4))   # 留 4 秒给发送和收尾
         if wait > 0:
             await asyncio.sleep(wait)
-        if await _send_text(part):
+        # 只有第一段带引用：后面几段接在它自己那条后面才对
+        if await _send_text(part, reply_id=turn.meta.get("event_id") if not sent else None):
             sent += 1
             sent_parts.append(part)
 
@@ -179,7 +180,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
             if replies or images:
-                await _send_replies(replies, images)
+                await _send_replies(replies, images,
+                                    reply_id=turn.meta.get("event_id") if not sent else None)
         logger.info(f"[chat] sent {sid}: {sent} 段流式 + {len(replies or [])} 段补发")
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
@@ -304,12 +306,22 @@ async def _pace(text: str, fast: bool = False) -> None:
                                             mood.load(), fast=fast))
 
 
-async def _send_text(part: str, tries: int = 2) -> bool:
+async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> bool:
     """发一条文字，失败重试一次。发不出去不抛异常——用户侧无能为力，
-    但必须留日志，否则「它回了但没收到」永远查不出来。"""
+    但必须留日志，否则「它回了但没收到」永远查不出来。
+
+    reply_id 非空时给第一条加引用：让回复看起来是「接着你这句话」，
+    而不是悬空一句。引用失败（实现不支持 / id 非法）自动退回纯文本。
+    """
+    msg = part
+    if reply_id:
+        try:
+            msg = MessageSegment.reply(int(reply_id)) + part
+        except Exception:  # noqa: BLE001
+            msg = part
     for attempt in range(1, tries + 1):
         try:
-            await chat.send(part)
+            await chat.send(msg)
             return True
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 发送失败（{attempt}/{tries}）：{type(e).__name__}: {e}")
@@ -317,13 +329,14 @@ async def _send_text(part: str, tries: int = 2) -> bool:
     return False
 
 
-async def _send_replies(replies: list[str], images: list[str] | None = None) -> None:
+async def _send_replies(replies: list[str], images: list[str] | None = None,
+                        reply_id: str | None = None) -> None:
     total = len(replies)
     for i, part in enumerate(replies):
         if i:
             await asyncio.sleep(pacing.gap_seconds(i, total))
         await _pace(part, fast=pacing.is_fast(i, total))
-        await _send_text(part)
+        await _send_text(part, reply_id=reply_id if i == 0 else None)
     for path in images or []:
         try:
             p = Path(path)

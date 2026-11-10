@@ -263,6 +263,17 @@ class ChatTurnMixin:
             except Exception as e:  # noqa: BLE001
                 log.debug("风格块生成失败：%s", e)
 
+        # 他发表情/贴图/纯图时，优先用表情回应：文字接不住一张梗图。
+        # 只在 reaction 轮加，正经问题不加，避免每轮都想发表情。
+        try:
+            _fix = bool(turn.images) and prompt_mod.image_mode(turn.user_text) == "fix"
+            if prompt_mod.is_reaction_turn(turn.user_text, len(turn.images or []), _fix):
+                turn.extra_system = list(turn.extra_system) + [
+                    "（他发的是表情/贴图，不是题目：可以先用 meme_send 回一个，"
+                    "再配一句很短的话；别分析画面。）"]
+        except Exception as e:  # noqa: BLE001
+            log.debug("表情回应提示失败：%s", e)
+
         # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得
         try:
             _open = [x["text"][:40] for x in followup.pending(3)]
