@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · M0：10 条真实对话结构重放
+
+- 新增 ops/test-golden-m0.py：从生产 chat.db 取 10 条真实 user/assistant 对，
+  用 fake LLM + 临时 QQBOT_ROOT 重放，断言分段非空、内容不丢、每轮写 2 条历史。
+- fixture 含个人聊天内容，只放云端/本地，不进 Git；脚本无 fixture 时 SKIP。
+- 本次 22/22 通过。
+
 ## 2026-11-10 · 引擎抽离 M4：投递契约
 
 - 新增 app_core/delivery.py：Capability（平台硬限制）与 DeliveryPolicy（段长/段数/间隔/时限）分离。
