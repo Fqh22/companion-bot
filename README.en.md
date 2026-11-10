@@ -14,7 +14,7 @@ QQ
  └─ /task           → agentd (multi-step agent)  works in a sandbox, resumes after crashes
 ```
 
-- **Chat**: private messages, split into 25-char bubbles, pacing follows mood, streams as it generates
+- **Chat**: private messages, split into 18–32-char bubbles by mood (DeliveryPolicy can override), streams as it generates
 - **Memory**: conversation → summary → structured facts → vector recall; used memories stay alive, idle ones get archived
 - **Mood**: valence / baseline / energy, saturating impulses, composable decay; it only changes *how* it talks
 - **Knowledge**: the bot writes its own notes with a shelf life; stale pages are flagged and audited weekly
@@ -28,8 +28,8 @@ QQ
 
 ![architecture](docs/assets/architecture.svg)
 
-One layering rule: **`app_core` never imports nonebot**. That keeps the logic testable offline,
-without a framework, a network, or a database.
+One layering rule: **`app_core` never imports nonebot**. QQ/console enter through `adapters`
+and an `Engine` facade, so the core stays testable offline without a framework, network, or database.
 
 ## Quick start (no QQ needed)
 
@@ -48,7 +48,7 @@ If it prints `全部通过`, the code is self-consistent on your machine.
 
 
 On a fresh machine the offline suite has **3 SKIPs** (cases that need historical memories);
-the other 628 really run.
+651 tests in total, the rest really run.
 
 ## Path convention
 
@@ -73,7 +73,7 @@ The offline suite redirects every path into a temp dir, so it is unaffected.
 1. Run an OneBot v11 implementation (NapCat / SnowLuma / Lagrange …) pointing at the reverse-WS port
 2. `cp nonebot/.env.example nonebot/.env`, set `ONEBOT_ACCESS_TOKEN` and `SUPERUSERS`
 3. `cp nonebot/config.example.yaml nonebot/config.yaml`, then set at least:
-   - `admin.user_id` — your QQ number. **If empty, memories are not written and proactive messages are off** (the startup log warns)
+   - `admin.user_id` — your QQ number; add `admin.identities` for extra entry points. **If both are empty, memories are not written and proactive messages are off**
    - `llm.api` / `llm.model` and the embedding endpoint
 4. Put API keys in `/opt/qqbot-data/keys.json` (mode 600)
 5. `cd nonebot && python bot.py`
@@ -84,7 +84,9 @@ See [docs/02-运维.md](docs/02-运维.md) for deployment, backup and troublesho
 
 ```
 nonebot/
-├─ app_core/     37 pure-logic modules (no nonebot import)
+├─ app_core/     pure-logic modules (no nonebot import, ~45 files)
+├─ adapters/     qq / console / fake channel adapters
+├─ companion_core/ stable entry (EngineConfig + create_engine)
 ├─ plugins/      7 plugins: chat / group / commands / admin / schedule / proactive / agent
 └─ personas/     persona for strangers (private chat)
 agentd/          agent runtime: code / tests / sandbox / docs
@@ -96,8 +98,8 @@ templates/plugin/  new-plugin scaffold
 ## Design decisions worth knowing
 
 1. **app_core is pure logic** — plugins only do IO; every rule lives in a testable function.
-2. **Prompt has a stable prefix** — persona/digest/memories/knowledge first, history and user input last,
-   so the provider's context cache hits. That ordering is deliberate.
+2. **Prompt has a stable prefix** — persona/guide/profile/digest first, history and dynamic context later,
+   so the provider's context cache hits. The exact split is `chat.context_format` (default `compact`).
 3. **45-second deadline** — if generation is slow, send what exists instead of making the user wait.
 4. **Mood is state, not a counter** — three values with lazy decay; changing the dynamics means
    recalibrating every downstream threshold (a documented pitfall).

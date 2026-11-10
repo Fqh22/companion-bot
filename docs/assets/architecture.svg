@@ -46,7 +46,7 @@
   <text class="tiny" x="372" y="146">systemd · 单实例</text>
 
   <rect class="box blue" x="372" y="164" width="200" height="96" rx="10"/>
-  <text class="title" x="388" y="188">plugins/</text>
+  <text class="title" x="388" y="188">plugins/ + adapters/</text>
   <text class="sub" x="388" y="208">只做 IO：消息 ↔ 逻辑</text>
   <text class="tiny" x="388" y="228">chat · group · agent</text>
   <text class="tiny" x="388" y="244">commands · admin · schedule</text>
@@ -56,7 +56,7 @@
 
   <rect class="box green" x="628" y="164" width="176" height="96" rx="10"/>
   <text class="title" x="644" y="188">app_core/</text>
-  <text class="sub" x="644" y="208">41 个纯逻辑模块</text>
+  <text class="sub" x="644" y="208">纯逻辑模块（约 45 个）</text>
   <text class="tiny" x="644" y="228">不 import nonebot</text>
   <text class="tiny" x="644" y="244">可离线单测</text>
 
@@ -75,10 +75,10 @@
   <path class="edge" d="M716 260 L716 306"/>
   <text class="tiny" x="724" y="288">检索</text>
 
-  <text class="tiny" x="372" y="420">prompt = 人格 · 纪要 · 记忆 · 相处状态 · 知识目录 · 纠正</text>
-  <text class="tiny" x="372" y="440">历史与本轮输入放在最后（稳定前缀，命中上下文缓存）</text>
+  <text class="tiny" x="372" y="420">prompt = 人格 · 防注入 · 指南/例子 · 画像 · 纪要</text>
+  <text class="tiny" x="372" y="440">历史 → 情绪 → 背景(compact) → 锚点 → 输入</text>
   <text class="tiny" x="372" y="470">45 秒硬线：超时补发已生成的部分</text>
-  <text class="tiny" x="372" y="490">流式发送：按 25 字切段，按情绪调节奏</text>
+  <text class="tiny" x="372" y="490">流式发送：按情绪 18–32 字切段，节奏跟情绪</text>
   <text class="tiny" x="372" y="520">影子模式：只落盘、不改行为（召回 / 补句 / 自指率…）</text>
   <text class="tiny" x="372" y="540">矛盾检测：新记忆推翻旧记忆 → superseded</text>
 
@@ -129,7 +129,7 @@
 
   <!-- 说明 -->
   <rect x="352" y="700" width="808" height="84" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/>
-  <text class="tiny" x="372" y="724">分层红线只有一条：app_core 不 import nonebot —— 所以它能被离线测试直接驱动，不依赖框架、网络与数据库。</text>
+  <text class="tiny" x="372" y="724">Engine 是入口：QQ/console 构造 InboundMessage；app_core 不 import nonebot，可离线驱动。</text>
   <text class="tiny" x="372" y="746">聊天与 agentd 并行、互不干扰：机器人负责聊天，agentd 负责办事，两者不共享记忆。</text>
   <text class="tiny" x="372" y="768">所有学习都落盘（SQLite + markdown），可 diff、可回滚、可被测试扫到。</text>
 </svg>

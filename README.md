@@ -21,7 +21,7 @@ QQ
  └─ /task    → agentd（多步 agent）     沙箱里干活、崩溃可恢复、会问你
 ```
 
-- **聊天**：私聊为主，按 25 字切段、按情绪调节奏，边生成边发
+- **聊天**：私聊为主，按情绪 18–32 字切段（DeliveryPolicy 可覆盖），边生成边发
 - **记忆**：对话 → 总结 → 结构化事实 → 向量召回，被用过就续命，长期不用才归档
 - **情绪**：心情 / 基线 / 精力三值，冲量带饱和、衰减可复合；只影响「怎么说」
 - **知识库**：模型自己写笔记，带保质期，过期会标「可能过时」，周日巡检
@@ -33,8 +33,8 @@ QQ
 
 ![架构](docs/assets/architecture.svg)
 
-分层红线只有一条：**`app_core` 不 import nonebot**。所以它能在没有框架、没有网络、
-没有数据库的情况下被离线测试直接驱动。
+分层红线只有一条：**`app_core` 不 import nonebot**。QQ/console 通过 `adapters` 接入，
+`Engine` 收 `InboundMessage`，所以核心能在没有框架、没有网络、没有数据库的情况下被离线测试驱动。
 
 ## 快速开始（不需要 QQ）
 
@@ -52,8 +52,8 @@ python ops/test-nonebot-offline.py  # 离线回归：不联网、模型与 embed
 看到 `全部通过` 就说明这套代码在你机器上是自洽的。
 
 
-首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的，其余
-628 条都会真跑。
+首次在全新机器上跑，会有 **3 条 SKIP**（依赖历史记忆的用例）——这是正常的；总数
+651 条，其余都会真跑。
 
 ## 路径约定
 
@@ -78,7 +78,7 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 1. 装一个 OneBot v11 实现（NapCat / SnowLuma / Lagrange 等），指向本机的反向 WS 端口
 2. `cp nonebot/.env.example nonebot/.env`，填 `ONEBOT_ACCESS_TOKEN` 和 `SUPERUSERS`
 3. `cp nonebot/config.example.yaml nonebot/config.yaml`，至少改：
-   - `admin.user_id` —— 你的 QQ 号。**留空会导致记忆不写入、主动消息不发**（启动日志会警告）
+   - `admin.user_id` —— 你的 QQ 号；多入口可再加 `admin.identities`。**两套都留空会导致记忆不写入、主动消息不发**（启动日志会警告）
    - `llm.api` / `llm.model`，以及 embedding 的服务地址
 4. 把 API key 写到 `/opt/qqbot-data/keys.json`（权限 600，格式见 `app_core/llm.py`）
 5. `cd nonebot && python bot.py`（`.env` 必须在 `nonebot/` 下）
@@ -89,7 +89,9 @@ export QQBOT_ROOT=/srv/qqbot      # 默认 /opt
 
 ```
 nonebot/
-├─ app_core/     41 个纯逻辑模块（不 import nonebot）
+├─ app_core/     纯逻辑模块（不 import nonebot，约 45 个）
+├─ adapters/     qq / console / fake 通道适配器
+├─ companion_core/ 稳定入口（EngineConfig + create_engine）
 ├─ plugins/      7 个插件：chat / group / commands / admin / schedule / proactive / agent
 └─ personas/     外人版人格（陌生人私聊用）
 agentd/          agent 运行时：代码 / 测试 / 沙箱 / 文档
@@ -109,6 +111,8 @@ templates/plugin/ 新插件脚手架（配合 ops/new-plugin.py）
 5. **一切学习都落盘**：记忆、纠正、画像、技能都是文件和 SQLite，能 diff、能回滚、
    能被 `ops/coverage-audit.py` 和测试扫到。
 6. **不追求「更热闹」**：主动消息有闸门，群聊默认关闭，宁可不发也不刷屏。
+7. **引擎优先**：默认 `style_mode=model` + `context_format=compact`；旧规则保留为 `rules` 回退，
+   QQ/console 共用同一个 `Engine`。
 
 ## 边界（不做的事）
 
