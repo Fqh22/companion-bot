@@ -168,7 +168,7 @@ class Runner:
                     continue
                 self._propagate_blocked(tid, steps)
                 if all(s["status"] in TERMINAL for s in steps):
-                    if any(s["status"] == "blocked" for s in steps):
+                    if any(s["status"] in ("blocked", "skipped") for s in steps):
                         # 让 _finish 统一生成 needs_input；不要先标 done 再回退
                         return
                     self._set_status(tid, "done", finished_at=time.time())
@@ -484,11 +484,11 @@ class Runner:
                   + (f" 卡住 {len(blocked)} 步。" if blocked else "")
                   + (f" 跳过 {len(skipped)} 步。" if skipped else ""))
 
-        if blocked:
+        if blocked or skipped:
             # 汇总成一次提问，而不是每一步打断一次
             qs = "\n".join(
                 f"{i}. 第{s['idx']}步「{s['desc'][:24]}」：{str(s['error'])[:80]}"
-                for i, s in enumerate(blocked[:5], 1))
+                for i, s in enumerate((blocked + skipped)[:5], 1))
             report += f"\n需要你回答（/answer {tid} 你的答复）：\n{qs}"
             self._set_status(tid, "needs_input", finished_at=time.time(), report=report)
         else:
@@ -562,8 +562,20 @@ class Runner:
         if not new_steps:
             return False
         offset = max((s["idx"] for s in steps), default=-1) + 1
+        n_new = len(new_steps)
         for i, s in enumerate(new_steps):
             s["idx"] = offset + i
+            mapped = []
+            for d in s.get("depends_on") or []:
+                try:
+                    d = int(d)
+                except Exception:  # noqa: BLE001
+                    continue
+                if 0 <= d < n_new:
+                    mapped.append(offset + d)
+                elif 0 <= d < len(steps) and steps[d]["status"] == "done":
+                    mapped.append(d)
+            s["depends_on"] = mapped
         self.store.add_steps(tid, new_steps)
         self._append_plan(tid, new_steps, reason=f"{len(bad)} 步失败")
         self.store.add_event(tid, "note", f"重规划：新增 {len(new_steps)} 步")
