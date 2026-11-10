@@ -1,4 +1,4 @@
-"""agentd 的 HTTP 客户端：给自然语言任务入口复用，不 import nonebot。"""
+"""agentd 的 HTTP 客户端：给自然语言任务入口复用，不依赖框架。"""
 from __future__ import annotations
 
 import httpx

@@ -8,7 +8,7 @@
   「交给 agent：…」可直接建；2 分钟确认过期；`/task` 保留。
 - agentd 修输入预检：附件没搬进 /work 或目标引用附件但没带文件 → 直接 needs_input，不再空跑。
 - planner 修无效 custom verify：引用未创建脚本自动降级成 exit_code。
-- 测试：任务意图 9/9；agentd 85/85；全链路 242/242。
+- 测试：任务意图 9/9；agentd 85/85；全链路 243/243。
 
 ## 2026-11-10 · M6-mini：companion_core 门面
 
