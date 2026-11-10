@@ -1,148 +1,114 @@
-# companion-bot
+# companion
 
-> A self-hosted QQ companion bot with **long-term memory and mood**.
+> A self-hosted companion engine that **remembers you and has moods**.
+> QQ is just one channel it can talk through — not the foundation.
 
-[中文](README.md) · Not affiliated with Tencent or QQ. Use at your own risk on your own deployment.
+Unofficial project, not affiliated with Tencent or QQ.
 
 ## What it is
 
-One main path:
+Not a "QQ bot": a **channel-agnostic companion engine**.
 
 ```
-QQ → OneBot v11 → NoneBot2 (adapters / Engine / ChatCore)  instant replies, remembers you, has moods
+your platform (QQ / terminal / Telegram / web / …)
+        │  three things only: receive, send, typing
+        ▼
+   adapters/          platform fields → InboundMessage
+        ▼
+   Engine             one turn in, one turn out
+        ▼
+   app_core/          memory, mood, knowledge, profile, prompt, scheduling
+        ▼
+   TurnRunner         typing heartbeat, streaming, pacing, 45s deadline
+        ▼
+   your platform
 ```
 
-- **Chat**: private messages, split into 18–32-char bubbles by mood (DeliveryPolicy can override), streams as it generates
-- **Memory**: conversation → summary → structured facts → vector recall; used memories stay alive, idle ones get archived
-- **Mood**: valence / baseline / energy, saturating impulses, composable decay; it only changes *how* it talks
-- **Knowledge**: the bot writes its own notes with a shelf life; stale pages are flagged and audited weekly
-- **Profile**: a six-field model of *you*, with confidence and a last-evidence timestamp; it expires
-- **Contradiction check**: when a new fact replaces an old one, the old memory is soft-deleted
+- **Engine** (`nonebot/app_core/`): conversation, long-term memory, mood, knowledge,
+  profile, contradiction checks, scheduling. Zero `import nonebot`; a lint enforces it.
+- **Session loop** (`app_core/runner.py`): typing, streaming, pacing, timeout. Platform-free.
+- **Adapt** (`nonebot/adapters/` + `plugins/`): translate a platform into `InboundMessage`
+  and implement three send primitives.
 
-![demo](docs/assets/demo.svg)
+## Adding a channel
 
-## Portability: QQ is just one channel
+Three primitives:
 
-All business logic lives in `app_core` with **zero `import nonebot`**. A channel only has to
-implement three primitives — send text, send image, typing — while the session loop
-(streaming, pacing, 45s deadline) lives in `app_core/runner.py`.
-Switching platforms takes 3–5 days (NoneBot adapter) or 1–2 weeks (no NoneBot), with no
-business-code changes. See [docs/06-移植指南.md](docs/06-移植指南.md) (Chinese).
+```python
+class Channel:
+    async def send_text(self, session: str, text: str) -> bool: ...
+    async def send_image(self, session: str, path: str) -> bool: ...
+    async def typing(self, session: str, on: bool) -> None: ...
+```
 
-## Architecture
+```python
+msg = InboundMessage(session=f"myplat:{user_id}", text=text, platform="myplat")
+await TurnRunner(engine, MyChannel(), deadline=45).run(msg)
+```
 
-![architecture](docs/assets/architecture.svg)
-
-One layering rule: **`app_core` never imports nonebot**. QQ/console enter through `adapters`
-and an `Engine` facade, so the core stays testable offline without a framework, network, or database.
+That is all. Memory, mood, prompt, segmentation, pacing and the deadline are reused.
+See [docs/06-移植指南.md](docs/06-移植指南.md) (Chinese).
 
 ## Quick start (no QQ needed)
 
-Python **3.12** (the only version CI tests; `requirements.txt` is pinned for 3.12).
+Python **3.12** (CI only tests that version).
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r nonebot/requirements.txt
-
 export QQBOT_CODE_DIR=$PWD/nonebot
-python ops/lint-plugins.py          # layering & conventions (pure AST, instant)
-python ops/test-nonebot-offline.py  # offline suite: no network, LLM and embeddings mocked
+python ops/lint-plugins.py
+python ops/test-nonebot-offline.py
 ```
 
-If it prints `全部通过`, the code is self-consistent on your machine.
+To just talk to it, still without QQ: `python ops/drill-console.py` starts a terminal
+channel on a temporary root — it never touches the production database.
 
+## Provided adapters
 
-The offline suite has **647 tests**. A few cases print **SKIP** when the production DB
-copy is empty (no documents/vectors); with real data they all run.
+| Adapter | File | Notes |
+|---|---|---|
+| console | `nonebot/adapters/console.py` | terminal; the reference implementation |
+| QQ / OneBot v11 | `nonebot/adapters/qq.py` + `nonebot/plugins/` | via SnowLuma / NapCat etc. |
 
-## Path convention
+### Why QQ is only a demo
 
-The runtime root defaults to `/opt` and can be overridden with `QQBOT_ROOT`:
+QQ has no official bot API for personal accounts. Access relies on OneBot v11
+implementations that reverse-engineer the private protocol or hook the official client.
+They can break at any time — protocol changes, risk control, or legal pressure
+(one implementation received a cease-and-desist in Nov 2026). Using one carries a ban risk.
+
+**So QQ lives at the outermost layer on purpose.** If it breaks, replace it; the engine stays.
+
+## Capabilities
+
+Streaming replies segmented by mood (18–32 chars), long-term memory with summarization and
+vector recall, a three-value mood model, a self-written knowledge base with expiry,
+a profile with confidence, contradiction detection, scheduling (diary/review/cleanup/weekly),
+and rate-limited proactive messages.
+
+## Data
+
+Root defaults to `/opt`, override with `QQBOT_ROOT` (derived once in `app_core/paths.py`):
+`data/` (chat.db, persona), `qqbot-data/` (memory db, keys.json, learn), `backup/`.
+`config.yaml` and `keys.json` never enter git; template: `nonebot/config.example.yaml`.
+
+## Testing
 
 ```bash
-export QQBOT_ROOT=/srv/qqbot      # default: /opt
+ops/verify.sh          # five suites: layers / offline / wiring / e2e / plugins
+ops/test-runner.py     # channel-agnostic loop: streaming / typing / timeout
+ops/drill-console.py   # offline drill: a real conversation with no QQ at all
 ```
 
-Everything derives from it in `nonebot/app_core/paths.py`:
+## Docs
 
-| Path | Contents |
+| Topic | File |
 |---|---|
-| `$QQBOT_ROOT/nonebot/data` | `chat.db`, persona, shadow logs, prompt snapshots |
-| `$QQBOT_ROOT/qqbot-data` | memory DB, `keys.json`, learn material |
-| `$QQBOT_ROOT/backup` | backups |
-
-The offline suite redirects every path into a temp dir, so it is unaffected.
-## Connect to QQ
-
-1. Run an OneBot v11 implementation (NapCat / SnowLuma / Lagrange …) pointing at the reverse-WS port
-2. `cp nonebot/.env.example nonebot/.env`, set `ONEBOT_ACCESS_TOKEN` and `SUPERUSERS`
-3. `cp nonebot/config.example.yaml nonebot/config.yaml`, then set at least:
-   - `admin.user_id` — your QQ number; add `admin.identities` for extra entry points. **If both are empty, memories are not written and proactive messages are off**
-   - `llm.api` / `llm.model` and the embedding endpoint
-4. Put API keys in `/opt/qqbot-data/keys.json` (mode 600)
-5. `cd nonebot && python bot.py`
-
-See [docs/02-运维.md](docs/02-运维.md) for deployment, backup and troubleshooting (Chinese).
-
-## Layout
-
-```
-nonebot/
-├─ app_core/     pure-logic modules (no nonebot import, ~45 files)
-├─ adapters/     qq / console / fake channel adapters
-├─ companion_core/ stable entry (EngineConfig + create_engine)
-├─ plugins/      6 plugins: chat / group / commands / admin / schedule / proactive
-└─ personas/     persona for strangers (private chat)
-docs/            system, ops, link matrix (Chinese)
-ops/             verification and ops scripts (deployed to /opt/nonebot/ops)
-templates/plugin/  new-plugin scaffold
-```
-
-## Design decisions worth knowing
-
-1. **app_core is pure logic** — plugins only do IO; every rule lives in a testable function.
-2. **Prompt has a stable prefix** — persona/guide/profile/digest first, history and dynamic context later,
-   so the provider's context cache hits. The exact split is `chat.context_format` (default `compact`).
-3. **45-second deadline** — if generation is slow, send what exists instead of making the user wait.
-4. **Mood is state, not a counter** — three values with lazy decay; changing the dynamics means
-   recalibrating every downstream threshold (a documented pitfall).
-5. **Everything learned is persisted** — memory, corrections, profile, skills are files/SQLite;
-   they can be diffed, rolled back, and audited.
-6. **Quiet by default** — proactive messages are gated, groups are disabled, silence beats spam.
-
-## Non-goals
-
-- Single user, single process, single machine — not a multi-tenant service
-- Group chats are off by default; when on, only @mentions are answered and nothing enters memory
-- no multi-step task/sandbox execution; companion chat is the only main path
-- No multi-agent parallelism, no browser automation, no local models
-- Sandbox state is not persisted (pip takes seconds to reinstall)
-
-## External dependency and risks
-
-QQ has no official bot API for personal accounts. Access goes through an OneBot v11 implementation
-(NapCat / SnowLuma / Lagrange …), which **reverse-engineers QQ's private protocol or hooks the official
-client**. It is not a stable contract:
-
-- **It can break at any time** — a protocol change or a new risk-control rule takes the whole link down.
-  go-cqhttp used to be the de-facto standard and is now barely maintained; the community moved to NapCat.
-- **Swapping implementations is cheap** — OneBot v11 is a de-facto standard, so switching means editing the
-  WS URL and token in `nonebot/.env`. `app_core` and `plugins` stay untouched.
-- **Account bans are possible** — a ToS matter that no code can prevent. **Run it on a secondary account.**
-- **Disconnects are visible** — the health check probes login state every 5 minutes and alerts on repeated failure.
-
-If that is not acceptable, this project is not a fit — it is not something configuration can solve.
-## Tests
-
-```bash
-ops/verify.sh            # five suites: layering / offline / link / end-to-end / plugins
-ops/verify.sh --pre      # before restart: never touches the production DB
-ops/verify.sh --quick    # seconds: layering + link check
-```
-
-The link check actually boots nonebot and drives the plugin handlers, asserting **call counts and
-arguments** — not just "it didn't crash". See [docs/04-联动矩阵.md](docs/04-联动矩阵.md) for which
-link is guarded by which test (Chinese).
+| How a message flows, where data lives | [docs/01-系统.md](docs/01-系统.md) |
+| Deploy, backup, troubleshooting | [docs/02-运维.md](docs/02-运维.md) |
+| Which test guards which wiring | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
+| Porting away from QQ | [docs/06-移植指南.md](docs/06-移植指南.md) |
 
 ## License
 

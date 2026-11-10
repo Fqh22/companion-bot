@@ -46,7 +46,10 @@ class ConsoleChannel:
         self.out.write("console 模式；输入 /quit 退出。\n")
         self.out.flush()
         while True:
-            line = await asyncio.to_thread(input, "你: ")
+            try:
+                line = await asyncio.to_thread(input, "你: ")
+            except EOFError:      # 管道/重定向输入（演练、脚本）读到结尾
+                break
             text = (line or "").strip()
             if text in ("/quit", "/exit", "exit"):
                 break
