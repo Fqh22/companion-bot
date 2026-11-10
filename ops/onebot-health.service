@@ -1,0 +1,10 @@
+[Unit]
+Description=OneBot channel health check
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/onebot-health
+ExecStart=/opt/nonebot/ops/check-onebot-health.sh
+SuccessExitStatus=0 1

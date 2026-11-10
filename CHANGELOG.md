@@ -2,6 +2,12 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · SnowLuma 退路
+
+- 备份当前 SnowLuma 镜像（698M）与配置；不重建当前容器。
+- 新增 OneBot 健康检查：容器/NoneBot/3001 连续 2 次失败告警，支持 ALERT_WEBHOOK。
+- 运维文档补 OneBot 后端替换清单；核心/agentd 不受 SnowLuma 影响。
+
 ## 2026-11-10 · 任务入口：自然语言 + 确认
 
 - chat 新增任务意图：文件/动作命中后先问「要交给 agent 做吗？」，回「开始」才建任务；
