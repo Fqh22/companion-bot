@@ -57,3 +57,5 @@ jobs:
         run: python ops/test-console-e2e.py
       - name: 身份映射测试
         run: python ops/test-identity.py
+      - name: 投递 golden
+        run: python ops/test-delivery.py

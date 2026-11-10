@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 引擎抽离 M4：投递契约
+
+- 新增 app_core/delivery.py：Capability（平台硬限制）与 DeliveryPolicy（段长/段数/间隔/时限）分离。
+- plan_delivery 默认与当前 QQ split_reply 一致；平台 max_text_chars 是硬截断。
+- 新增 ops/test-delivery.py：10 条分段 golden + 平台上限，共 24/24。
+- 尚未接入 QQ 发送链路；M4.1 再替换，先保证契约可测。
+
 ## 2026-11-10 · 引擎抽离 M3：身份映射
 
 - 新增 app_core/identity.py：identity_map(platform, external_id, kind, internal_id)。
