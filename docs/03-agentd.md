@@ -88,6 +88,9 @@ QQ → plugins/agent（2 秒轮询发件箱）→ HTTP 127.0.0.1:8100 → agentd
 **产物清单**：收尾时扫描任务目录，把任务开始后新增/修改的文件写成
 `{path,size,sha256}` 存进 `tasks.extra.artifacts`；发 QQ 的文件列表也从这份清单来。
 
+**沙箱文档库**：镜像内预装 `pypdf` / `pdfminer.six`，PDF 任务不再依赖运行时 pip
+（沙箱 rootfs 只读，现场装包本来就会失败）。
+
 ---
 
 ## 五、四类失败
