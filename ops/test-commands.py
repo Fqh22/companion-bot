@@ -64,7 +64,8 @@ async def main() -> None:
 
     reg = default_registry(FakeCore())
     check("默认命令集齐全",
-          set(reg.names()) >= {"ping", "help", "debug", "mood", "usage", "mem_status", "profile"},
+          set(reg.names()) >= {"ping", "help", "debug", "mood", "usage", "mem_status", "profile",
+                               "memory_cleanup", "diary_write", "review_now", "weekly_now"},
           str(reg.names()))
     out = await reg.dispatch("/ping", CommandContext(session="s", is_owner=True))
     check("ping 可用", bool(out) and out.startswith("pong"), str(out)[:40])

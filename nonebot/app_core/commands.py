@@ -94,6 +94,24 @@ def default_registry(core) -> CommandRegistry:
     async def _profile(ctx: CommandContext) -> str:
         return introspect.profile_text(learn)
 
+    async def _cleanup(ctx: CommandContext) -> str:
+        r = core.memory_cleanup()
+        return f"已归档 {r['archived']} 条，剩余活跃 {r['alive']} 条"
+
+    async def _diary_write(ctx: CommandContext) -> str:
+        from datetime import date
+
+        from app_core import diary
+
+        day = (ctx.args or "").strip() or date.today().isoformat()
+        return await diary.write_day(core, day)
+
+    async def _review(ctx: CommandContext) -> str:
+        return str(await learn.review(core))
+
+    async def _weekly(ctx: CommandContext) -> str:
+        return str(await learn.weekly(core))[:1500]
+
     r = CommandRegistry()
     for name, desc, fn in (
         ("ping", "测试 + 配置状态", _ping),
@@ -103,6 +121,10 @@ def default_registry(core) -> CommandRegistry:
         ("usage", "token 与费用", _usage),
         ("mem_status", "记忆链路快照", _mem_status),
         ("profile", "它记住的你", _profile),
+        ("memory_cleanup", "归档一次旧记忆", _cleanup),
+        ("diary_write", "补写某天日记", _diary_write),
+        ("review_now", "立刻复盘", _review),
+        ("weekly_now", "立刻生成周报", _weekly),
     ):
         r.register(CommandSpec(name, desc, fn))
     return r

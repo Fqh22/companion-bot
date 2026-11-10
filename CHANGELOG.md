@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 主动消息循环抽到内核；影子跟进关闭
+
+- 新增 `app_core/proactive_runtime.py`：频控、回应率、话题冷却、生成、落库全在这里；
+  `plugins/proactive` 只剩「发给哪个 bot」。
+- `commands.default_registry` 增到 11 条（补 memory_cleanup / diary_write / review_now / weekly_now）。
+- P2 决策：`chat.shadow_followup` 关闭（104 条样本、从未被消费）；
+  BM25 影子保留到 11-19 判据日；实体别名保留（覆盖 99%，11-13 到期人工抽检）；
+  矛盾检测与画像注入维持开启。
+- 20 套全绿；云端 verify 5/5。
+
 ## 2026-11-10 · 分层收口 + 文档按「聊天内核」重写
 
 - `ops/lint-layers.py` 新增两条规则：domain 不得 import orchestration；

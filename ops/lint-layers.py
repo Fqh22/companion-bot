@@ -31,7 +31,7 @@ DOMAIN = frozenset({
     "memory_score", "mood_domain", "followup_domain", "memory_common",
 })
 ORCH = frozenset({
-    "engine", "runner", "commands", "runtime", "introspect",
+    "engine", "runner", "commands", "runtime", "introspect", "proactive_runtime",
     "chat", "chat_turn", "tool_loop", "scheduler", "proactive",
     "learn", "review", "memory", "memory_store", "memory_index",
     "wiki", "kb", "diary", "followup", "followup_store",
