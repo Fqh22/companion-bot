@@ -166,7 +166,7 @@ async def dynamic_checks(chat_mod) -> None:
 
     delay = {"v": 0.0}
 
-    async def fake_reply(session, text, images=None, on_sentence=None, store_text=None):
+    async def fake_reply(session, text, images=None, on_sentence=None, store_text=None, **kw):
         calls.append({"session": session, "text": text, "images": images,
                       "store": store_text})
         if delay["v"]:
