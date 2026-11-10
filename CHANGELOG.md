@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · M6-mini：companion_core 门面
+
+- 新增 nonebot/companion_core：EngineConfig（import 前设置 QQBOT_ROOT）+ create_engine 门面。
+- 新增 pyproject.toml：可发现 app_core / adapters / companion_core 三个包。
+- 新增 ops/test-package.py（5/5）并接入 CI；pyproject 可解析、配置注入生效。
+- 当前仍是“门面 + 可安装包”，app_core 未物理搬家；M6-full 再做。
+
 ## 2026-11-10 · 引擎抽离 M5：入站/审批契约
 
 - 新增 app_core/approval.py：ApprovalRequest / ApprovalResult / ApprovalPort，不绑定 QQ 或按钮。
