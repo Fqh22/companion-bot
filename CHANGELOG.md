@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-10 · 分层收口 + 文档按「聊天内核」重写
+
+- `ops/lint-layers.py` 新增两条规则：domain 不得 import orchestration；
+  adapters 只走门面（不得 import chat / chat_turn / tool_loop）。反向验证过。
+- 15 个模块的 docstring 首行加层标记（`[domain]` / `[orchestration]`）。
+- 新增 `docs/07-分层.md`：三层职责、规则、新模块放哪层、为什么不物理搬家。
+- README / README.en / docs/00 按「聊天内核」重写；01/02/04/05/06 统一术语与定位。
+- 20 套本地全绿。
+
 ## 2026-11-10 · 命令分发与后台入口抽出
 
 - 新增 `app_core/commands.py`：`/xxx 参数` 解析 + 注册表 + 权限；`default_registry(core)`

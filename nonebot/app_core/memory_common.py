@@ -1,4 +1,4 @@
-"""memory 共享常量/日志：避免各拆分包循环 import。"""
+"""[domain] memory 共享常量/日志：避免各拆分包循环 import。"""
 from __future__ import annotations
 
 import json

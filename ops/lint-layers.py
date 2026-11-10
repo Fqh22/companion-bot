@@ -22,6 +22,67 @@ if not CORE.is_dir():
 IO_MODULES = {"sqlite3", "aiosqlite", "httpx", "requests", "nonebot", "websockets"}
 FAILS: list[str] = []
 
+# 三层（见 docs/07-分层.md）：
+#   domain        纯规则：可以被任意层依赖，自己只能依赖 domain / infra
+#   orchestration 编排：调多个领域模块、碰 IO，可以被 adapters/plugins 依赖
+#   infra         基础设施：paths/config/files/kernel，谁都能用
+DOMAIN = frozenset({
+    "delivery", "pacing", "prompt", "intent", "textsim", "vec",
+    "memory_score", "mood_domain", "followup_domain", "memory_common",
+})
+ORCH = frozenset({
+    "engine", "runner", "commands", "runtime", "introspect",
+    "chat", "chat_turn", "tool_loop", "scheduler", "proactive",
+    "learn", "review", "memory", "memory_store", "memory_index",
+    "wiki", "kb", "diary", "followup", "followup_store",
+    "mood", "mood_store", "profile", "contradict", "summarize",
+    "status", "watch", "meme", "web", "purge", "maintenance",
+    "relational", "attention", "retrieval", "memgraph", "vocab",
+    "identity", "approval",
+})
+
+
+def _targets(path: Path) -> list[str]:
+    """把 import 归一成 `app_core.xxx` 形式，含 from app_core import xxx。"""
+    out: list[str] = []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            out.extend(a.name for a in node.names if a.name.startswith("app_core"))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            if node.module == "app_core":
+                out.extend(f"app_core.{a.name}" for a in node.names)
+            elif node.module.startswith("app_core."):
+                out.append(node.module)
+    return out
+
+
+def check_domain_layers():
+    """domain 不得反向依赖编排层：否则纯规则就绑上了 IO/会话状态。"""
+    for name in sorted(DOMAIN):
+        p = CORE / f"{name}.py"
+        if not p.is_file():
+            continue
+        for t in _targets(p):
+            mod = t.split(".")[1] if t.count(".") >= 1 else ""
+            if mod in ORCH:
+                FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}")
+
+
+def check_adapters():
+    """适配层只走门面：engine / runner / commands / delivery，不碰内部实现。"""
+    adapters = CORE.parent / "adapters"
+    if not adapters.is_dir():
+        return
+    banned = {"app_core.chat", "app_core.chat_turn", "app_core.tool_loop"}
+    for p in adapters.rglob("*.py"):
+        for t in _targets(p):
+            if t in banned:
+                FAILS.append(f"{p.relative_to(CORE.parent)}: 适配层不得 import 内部实现：{t}")
+
 
 def imports(path: Path) -> list[str]:
     try:
@@ -77,6 +138,8 @@ def check_plugins():
 def main() -> int:
     check_kernel()
     check_domain()
+    check_domain_layers()
+    check_adapters()
     check_plugins()
     if FAILS:
         print("=== 分层失败 ===")

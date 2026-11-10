@@ -1,4 +1,4 @@
-"""mood 的纯规则：不碰文件、不碰 sqlite。"""
+"""[domain] mood 的纯规则：不碰文件、不碰 sqlite。"""
 from __future__ import annotations
 
 import base64

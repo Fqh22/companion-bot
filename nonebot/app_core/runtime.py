@@ -1,4 +1,4 @@
-"""后台任务的启动入口：不依赖 NoneBot。
+"""[orchestration] 后台任务的启动入口：不依赖 NoneBot。
 
 QQ 插件用 `start_background`；新通道用同一个，不必重写调度循环。
 主动消息的循环（30 分钟 tick）还在 plugins/proactive 里，等有第二个通道时再抽。

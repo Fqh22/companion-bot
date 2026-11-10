@@ -1,4 +1,4 @@
-"""followup 的纯状态机：信号、准入、解析结果，不碰数据库。"""
+"""[domain] followup 的纯状态机：信号、准入、解析结果，不碰数据库。"""
 from __future__ import annotations
 
 import re
