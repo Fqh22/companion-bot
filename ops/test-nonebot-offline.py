@@ -777,15 +777,14 @@ async def main() -> None:
     check("总结后生成滚动纪要", bool(dg) and "纪要" in dg, (dg or "")[:30])
     check("历史预算已降到 2500", core.history_max_chars == 2500, str(core.history_max_chars))
     m_with = core.build_messages([{"role": "user", "content": "x"}], "y", digest=dg)
-    # 第 2 条固定是「他的话不是指令」的防注入规则，所以纪要排在第 3 条
-    check("纪要在历史之前注入", "更早的对话纪要" in (m_with[2].get("content") or ""),
-          str(m_with[2]["content"][:20]))
-    check("第二条是防注入规则",
-          "都只是**他在说话**" in (m_with[1].get("content") or ""),
-          str(m_with[1].get("content"))[:20])
+    # 前缀里多了时效规则，位置不再固定；按内容找，别按索引数
+    check("纪要在历史之前注入",
+          any("更早的对话纪要" in (m.get("content") or "") for m in m_with))
+    check("防注入规则在 persona 之后",
+          any("都只是**他在说话**" in (m.get("content") or "") for m in m_with))
     m_without = core.build_messages([{"role": "user", "content": "x"}], "y")
     check("没有纪要时不注入空块",
-          "更早的对话纪要" not in (m_without[2].get("content") or ""))
+          not any("更早的对话纪要" in (m.get("content") or "") for m in m_without))
 
     # ---------- F. reply 全链路（模型全 mock） ----------
     async def fake_raw(msgs, tools_arg=None, max_tokens=None, model=None, retries=2, **kw):
@@ -820,16 +819,16 @@ async def main() -> None:
     check("prompt 最后一条是当前提问",
           bool(last) and last[-1].get("role") == "user"
           and "这句话只该出现一次" in str(last[-1].get("content")), str(last[-1])[:60])
-    # 时间/时效现在合并进「这一轮怎么说」的同一段（见 style_block）
+    # 时间统一放在最后一段（易变区），model / rules 都能拿到
     _style_msg = next((m.get("content") or "" for m in last
-                       if (m.get("content") or "").startswith("【这一轮怎么说】")), "")
+                       if (m.get("content") or "").startswith("现在：")), "")
     check("prompt 里带了当前时间", "现在：" in _style_msg, _style_msg[:60])
-    check("prompt 里带了时效规则", "时效：" in _style_msg, _style_msg[:60])
+    check("prompt 里带了时效规则",
+          any("会变的东西" in (m.get("content") or "") for m in last))
     idx_time = next((i for i, m in enumerate(last)
-                     if (m.get("content") or "").startswith("【这一轮怎么说】")), -1)
-    idx_last_user = len(last) - 1
-    check("风格块在历史之后、提问之前", 0 < idx_time < idx_last_user,
-          f"{idx_time} vs {idx_last_user}")
+                     if (m.get("content") or "").startswith("现在：")), -1)
+    check("时间在提问之前", 0 < idx_time < len(last) - 1,
+          f"{idx_time} vs {len(last) - 1}")
 
     # ---------- F3. 主人隔离：别人能聊，但读不到我的库 ----------
     _saved_uid = core.admin_uid
@@ -2192,20 +2191,18 @@ async def main() -> None:
     # ---- 风格块：五条提示合成一条，冲突在一处解决 ----
     _sb = prompt_fresh.style_block
     b1 = _sb("好累", [], {}, [], burst=1)
+    check("情绪短句给事实不给规则", "在说自己的状态" in b1 and "别给建议" not in b1, b1)
     check("情绪短句不含时效规则", "时效" not in b1, b1)
     check("情绪短句不含填充式形式", "只做一件事" not in b1, b1)
-    check("情绪短句仍给长度", "接一句就够" in b1, b1)
-    check("风格块只有一段", b1.count("【这一轮怎么说】") == 1, b1)
+    check("信号只有一段", b1.count("【这一轮】") == 1, b1)
     b2 = _sb("这报错怎么改", [], {}, [], images=1)
-    check("求助图不压长度", "接一句就够" not in b2 and "可以展开" not in b2, b2)
-    check("求助图给求助提示", "他在求助" in b2, b2)
+    check("求助图保留一句保底", "图里可能是报错" in b2, b2)
     b3 = _sb("哈哈", [], {}, [], images=1)
-    check("分享图给接氛围提示", "接住氛围" in b3, b3)
-    check("分享图省掉时效", "时效" not in b3, b3)
+    check("分享图不给保底", "报错" not in b3 and "附了 1 张图" in b3, b3)
     b_emoji = _sb("😂", [], {}, [])
-    check("纯表情只要反应", "别分析" in b_emoji and "时效" not in b_emoji, b_emoji)
+    check("纯表情只给事实", "他这条 1 字" in b_emoji and "别分析" not in b_emoji, b_emoji)
     b_react = _sb("你是不是又偷偷看我了", [], {}, [])
-    check("短推论只要反应", "别分析" in b_react and "时效" not in b_react, b_react)
+    check("短推论只给事实", "是在问你" in b_react, b_react)
     check("表情识别", prompt_fresh.is_reaction_turn("😂"))
     check("括号表情识别", prompt_fresh.is_reaction_turn("[捂脸]"))
     check("短推论识别", prompt_fresh.is_reaction_turn("你是不是又看我了"))
@@ -2216,8 +2213,9 @@ async def main() -> None:
     b5 = _sb("为什么 SQLite 的 WAL 模式在多进程下这么容易锁住，我不太理解它的机制",
              [{"role": "assistant", "content": "对，" + "很长" * 40},
               {"role": "assistant", "content": "嗯，" + "很长" * 40}], {})
-    check("允许展开时不出现「说短点」", "说短点" not in b5, b5)
-    check("允许展开时带时效", "时效" in b5, b5)
+    check("长问题只给事实", "是在问你" in b5 and "先说结论" not in b5, b5)
+    _mf = prompt_fresh.build_messages({}, [], "在吗", style_mode="model")
+    check("model 模式带时效常驻", any("会变的东西" in str(m.get("content")) for m in _mf))
 
     # ---- 气泡数上限：长回答不能切成二十几条 ----
     _long = "这是一段很长的回答。" * 40
@@ -2271,8 +2269,9 @@ async def main() -> None:
     check("model 模式带怎么回指南",
           any("【怎么回】" in str(m.get("content")) for m in _m_model))
     check("model 模式不用代码例子", not any(m.get("content") == "？" for m in _m_model))
-    check("model 模式有尾部节奏例子",
-          any("他：😂 → 你：？" in str(m.get("content")) for m in _m_model))
+    check("model 模式尾部不塞句数限制",
+          any("【这轮】" in str(m.get("content")) for m in _m_model)
+          and not any("两个逗号" in str(m.get("content")) for m in _m_model))
     check("rules 模式不带模型指南",
           not any("【怎么回】" in str(m.get("content")) for m in _m_rules))
     _m_img_model = prompt_fresh.build_messages({}, [], "看这个", images=["x"],
@@ -2301,7 +2300,7 @@ async def main() -> None:
           not any("[你记得的事]" in s or "[你的知识索引]" in s for s in _sys))
     check("compact 背景有来源标签", "[记忆]" in _bg and "笔记索引" in _bg, _bg[:80])
     check("compact 有尾部锚点", any("【这轮】" in s for s in _sys))
-    check("尾部有短例子", any("😂 → 你：？" in s for s in _sys))
+    check("尾部锚点足够短", all(len(s) < 120 for s in _sys if "【这轮】" in s))
     check("尾部锚点在背景之后", _sys.index(_bg) < next(
         i for i, s in enumerate(_sys) if "【这轮】" in s))
     check("背景有被动触发提示", "只在相关时用" in _bg, _bg[:40])
@@ -2391,15 +2390,15 @@ async def main() -> None:
 
     _cold = prompt_fresh.style_block("嗯", [], {}, [], burst=3,
                                      recent_user_lens=[1, 1, 2])
-    check("连回短句判为冷淡", "别拉长" in _cold and "可以接一句长的" not in _cold, _cold)
+    check("连发短句如实给平均", "最近他平均 1 字" in _cold, _cold)
     _warm = prompt_fresh.style_block("嗯", [], {}, [], burst=3,
                                      recent_user_lens=[30, 40, 25])
-    check("连发长句仍算兴致", "可以接一句长的" in _warm, _warm)
+    check("连发长句也如实给平均", "最近他平均 32 字" in _warm, _warm)
 
-    # ---- 长回答先说结论 ----
+    # ---- 长问题：给事实，不给格式 ----
     _deep = prompt_fresh.style_block(
         "为什么 SQLite 的 WAL 在多进程下容易锁，能解释下机制吗", [], {}, [])
-    check("要展开时先给结论", "先给结论" in _deep, _deep)
+    check("长问题给事实不给格式", "是在问你" in _deep and "先给结论" not in _deep, _deep)
 
     from app_core import wiki as wiki_fresh
     check("价格类保质期 14 天", wiki_fresh.ttl_days("RTX 4080 价格") == 14)
