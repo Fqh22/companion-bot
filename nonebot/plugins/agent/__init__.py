@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from pathlib import Path
 
@@ -91,8 +92,11 @@ async def _send_files(bot: Bot, uid: int, paths: list[str]) -> None:
             f = Path(str(p))
             if not f.is_file():
                 continue
+            # OneBot 跑在容器里，看不到宿主机路径；必须传 base64。
+            data = await asyncio.to_thread(f.read_bytes)
             await bot.call_api("upload_private_file", user_id=uid,
-                               file=str(f), name=f.name)
+                               file="base64://" + base64.b64encode(data).decode(),
+                               name=f.name)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[agent] 传文件失败 {p}: {e}")
 
