@@ -6,7 +6,9 @@
 
 - 新增 adapters/fake.py（记录 OutboundMessage）与 adapters/console.py（stdout 发送）。
 - 新增 ops/test-console.py（6 项）并接入 CI；只验证边界，不接真实 ChatCore/API。
-- 生产 QQ 链路不变；下一步再把 ConsoleChannel 接到真实引擎实例。
+- 生产 QQ 链路不变。
+- **M2.1**：ops/test-console-e2e.py 用真实 ChatCore + fake LLM + 临时 QQBOT_ROOT 跑通
+  console 输入 → 记忆/历史落库 → 回复；6/6，不 import nonebot。
 
 ## 2026-11-10 · 引擎抽离 M1：Engine 门面
 
