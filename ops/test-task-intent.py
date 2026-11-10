@@ -29,6 +29,9 @@ def check(name, ok, extra=""):
 def main():
     check("明确交给 agent", ti.is_task_request("交给 agent：把简历改成一页"))
     check("文件 + 动作", ti.is_task_request("帮我把这份简历重排", has_file=True))
+    check("文件 + 调整日期", ti.is_task_request("帮我调整一下日期", has_file=True))
+    check("文件 + 改动", ti.is_task_request("两个都改动，时间你看着来", has_file=True))
+    check("无文件调整不拦", not ti.is_task_request("帮我调整一下心态"))
     check("无文件 + 动作也拦", ti.is_task_request("帮我生成一个 CSV"))
     check("普通问句不拦", not ti.is_task_request("你觉得这个怎么样"))
     check("带文件纯问句不拦", not ti.is_task_request("这是什么", has_file=True))

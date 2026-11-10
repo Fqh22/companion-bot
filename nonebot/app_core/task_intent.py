@@ -16,6 +16,9 @@ _TASK_VERBS = (
 )
 _FILE_CUES = ("这份", "这个文件", "收到", "附件", "文件", "pdf", "docx",
               "xlsx", "pptx", "简历", "表格")
+# 这些词只有“手里有文件”时才算任务；单独说“调整一下心态”不抢聊天
+_FILE_VERBS = ("调整", "修改", "改动", "改一下", "改下", "更新", "改到",
+               "改掉", "改过来", "替换", "删除", "加上", "补上")
 _START = ("开始", "做", "做吧", "好", "可以", "行", "直接做", "开始吧")
 _CANCEL = ("不用", "算了", "取消", "先不", "别做", "不做了", "继续聊")
 
@@ -38,6 +41,8 @@ def is_task_request(text: str, has_file: bool = False) -> bool:
     if t.endswith(("吗", "么", "呢")) and not has_file:
         return False
     if any(v in t for v in _TASK_VERBS):
+        return True
+    if has_file and any(v in t for v in _FILE_VERBS):
         return True
     if has_file and any(c in t.lower() for c in _FILE_CUES):
         return True
