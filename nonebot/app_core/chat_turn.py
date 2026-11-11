@@ -25,6 +25,30 @@ def _chat():
     return sys.modules["app_core.chat"]
 
 
+def _topic_overlap(a: str, b: str) -> bool:
+    """两句有没有共同的具体词。
+
+    待办只在「这轮真的聊到」时注入；泛泛的短句（「算了」「随便问问」）
+    不该触发旧账。宁可漏提，也别主动翻。
+    """
+    import re
+
+    _STOP = {"我们", "这个", "那个", "就是", "可以", "没有", "什么", "怎么",
+             "还是", "但是", "因为", "所以", "如果", "已经", "现在", "时候"}
+
+    def grams(s: str) -> set[str]:
+        s = re.sub(r"\s+", "", s or "")
+        out = {m.lower() for m in re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", s)}
+        for run in re.findall(r"[\u4e00-\u9fa5]+", s):
+            for i in range(len(run) - 1):
+                g = run[i:i + 2]
+                if g not in _STOP:
+                    out.add(g)
+        return out
+
+    return bool(grams(a) & grams(b))
+
+
 @dataclass
 class Turn:
     """一轮回复的状态。
@@ -331,9 +355,12 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("表情回应提示失败：%s", e)
 
-        # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得
+        # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得。
+        # 关键：**只注入本轮聊到相关词的**——否则它会在无关话题里翻旧账，
+        # 把用户随口一提的事当成议程（2026-11-11 反馈：base_url 那句被反复追问）。
         try:
-            _open = [x["text"][:40] for x in followup.pending(3)]
+            _open = [x["text"][:40] for x in followup.pending(3)
+                     if _topic_overlap(x.get("text") or "", user_text)]
             turn.open_items = "\n".join(f"- {x}" for x in _open)
         except Exception:  # noqa: BLE001
             turn.open_items = ""
