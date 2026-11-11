@@ -15,6 +15,13 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · task 写进契约：创建 + 取消
+
+- `followup_store.id_for_text`：创建后拿到 id，契约能返回 `followup:<id>`。
+- `Port.remember(task)` 只接 followup 创建；reminder 走 `remind_me`（要解析自然语言时间，不属于契约层）。
+- `Port.forget(ref, type="task")`：`followup:<id>` → cancelled；`reminder:<id>` → 取消。
+- port 34/34；云端 5/5。
+
 ## 2026-11-11 · task 读进契约（4/5）
 
 - `recall(("task",))` 返回 followup 未关闭项 + reminder 未发送项，ref 为 `followup:12` / `reminder:3`。

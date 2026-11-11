@@ -167,6 +167,19 @@ async def main() -> None:
     check("task 读含 followup", any(r.startswith("followup:") for r in refs), str(refs)[:80])
     check("task 文本正确", any(x.text == "交房租" for x in tasks), str([x.text for x in tasks])[:60])
 
+    # task 写：创建 + 取消
+    from app_core import followup as followup_mod
+
+    ref_task = await CoreMemoryPort(FakeCore()).remember(MemoryItem(
+        type="task", text="买猫粮", payload={"kind": "followup", "source": "test"}))
+    check("task 创建返回 ref", str(ref_task).startswith("followup:"), str(ref_task))
+    texts_task = [r["text"] for r in followup_mod.pending(10)]
+    check("task 创建后可读", "买猫粮" in texts_task, str(texts_task)[:80])
+    ok_task = await CoreMemoryPort(FakeCore()).forget(ref_task, type="task")
+    check("task 取消成功", ok_task is True)
+    texts_task2 = [r["text"] for r in followup_mod.pending(10)]
+    check("取消后不再出现", "买猫粮" not in texts_task2, str(texts_task2)[:80])
+
     # 契约宽度 = 实现宽度：未实现的类型必须显式报错，不能静默返回空
     for bad_type in ("mood",):
         try:
@@ -175,10 +188,10 @@ async def main() -> None:
         except NotImplementedError:
             check(f"recall({bad_type}) 未实现即报错", True)
     try:
-        await CoreMemoryPort(FakeCore()).forget("d1", type="task")
-        check("forget(task) 应报错", False)
+        await CoreMemoryPort(FakeCore()).forget("d1", type="mood")
+        check("forget(mood) 应报错", False)
     except NotImplementedError:
-        check("forget(task) 未实现即报错", True)
+        check("forget(mood) 未实现即报错", True)
 
     # P5：profile 写入（抽出的 save_profile）
     from app_core import learn as learn_mod2

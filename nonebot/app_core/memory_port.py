@@ -162,8 +162,21 @@ class CoreMemoryPort:
                 str(p.get("project") or ""),
                 str(p.get("source") or "自撰"),
                 int(p.get("stale_days") or 0))
+        if item.type == "task":
+            kind = str(p.get("kind") or "followup")
+            if kind != "followup":
+                raise NotImplementedError(
+                    f"task 创建只接 followup，收到 {kind}（reminder 走 remind_me 工具，"
+                    "它要解析自然语言时间，不属于契约层）")
+            from app_core import followup, followup_store
+
+            if not followup.add(item.text, str(p.get("source") or "memory")):
+                raise RuntimeError("跟进创建失败（可能近似重复，或不像待办）")
+            fid = followup_store.id_for_text(item.text)
+            return f"followup:{fid}" if fid else "followup:"
+
         if item.type != "fact":
-            raise NotImplementedError(f"记得的写入类型只有 fact / knowledge，收到 {item.type}")
+            raise NotImplementedError(f"记得的写入类型只有 fact / knowledge / task，收到 {item.type}")
         return self.core.memory.add_document(
             text=item.text,
             session=str(p.get("session") or ""),
@@ -181,8 +194,25 @@ class CoreMemoryPort:
         type 只支持 fact；传其它类型显式报错，而不是返回 False——
         "没找到"和"这类型不支持"必须能区分。
         """
+        if type == "task":
+            kind, _, sid = ref.partition(":")
+            try:
+                rid = int(sid)
+            except ValueError:
+                return False
+            if kind == "followup":
+                from app_core import followup_store
+
+                followup_store.set_status(rid, "cancelled")
+                return True
+            if kind == "reminder":
+                from app_core.scheduling import remind
+
+                return "没有这条提醒" not in remind.cancel(rid)
+            raise NotImplementedError(f"未知任务类型：{kind}")
+
         if type != "fact":
-            raise NotImplementedError(f"forget 只支持 fact，收到 {type}")
+            raise NotImplementedError(f"forget 只支持 fact / task，收到 {type}")
         return bool(self.core.memory.delete(ref))
 
     async def remember_profile(self, fields: dict, conf: dict | None = None,

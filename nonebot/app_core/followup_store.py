@@ -314,6 +314,22 @@ def pending(limit: int = 10) -> list[dict]:
            for r in rows if askable(r[1])]
     return out[:limit]
 
+def id_for_text(text: str) -> int | None:
+    """按文本找最新一条（记忆契约创建后要返回 ref）。
+
+    近似重复在 add 里已被拒，所以这里按文本查最新是安全的。
+    """
+    init()
+    c = _conn()
+    try:
+        row = c.execute(
+            "SELECT id FROM followups WHERE text=? ORDER BY id DESC LIMIT 1",
+            (text,)).fetchone()
+        return int(row[0]) if row else None
+    finally:
+        c.close()
+
+
 def stats() -> dict:
     init()
     c = _conn()

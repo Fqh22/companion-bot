@@ -93,7 +93,10 @@ class AffectPort(Protocol):
 - **2026-11-11：task 读完成。** `recall(("task",))` 返回 followup 未关闭项 + reminder 未发送项，
   ref 形如 `followup:12` / `reminder:3`；影子对比生产库，旧路径与新 Port **6/6 完全相同**。
   `MEMORY_TYPES` 已加 `task`，`UNIMPLEMENTED_TYPES` 只剩 `mood`。
-- 待做：task 写（remember 创建 / forget 取消）、mood 的 AffectPort。
+- **2026-11-11：task 写完成（followup）。** `remember(task)` 创建跟进并返回 `followup:<id>`；
+  `forget(ref, type="task")` 把 followup 置 cancelled / 取消 reminder。reminder 的创建仍走
+  `remind_me` 工具——它要解析自然语言时间，不属于契约层。
+- 待做：mood 的 AffectPort。
 
 ## 九、判据（什么算成功）
 
