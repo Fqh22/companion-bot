@@ -391,6 +391,16 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("表情回应提示失败：%s", e)
 
+        # 此刻：他最近在聊什么、还挂着什么、情绪如何——状态，不是事实。
+        try:
+            from app_core import situation
+
+            _sit = situation.describe(turn.session, turn.m)
+            if _sit:
+                turn.extra_system.append("[此刻]\n" + _sit)
+        except Exception:  # noqa: BLE001
+            pass
+
         # 关系小抄：称呼、梗、雷区——每轮注入，不走向量检索。
         try:
             from app_core import relation_notes

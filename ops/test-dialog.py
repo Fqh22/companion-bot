@@ -39,6 +39,11 @@ def main() -> None:
     check("陈述不触发", not looks_analytical("我真想找个工作"))
     check("语气词不触发", not looks_analytical("还在学增删改查呢"))
 
+    from app_core import situation
+    check("空库时此刻为空", situation.describe("no-such-session") == "")
+    check("空库时没有话题", situation.recent_topics("no-such-session") == [])
+
+    relation_notes.path().unlink(missing_ok=True)
     check("没有小抄时为空", relation_notes.load() == "")
     relation_notes.path().parent.mkdir(parents=True, exist_ok=True)
     relation_notes.path().write_text("- 称呼：他叫我「你」", encoding="utf-8")
