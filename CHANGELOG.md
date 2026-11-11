@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · 可靠性：清死服务、护住容器、告警兜底
+
+- 删除 agentd-guard 残留：timer、service、`iptables -A INPUT -s 172.19.0.0/16 -d 172.19.0.1 -j DROP`、
+  `agentd-net` 网络。备份在 `/opt/backup/agentd-guard-removed-*`（含 iptables 快照）。
+- 新增 `snowluma-oom.timer`：每 5 分钟把 snowluma 的 `oom_score_adj` 拉回 -500
+  （容器重启会丢，旧 guard 删掉后这项保护不能一起没）。
+- 影子日志按 5MB 轮转（`shadow-profile` 11 天已 762KB，原来无上限）。
+- healthcheck：QQ 告警发不出去时落盘 `alerts.jsonl`，恢复后补发——告警通道不再和被测链路同生共死。
+- 云端 verify 5/5。
+
 ## 2026-11-11 · 规范化：入口文档 + 工具注册表 + 护栏自检 + 扩展指南
 
 - 新增 `AGENTS.md`：先跑什么、五条扩展路径、红线、已定决策、AI 常见错误。

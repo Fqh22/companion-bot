@@ -49,9 +49,19 @@ def positive_signal(user_text: str) -> bool:
     return bool(t) and any(w in t for w in _POSITIVE)
 
 
+# 影子日志只用于排障/量化，不需要长期留存。单文件超过 5MB 就轮转成 .1，
+# 旧的那份直接覆盖——最多两份，总占用有上限（实测 shadow-profile 11 天 762KB）。
+MAX_BYTES = 5 * 1024 * 1024
+
+
 def _append(path: Path, rec: dict) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if path.exists() and path.stat().st_size > MAX_BYTES:
+                path.replace(path.with_suffix(path.suffix + ".1"))
+        except Exception as e:  # noqa: BLE001
+            log.debug("影子日志轮转失败：%s", e)
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     except Exception as e:  # noqa: BLE001

@@ -5,6 +5,8 @@ set -uo pipefail
 PY=/opt/nonebot/venv/bin/python
 STATE=/opt/nonebot/ops/health.state
 LOG=/opt/nonebot/ops/health.log
+# 告警只有 QQ 一条通道——而 QQ 本身就可能挂。发不出去先落盘，等恢复后补发。
+ALERTS=/opt/nonebot/ops/alerts.jsonl
 SNOW_API=http://127.0.0.1:3000
 REPEAT_ALERT_SEC=21600
 
@@ -19,6 +21,30 @@ if [ -z "${ONEBOT_CFG:-}" ]; then
 fi
 
 log() { printf '[%s] %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
+
+log_alert() {
+    printf '%s' "$1" | "$PY" -c 'import json,sys,time
+print(json.dumps({"ts": int(time.time()), "msg": sys.stdin.read()}, ensure_ascii=False))' >> "$ALERTS" 2>/dev/null || true
+}
+
+flush_alerts() {
+    [ -s "$ALERTS" ] || return 0
+    local tmp="$ALERTS.tmp.$$"
+    : > "$tmp"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        local m
+        m=$(printf '%s' "$line" | "$PY" -c 'import json,sys
+try:
+    print(json.load(sys.stdin)["msg"])
+except Exception:
+    pass' 2>/dev/null)
+        [ -n "$m" ] || continue
+        send "$m" || printf '%s\n' "$line" >> "$tmp"
+    done < "$ALERTS"
+    mv "$tmp" "$ALERTS"
+    log "flushed pending alerts"
+}
 [ -f "$LOG" ] && [ "$(stat -c%s "$LOG")" -gt 1048576 ] && mv "$LOG" "$LOG.1"
 
 TOKEN=$("$PY" - "$ONEBOT_CFG" 2>/dev/null <<'PY'
@@ -133,8 +159,10 @@ fi
 
 if [ "${#probs[@]}" -eq 0 ]; then
     if [ "$fail_count" -ge 2 ]; then
-        send "$(printf '✅ 云端机器人已恢复\n%s' "$(date '+%m-%d %H:%M')")" && log "recovered, alert sent" || log "recovered, alert send failed"
+        rec="$(printf '✅ 云端机器人已恢复\n%s' "$(date '+%m-%d %H:%M')")"
+        send "$rec" && log "recovered, alert sent" || { log "recovered, alert send failed"; log_alert "$rec"; }
     fi
+    flush_alerts
     echo "0 0" > "$STATE"
     log "ok"
     exit 0
@@ -146,7 +174,7 @@ log "fail($fail_count): $(IFS='; '; echo "${probs[*]}")"
 if [ "$fail_count" -ge 2 ] && [ $((now - last_alert)) -ge "$REPEAT_ALERT_SEC" ]; then
     body=$(printf '%s\n' "${probs[@]}" | sed 's/^/- /')
     msg=$(printf '⚠️ 云端机器人异常（连续 %s 次）\n%s\n%s' "$fail_count" "$body" "$(date '+%m-%d %H:%M')")
-    send "$msg" && { last_alert=$now; log "alert sent"; } || log "alert send failed"
+    send "$msg" && { last_alert=$now; log "alert sent"; } || { log "alert send failed"; log_alert "$msg"; }
 fi
 
 echo "$fail_count $last_alert" > "$STATE"
