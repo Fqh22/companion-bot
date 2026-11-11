@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · 异地备份的替代方案：本地拉取
+
+- 新增 `ops/sync-from-cloud.ps1`：本地开机时从云端补拉 `cloud-*.tgz`，
+  `tar -tzf` 校验、本地保留 30 天、日志 `备份/sync.log`。
+- Startup 的 `companion-backup.vbs` 登录时隐藏运行；不需要公网 IP。
+- `备份/` 加入 .gitignore（30MB 级文件不入库）。
+- 与云端 `offsite-backup.sh` 互补：配了 COS 是双保险，没配就靠本地。
+
 ## 2026-11-11 · 可靠性：清死服务、护住容器、告警兜底
 
 - 删除 agentd-guard 残留：timer、service、`iptables -A INPUT -s 172.19.0.0/16 -d 172.19.0.1 -j DROP`、

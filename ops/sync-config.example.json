@@ -1,0 +1,6 @@
+{
+  "host": "root@your-server",
+  "key": "C:/path/to/your-key.pem",
+  "local_dir": "C:/Users/you/Documents/Projects/companion-bot/备份/云端",
+  "keep_days": 30
+}
