@@ -4,6 +4,9 @@
 
 ## 2026-11-11 · 全链路重放测试；修复画像注入缺 await
 
+- `replay-diff.py` 改为**冒烟判据**：召回一致 + 无异常 + 无空回复；相似度只记录、不判死。
+- 排除图片/文件样本（重放无法还原上下文）；临时目录用后清理；报告写 `data/replay_diff.json`。
+
 - 新增 `ops/replay-diff.py`：复制生产库到临时根，取真实对话重放，比较旧回复与新回复
   （召回一致率 / 长度比 / 2-gram 相似度），写 `replay_diff.json`。
 - **抓到真 bug**：`_prepare_profile` 改 async 后调用处缺 `await`，画像注入实际未生效

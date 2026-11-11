@@ -17,6 +17,7 @@ python ops/test-commands.py
 python ops/link-check.py
 python ops/smoke-plugins.py
 python ops/test-guards.py         # 护栏自检：lint 规则必须能抓到反例
+python ops/replay-diff.py 5       # 全链路冒烟：真实对话重放，只看召回一致/无异常（会调 LLM，不进 CI）
 
 # 云端：五件套
 ops/verify.sh --pre              # 重启前：不碰生产库
