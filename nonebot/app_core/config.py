@@ -24,7 +24,9 @@ DEFAULTS = {
     },
     "llm": {
         "api": "https://api.deepseek.com/v1/chat/completions",
-        "model": "deepseek-flash",
+        # 2026-11-12 A/B：chat 在判断/澄清/承认不知道上明显更稳；编数据两者一样。
+        # deepseek-chat 的单价与 flash 同级（见 PRICES），代价是首字慢约 0.5–1 秒。
+        "model": "deepseek-chat",
         "temperature": 1.15,
         "max_tokens": 1000,
         # 单次回复最多几轮工具调用。每多一轮就多一次完整 LLM 调用（约 +1.5s）。

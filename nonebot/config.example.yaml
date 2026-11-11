@@ -8,7 +8,8 @@ admin:
 
 llm:
   api: https://api.deepseek.com/v1/chat/completions
-  model: deepseek-flash
+  # 2026-11-12 A/B：chat 在判断/澄清上明显更稳（编数据两者一样）。
+  model: deepseek-chat
   temperature: 1.15
   # 推理模式下 temperature 不生效，但实测开思考的回复更具体、少套路，
   # 所以这里保留原值（切回 false 时它会重新生效）。

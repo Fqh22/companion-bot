@@ -132,6 +132,7 @@ ops/drill-console.py   # 断线演练：没有 QQ 也能跑一轮真实对话
 | 项目定义与决策判据 | [docs/09-设计初衷.md](docs/09-设计初衷.md) |
 | 从对话中心迁到记忆契约 | [docs/10-重构方案.md](docs/10-重构方案.md) |
 | mood / task 怎么进契约 | [docs/11-mood-task设计.md](docs/11-mood-task设计.md) |
+| 回话自检（替代场景枚举） | [docs/12-回话自检.md](docs/12-回话自检.md) |
 | 内核分层、新模块放哪 | [docs/07-分层.md](docs/07-分层.md) |
 | 加模块 / 通道 / 命令 / 工具 / 任务 | [docs/08-扩展指南.md](docs/08-扩展指南.md) |
 | 消息流、数据布局 | [docs/01-系统.md](docs/01-系统.md) |
