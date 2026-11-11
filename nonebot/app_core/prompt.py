@@ -239,6 +239,14 @@ MODEL_FIRST_TAIL = (
     "有依据就说是哪来的；没依据就说没把握——别为了显得有用而编。"
 )
 
+# 雷区清单：正确姿势写不完，雷就这几组（来自真实对话的坏例子）。
+# 负面约束比正面示范省 token，也更容易被遵守。
+LANDMINES = (
+    "【别踩】安慰：抱抱/会好的/我理解你的感受、急着给方案、感叹号堆温度。"
+    "分析：不给结论、把随口问问当课题、排比 bullet。"
+    "玩笑：解释笑点、突然正经、上价值、连回三条。"
+)
+
 # 回话自检（docs/12）：让模型先判断「他在要什么」，代码只剥标签、不改回复。
 # 单独一条，不塞进 TAIL——TAIL 要短，这条可以长一点。
 SELF_CHECK_RULE = (
@@ -623,6 +631,7 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
         msgs.append({"role": "system", "content": MODEL_FIRST_TAIL})
         if style_mode == "model":
             msgs.append({"role": "system", "content": SELF_CHECK_RULE})
+            msgs.append({"role": "system", "content": LANDMINES})
     # 时间放在最后一段：每轮都变，只能放易变区；但 model / rules 都必须拿到，
     # 否则「明天几点」这类话只能靠猜（以前只有 rules 模式的 style_block 带时间）。
     msgs.append({"role": "system", "content": now_line().replace("[现在] ", "现在：")})

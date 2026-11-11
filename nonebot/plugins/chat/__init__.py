@@ -28,6 +28,7 @@ from pathlib import Path
 import httpx
 
 from nonebot import get_bots, get_driver, logger, on_message
+from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -404,26 +405,36 @@ async def _collect_voice(sid: str, seg, text: str,
         return
     tmp = None
     try:
-        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
+        async with httpx.AsyncClient(
+                timeout=60, follow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0 (Linux; Android 13) QQ/9.0"}) as c:
             r = await c.get(url)
-            r.raise_for_status()
+        if r.status_code != 200:
+            logger.warning(f"[chat] voice 下载失败 {r.status_code} {url[:60]}")
+            await chat.finish("语音下载失败，打字吧")
+            return
         tmp = Path(tempfile.mkstemp(prefix="voice-")[1])
         tmp.write_bytes(r.content)
         wav = await asyncio.to_thread(asr.to_wav, tmp)
         if wav is None:
-            await chat.finish("这段语音我转不了，打字说吧")
+            logger.warning(f"[chat] voice 转码失败 {len(r.content)} 字节")
+            await chat.finish("这段语音我转不了，打字吧")
             return
         res = await asr.transcribe(wav)
         wav.unlink(missing_ok=True)
         heard = str(res.get("text") or "").strip()
         if not heard:
-            logger.info(f"[chat] voice {sid} 空转写：{res.get('error')}")
+            logger.warning(f"[chat] voice 空转写：{res.get('error')}")
             await chat.finish("没听清，再说一遍？")
             return
         logger.info(f"[chat] voice {sid}: {len(heard)} 字")
-        _add(sid, text=(text + " " + heard).strip() if text else heard, meta=meta)
+        # 前缀标明「这是语音转写的」：否则它以为他在打字，会回「我听不到语音」。
+        _voice_text = f"[语音] {heard}"
+        _add(sid, text=(text + " " + _voice_text).strip() if text else _voice_text, meta=meta)
+    except FinishedException:
+        raise
     except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] voice failed: {e}")
+        logger.warning(f"[chat] voice failed: {type(e).__name__}: {e}")
         await chat.finish("语音没听清，打字吧")
     finally:
         if tmp:

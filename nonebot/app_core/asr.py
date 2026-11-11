@@ -44,6 +44,32 @@ def duration(path: Path) -> float:
         return 0.0
 
 
+def _silk_to_wav(src: Path, dst: Path) -> bool:
+    """QQ 语音实际是 silk（扩展名却叫 .amr），ffmpeg 不认。
+
+    pilk 解成 16k PCM，再包成 wav；失败返回 False。
+    """
+    try:
+        import wave
+
+        import pilk
+
+        pcm = dst.with_suffix(".pcm")
+        pilk.decode(str(src), str(pcm), pcm_rate=16000)
+        data = pcm.read_bytes()
+        pcm.unlink(missing_ok=True)
+        if len(data) < 1600:
+            return False
+        with wave.open(str(dst), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(data)
+        return dst.exists() and dst.stat().st_size > 1024
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def to_wav(src: Path) -> Path | None:
     """任意音频 → 16k 单声道 wav；失败返回 None（格式不支持/文件损坏）。"""
     dst = Path(tempfile.mkstemp(prefix="asr-", suffix=".wav")[1])
@@ -53,6 +79,9 @@ def to_wav(src: Path) -> Path | None:
              "-ar", "16000", "-ac", "1", str(dst)],
             capture_output=True, timeout=120)
         if r.returncode == 0 and dst.exists() and dst.stat().st_size > 1024:
+            return dst
+        # ffmpeg 不认：大概率是 silk（QQ 语音）
+        if _silk_to_wav(src, dst):
             return dst
     except Exception:  # noqa: BLE001
         pass

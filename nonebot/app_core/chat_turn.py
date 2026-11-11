@@ -439,17 +439,26 @@ class ChatTurnMixin:
             turn.buffer += delta
             # 自检标签在正文前一行：等它写完（换行）再剥，别把半截标签当正文发。
             if not getattr(turn, "_sc_done", False):
-                if (self_check_mod.looks_like_tag(turn.buffer)
-                        and "\n" not in turn.buffer and len(turn.buffer) < 120):
-                    return
                 _tag, _body = self_check_mod.parse(turn.buffer)
-                turn.self_check = _tag or turn.self_check
-                turn.buffer = _body
-                turn._sc_done = True
+                if _tag:
+                    # 标签完整（读到「来源=」）就立刻剥，不等换行——
+                    # 模型经常用空格而不是换行分隔，等换行会把标签当正文发出去。
+                    turn.self_check = _tag
+                    turn.buffer = _body
+                    turn._sc_done = True
+                elif (self_check_mod.looks_like_tag(turn.buffer)
+                        and len(turn.buffer) < 200):
+                    return
+                else:
+                    turn._sc_done = True
             cut = max(turn.buffer.rfind(c) for c in "。！？!?~…\n")
             if cut >= 0 and cut < len(turn.buffer) - 1:
                 chunk, turn.buffer = turn.buffer[:cut + 1], turn.buffer[cut + 1:]
                 for part in split_reply(chunk, turn.seg_max):
+                    # 兜底：不管前面剥没剥，发送前再剥一次（幂等，正文里不会有 [自检]）
+                    _p_tag, part = self_check_mod.parse(part)
+                    if _p_tag and not turn.self_check:
+                        turn.self_check = _p_tag
                     if not _model_first:
                         part = prompt_mod.soften_tone(part)  # 去掉「哈哈哈」这类轻浮语气
                     if not part.strip():
@@ -621,6 +630,11 @@ class ChatTurnMixin:
             sent_text = "".join(turn.sent_parts) + (turn.buffer if turn.buffer.strip() else "")
         else:
             sent_text = turn.text or turn.buffer
+        # 入库前再剥一次：流式路径的 sent_parts 可能还带着标签（发送侧已兜底，
+        # 这里保证历史里不会出现 [自检]）。
+        _h_tag, sent_text = self_check_mod.parse(sent_text)
+        if _h_tag and not turn.self_check:
+            turn.self_check = _h_tag
         if not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
         if self.admin_uid and turn.session == f"private:{self.admin_uid}":

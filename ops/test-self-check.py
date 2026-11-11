@@ -29,6 +29,12 @@ def main() -> None:
     check("没有标签原样返回", parse("直接说话") == ("", "直接说话"))
     check("空串不炸", parse("") == ("", ""))
     check("标签后有空行", parse("[自检] 主=判断\n\n正文")[1].startswith("正文"))
+    tag2, body2 = parse("[自检] 主=事实 依据=有 来源=无  我只能发文字")
+    check("标签后直接跟正文（无换行）", body2 == "我只能发文字", body2[:20])
+
+    tag3, body3 = parse("[自检] 主=事实 次=判断 置信=高 | 依据=有 来源=记忆我这边收到的还是文字")
+    check("来源后无空格也不吞正文", body3.startswith("我这边"), body3[:20])
+
     check("流式判断像标签", looks_like_tag("[自检] 主="))
     check("流式判断不像", not looks_like_tag("我觉得"))
 
