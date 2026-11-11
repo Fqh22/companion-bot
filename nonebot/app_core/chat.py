@@ -665,6 +665,21 @@ class ChatCore(ChatTurnMixin):
             self._mp = CoreMemoryPort(self)
         return self._mp
 
+    def _affect_port(self):
+        """情绪契约；`chat.affect_port=false` 或 memory_port 关闭时返回 None，走旧路径。"""
+        try:
+            cfg = config.load().get("chat") or {}
+            on = bool(cfg.get("affect_port", True)) and bool(cfg.get("memory_port", True))
+        except Exception:  # noqa: BLE001
+            on = True
+        if not on:
+            return None
+        if getattr(self, "_ap", None) is None:
+            from app_core.affect_port import CoreAffectPort
+
+            self._ap = CoreAffectPort()
+        return self._ap
+
     def _style_mode(self) -> str:
         """rules = 旧规则；model = 只给人格和例子。未知值按 model。"""
         try:

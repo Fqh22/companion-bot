@@ -15,6 +15,12 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · mood 进 AffectPort（五类骨架完成）
+
+- 新增 `app_core/affect_port.py`：`read / observe / write`，纯转发 `mood.py`。
+- `chat_turn` 的 load / observe / save 改走 Port；`chat.affect_port=false` 可回退。
+- 新增 `ops/test-affect.py`（5 项）进 smoke；`test-affect` 5/5、smoke 242、云端 5/5。
+
 ## 2026-11-11 · task 写进契约：创建 + 取消
 
 - `followup_store.id_for_text`：创建后拿到 id，契约能返回 `followup:<id>`。

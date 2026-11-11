@@ -96,7 +96,9 @@ class AffectPort(Protocol):
 - **2026-11-11：task 写完成（followup）。** `remember(task)` 创建跟进并返回 `followup:<id>`；
   `forget(ref, type="task")` 把 followup 置 cancelled / 取消 reminder。reminder 的创建仍走
   `remind_me` 工具——它要解析自然语言时间，不属于契约层。
-- 待做：mood 的 AffectPort。
+- **2026-11-11：mood 进 AffectPort。** `read / observe / write` 三个方法，纯转发 `mood.py`；
+  `chat_turn` 的 load / observe / save 改走 Port，`chat.affect_port=false` 可回退。
+  测试 5/5（读一致、写往返、observe 返回新状态）。
 
 ## 九、判据（什么算成功）
 

@@ -81,7 +81,8 @@ class ChatTurnMixin:
         # 只有本人那一轮才动记忆/情绪/知识/工具。别人可以聊，但聊的是一个
         # 「不记得他、也不知道我」的版本——否则他一句话就能把我的记忆念出来，
         # 或者把话写进我的库（2026-11-05 实测：陌生人问「我是谁」，它答了 QQ 号）。
-        turn.m = mood.settle(mood.load()) if turn.owner else {
+        _ap = self._affect_port() if turn.owner else None
+        turn.m = (_ap.read() if _ap is not None else mood.settle(mood.load())) if turn.owner else {
             "valence": 0.0, "valence_base": 0.0, "energy": 0.7, "social": 0.5}
 
         if store_text is not None:
@@ -170,8 +171,13 @@ class ChatTurnMixin:
         # 情绪要等向量出来才能算「推进 / 重复 / 换话题」，所以 observe 挪到这里。
         # 不是本人就不观察也不保存：情绪是全局单例，别人几句话能把他的心情带跑。
         if turn.owner:
-            mood.observe(turn.m, user_text, vec=turn.mvec)
-            mood.save(turn.m)
+            _ap = self._affect_port()
+            if _ap is not None:
+                _ap.observe(turn.m, user_text, vec=turn.mvec)
+                _ap.write(turn.m)
+            else:
+                mood.observe(turn.m, user_text, vec=turn.mvec)
+                mood.save(turn.m)
         turn.seg_max = self.seg_max(turn.m)
 
     async def _prepare_recall(self, turn: Turn, user_text: str) -> None:
