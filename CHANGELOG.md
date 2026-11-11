@@ -15,6 +15,12 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · P5 收尾：profile 写入走契约
+
+- `learn.save_profile` 从 `apply_review` 抽出：纯文件写入、行为不变（合并 / 置信度 / seen / previous 规则只此一份）。
+- `Port.remember_profile(fields, conf, evidence, changed)` 调它。
+- port 26/26；云端 5/5。
+
 ## 2026-11-11 · P5：knowledge 写入走契约
 
 - `Port.remember` 支持 knowledge → `learn.note_write`（payload：title / tag / project / source / stale_days）。

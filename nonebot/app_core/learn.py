@@ -340,6 +340,29 @@ def normalize_correction(item: str) -> str:
     return "[通用] " + t
 
 
+def save_profile(fields: dict, conf: dict, evidence: dict,
+                 changed: dict | None = None, day: str | None = None) -> dict:
+    """把画像字段合并进 profile.json + self_profile.md。**纯文件写入，不调模型**。
+
+    从 apply_review 里抽出来，给 MemoryPort 用（P5）：写入规则只有一份，
+    复盘和契约层都调这里。行为与原来完全一致。
+    """
+    if not fields:
+        return {"dropped": []}
+    json_path = PROFILE.parent / "profile.json"
+    now = time.time()
+    state = profile_mod.update_state(
+        profile_mod.load(json_path), profile_mod.load_conf(json_path),
+        profile_mod.load_seen(json_path), profile_mod.load_previous(json_path),
+        fields, conf, evidence, changed or {}, now)
+    merged = state["fields"]
+    profile_mod.save(json_path, merged, state["confidence"], state["seen"],
+                     state["previous"],
+                     extra={"updated_at": now, "day": day})
+    PROFILE.write_text(profile_mod.render_md(merged), encoding="utf-8")
+    return state
+
+
 def apply_review(data: dict, day: str | None = None) -> dict:
     """把复盘产出的 JSON 落到文件。**不调模型**，所以写入规则可以离线测。
 
@@ -367,23 +390,12 @@ def apply_review(data: dict, day: str | None = None) -> dict:
         encoding="utf-8")
     if fields:
         # 合并而不是整份替换：一天没聊工作，不代表他不在找工作。
-        # 路径从 PROFILE 推出来，测试里只改 PROFILE 也能正确重定向。
-        # 写入规则全在 profile.update_state（纯函数）：changed=false 保留旧文本、
-        # true 才改写并记 previous、有证据才刷新 seen、过期从库里删。
-        json_path = PROFILE.parent / "profile.json"
-        now = time.time()
-        state = profile_mod.update_state(
-            profile_mod.load(json_path), profile_mod.load_conf(json_path),
-            profile_mod.load_seen(json_path), profile_mod.load_previous(json_path),
-            fields, conf, evidence, profile_mod.parse_changed(raw_profile), now)
-        merged = state["fields"]
-        profile_mod.save(json_path, merged, state["confidence"], state["seen"],
-                         state["previous"],
-                         extra={"updated_at": now, "day": day})
-        if state["dropped"]:
+        # 写入规则全在 save_profile → profile.update_state（纯函数）。
+        state = save_profile(fields, conf, evidence,
+                            profile_mod.parse_changed(raw_profile), day)
+        if state.get("dropped"):
             out["profile_dropped"] = state["dropped"]
             log.info("[learn] 画像过期删除：%s", "、".join(state["dropped"]))
-        PROFILE.write_text(profile_mod.render_md(merged), encoding="utf-8")
     elif legacy:
         PROFILE.write_text(legacy, encoding="utf-8")
 

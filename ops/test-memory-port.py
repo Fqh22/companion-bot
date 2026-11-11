@@ -156,6 +156,16 @@ async def main() -> None:
     finally:
         learn_mod.note_write = orig
 
+    # P5：profile 写入（抽出的 save_profile）
+    from app_core import learn as learn_mod2
+    from app_core import profile as profile_mod2
+
+    learn_mod2.LEARN.mkdir(parents=True, exist_ok=True)
+    st = await port.remember_profile({"技术与项目": "在做 companion-bot"}, {"技术与项目": 0.8}, {"技术与项目": 1700000000.0}, {"技术与项目": True})
+    fields_now = learn_mod2.profile_fields()
+    check("profile 写入生效", fields_now.get("技术与项目") == "在做 companion-bot", str(fields_now)[:60])
+    check("profile 返回 dropped 字段", "dropped" in st, str(st)[:50])
+
     # P4：记忆轨迹
     from app_core.introspect import trace_text
     from app_core import paths

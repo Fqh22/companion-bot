@@ -142,6 +142,14 @@ class CoreMemoryPort:
         """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。"""
         return bool(self.core.memory.delete(ref))
 
+    async def remember_profile(self, fields: dict, conf: dict | None = None,
+                               evidence: dict | None = None,
+                               changed: dict | None = None) -> dict:
+        """写画像：合并而非替换。返回 update_state 的结果（含 dropped）。"""
+        from app_core import learn
+
+        return learn.save_profile(fields or {}, conf or {}, evidence or {}, changed or {})
+
     async def resolve(self, prefix: str) -> list[str]:
         """按 doc_id 前缀找完整 id（/forget id:xxxx 用）。"""
         return list(self.core.memory.find_by_prefix(prefix))
