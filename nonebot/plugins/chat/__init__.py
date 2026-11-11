@@ -20,9 +20,12 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+
+import httpx
 
 from nonebot import get_bots, get_driver, logger, on_message
 from nonebot.adapters.onebot.v11 import (
@@ -32,7 +35,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from app_core import config, meme, mood, pacing, relational
+from app_core import asr, config, meme, mood, pacing, relational
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
@@ -389,6 +392,44 @@ async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",
     _add(sid, text=caption.strip() or None, file=(name, body, note), meta=meta)
 
 
+async def _collect_voice(sid: str, seg, text: str,
+                         meta: dict | None = None) -> None:
+    """语音：下载 → 转码 → 智谱转写 → 当文本进对话（docs/13）。
+
+    转不出来就明说，不猜内容——一条语音听不清，不该变成一段编出来的话。
+    """
+    url = str(seg.data.get("url") or seg.data.get("file") or "")
+    if not url.startswith("http"):
+        await chat.finish("语音没拿到链接，打字说吧")
+        return
+    tmp = None
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
+            r = await c.get(url)
+            r.raise_for_status()
+        tmp = Path(tempfile.mkstemp(prefix="voice-")[1])
+        tmp.write_bytes(r.content)
+        wav = await asyncio.to_thread(asr.to_wav, tmp)
+        if wav is None:
+            await chat.finish("这段语音我转不了，打字说吧")
+            return
+        res = await asr.transcribe(wav)
+        wav.unlink(missing_ok=True)
+        heard = str(res.get("text") or "").strip()
+        if not heard:
+            logger.info(f"[chat] voice {sid} 空转写：{res.get('error')}")
+            await chat.finish("没听清，再说一遍？")
+            return
+        logger.info(f"[chat] voice {sid}: {len(heard)} 字")
+        _add(sid, text=(text + " " + heard).strip() if text else heard, meta=meta)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[chat] voice failed: {e}")
+        await chat.finish("语音没听清，打字吧")
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+
+
 async def _collect_images(sid: str, segs: list, text: str,
                           meta: dict | None = None) -> None:
     """下载图片，和同一条消息里的文字一起塞进队列。"""
@@ -445,10 +486,9 @@ async def _handle(event: MessageEvent):
 
     rec_segs = [s for s in event.message if getattr(s, "type", "") == "record"]
     if rec_segs:
-        # 语音已下线（见 docs/99）。同一条里带文字就照常处理文字。
-        if not text:
-            await chat.finish("语音这边还没接，打字说吧")
-            return
+        await _collect_voice(sid, rec_segs[0], text, meta=meta)
+        _kick(sid)
+        return
 
     img_segs = [s for s in event.message if getattr(s, "type", "") == "image"]
     if img_segs:
