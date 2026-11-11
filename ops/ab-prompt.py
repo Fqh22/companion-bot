@@ -46,6 +46,10 @@ async def main() -> None:
         text = "".join(chunks).strip()
         lines.append(f"\n########## Q{i}: {q} ##########\n{text}")
     (SRC / "nonebot/data" / f"ab-{TAG}.txt").write_text("\n".join(lines), encoding="utf-8")
+    sc = TMP / "nonebot/data/self_check.jsonl"
+    if sc.exists():
+        print("\n##### self_check 记录 #####")
+        print(sc.read_text(encoding="utf-8")[:800])
     print("\n".join(lines))
     shutil.rmtree(TMP, ignore_errors=True)
 

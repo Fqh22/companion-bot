@@ -238,6 +238,16 @@ MODEL_FIRST_TAIL = (
     "背景只在相关时提，别万物转工作或爱好。"
     "有依据就说是哪来的；没依据就说没把握——别为了显得有用而编。"
 )
+
+# 回话自检（docs/12）：让模型先判断「他在要什么」，代码只剥标签、不改回复。
+# 单独一条，不塞进 TAIL——TAIL 要短，这条可以长一点。
+SELF_CHECK_RULE = (
+    "回复前先写一行自检，格式：[自检] 主=接住|判断|事实|执行|轻接 次=同上 "
+    "置信=高|中|低 | 依据=有|无 来源=记忆|搜索|无。"
+    "然后换行写正文。标签不会发给用户。"
+    "判断标准：说感受→接住；问选择/方向→判断；问事实→事实；让我做→执行；"
+    "短句/玩笑→轻接。拿不准时主=接住（猜错成判断会显得冷）。"
+)
 # 时效：以前只在 rules 模式的 style_block 里有，model 模式反而不知道「知识会过时」。
 # 2026-11-10 提到稳定前缀：位置靠前、不被压语气，但每轮都在。
 FRESHNESS_RULE = (
@@ -611,6 +621,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
     if str(style_mode).lower() == "model":
         # 尾部锚点：只重复最高优先级，不把整段规则再写一遍。
         msgs.append({"role": "system", "content": MODEL_FIRST_TAIL})
+        if style_mode == "model":
+            msgs.append({"role": "system", "content": SELF_CHECK_RULE})
     # 时间放在最后一段：每轮都变，只能放易变区；但 model / rules 都必须拿到，
     # 否则「明天几点」这类话只能靠猜（以前只有 rules 模式的 style_block 带时间）。
     msgs.append({"role": "system", "content": now_line().replace("[现在] ", "现在：")})

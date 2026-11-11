@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import random
 import sys
@@ -16,6 +17,7 @@ from app_core import (attention, config, followup, intent, kb, learn, mood,
                       relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
+from app_core import self_check as self_check_mod
 from app_core import web as web_mod
 from app_core.prompt import split_reply
 
@@ -94,6 +96,7 @@ class Turn:
     task_stats: dict = field(default_factory=dict)
     think: bool = False
     memory_trace: list = field(default_factory=list)
+    self_check: str = ""
 
 
 class ChatTurnMixin:
@@ -434,6 +437,15 @@ class ChatTurnMixin:
             """
             turn.streamed = True
             turn.buffer += delta
+            # 自检标签在正文前一行：等它写完（换行）再剥，别把半截标签当正文发。
+            if not getattr(turn, "_sc_done", False):
+                if (self_check_mod.looks_like_tag(turn.buffer)
+                        and "\n" not in turn.buffer and len(turn.buffer) < 120):
+                    return
+                _tag, _body = self_check_mod.parse(turn.buffer)
+                turn.self_check = _tag or turn.self_check
+                turn.buffer = _body
+                turn._sc_done = True
             cut = max(turn.buffer.rfind(c) for c in "。！？!?~…\n")
             if cut >= 0 and cut < len(turn.buffer) - 1:
                 chunk, turn.buffer = turn.buffer[:cut + 1], turn.buffer[cut + 1:]
@@ -504,6 +516,24 @@ class ChatTurnMixin:
 
     async def _turn_commit(self, turn: Turn, on_sentence) -> None:
         """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
+        # 自检标签：剥掉、记一条。P1 只观测，不改回复。
+        try:
+            _tag, _body = self_check_mod.parse(turn.text or "")
+            if _tag:
+                turn.self_check = _tag
+                turn.text = _body
+            if turn.self_check:
+                from app_core import paths as _paths
+
+                with (_paths.DATA / "self_check.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts": time.time(), "session": turn.session,
+                        "tag": turn.self_check,
+                        "query": (turn.user_text or "")[:60],
+                        "reply": (turn.text or "")[:120],
+                    }, ensure_ascii=False) + "\n")
+        except Exception:  # noqa: BLE001
+            pass
         # 影子记录：不改行为，只攒样本（补一句的候选 + 正反馈样本）。
         # 只记本人的：这些样本是用来调他的机器人语气/频率的基线，
         # 混进陌生人的对话（还是鲸鱼人格）会把基线带偏。

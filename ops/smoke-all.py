@@ -148,6 +148,7 @@ from app_core import (  # noqa: E402
     memory_port as memory_port_mod,
     affect_port as affect_port_mod,
     fact_check as fact_check_mod,
+    self_check as self_check_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -187,6 +188,8 @@ check("memory_port 有契约", hasattr(memory_port_mod, "MemoryPort")
 check("affect_port 有契约", hasattr(affect_port_mod, "AffectPort")
       and hasattr(affect_port_mod, "CoreAffectPort"))
 check("fact_check 能检测", fact_check_mod.claims("789% 增长") == ["789%"])
+check("self_check 能剥标签",
+      self_check_mod.parse("[自检] 主=判断\n正文")[1] == "正文")
 check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
       and hasattr(engine_mod, "InboundMessage"))
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))
