@@ -124,6 +124,8 @@ DEFAULTS = {
         "memory_port": True,
         # 情绪契约（docs/11）：mood 的读/写走 AffectPort；false 可退回旧路径。
         "affect_port": True,
+        # 分析类问题先搜一轮（给材料，防止拿印象编数据）；false 关掉。
+        "force_search": True,
         # rules = 旧的长度/形式/反应规则；model = 只给人格和例子，让模型自己判断。
         # 回退时把它改成 rules 并重启，不需要回滚代码。
         "style_mode": "model",

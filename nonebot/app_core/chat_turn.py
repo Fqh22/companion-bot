@@ -16,6 +16,7 @@ from app_core import (attention, config, followup, intent, kb, learn, mood,
                       relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
+from app_core import web as web_mod
 from app_core.prompt import split_reply
 
 log = logging.getLogger("qqbot.chat")
@@ -117,6 +118,7 @@ class ChatTurnMixin:
             turn.stored = user_text
 
         self._prepare_followup(turn, user_text)
+        await self._prepare_search(turn, user_text)
 
         try:
             turn.digest = await self.get_digest(session)
@@ -142,6 +144,37 @@ class ChatTurnMixin:
 
         await self._prepare_profile(turn)
         return turn
+
+    # 分析类信号：他问的是「该不该/怎么办/形势」，不是随口聊。
+    # 这类问题最容易空——先搜一轮，给它材料，而不是靠规则逼它。
+    _ANALYTIC_HINTS = ("该不该", "怎么办", "为什么", "形势", "趋势", "分析",
+                       "对比", "缺口", "问题在哪", "值不值", "怎么看")
+
+    async def _prepare_search(self, turn: Turn, user_text: str) -> None:
+        """分析类问题先搜一轮，把结果作为依据注入。
+
+        为什么在代码里强制、而不是靠模型自己调工具：
+        它觉得「这个我懂」，就不会搜，然后拿印象编数据（2026-11-11 实测）。
+        """
+        if not turn.owner:
+            return
+        try:
+            if not bool((config.load().get("chat") or {}).get("force_search", True)):
+                return
+        except Exception:  # noqa: BLE001
+            pass
+        t = (user_text or "").strip()
+        if len(t) < 4 or not any(k in t for k in self._ANALYTIC_HINTS):
+            return
+        try:
+            res = await web_mod.search(t[:64], 3)
+        except Exception as e:  # noqa: BLE001
+            log.debug("分析类预搜索失败：%s", e)
+            return
+        if not res or res.startswith("没搜到") or res.startswith("搜索失败"):
+            return
+        turn.extra_system.append(
+            "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200])
 
     def _prepare_followup(self, turn: Turn, user_text: str) -> None:
         """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
