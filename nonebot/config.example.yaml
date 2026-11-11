@@ -68,6 +68,9 @@ chat:
   # 引用回复：第一段带「回复你那条」。默认 false——实测每条都挂引用框太重；
   # 想开就改成 true，只有第一段带，流式后续段不带。
   quote_reply: false
+  # 记忆契约（docs/10）：fact 召回、总结写入、画像读写走 MemoryPort。
+  # false 一键退回旧路径（排障用），行为与迁移前一致。
+  memory_port: true
   # 影子模式：只记日志、不发消息，用来在真改行为前先量收益。
   #   shadow-followup.jsonl  每轮生成一句「本来可以补的话」，看有多少真值得发
   #   shadow-positive.jsonl  他说「哈哈/笑死/懂了」时记一条正例（之前只有纠错闭环）

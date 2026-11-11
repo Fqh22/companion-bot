@@ -15,6 +15,14 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · 文档同步：MemoryPort 进模板 / 分层 / 联动矩阵 / 系统图
+
+- `config.example.yaml` 加 `chat.memory_port`（排障开关，默认 true）。
+- `docs/07` 的 orchestration 列表加 `memory_port`。
+- `docs/04` 加 `/forget`、`/trace` 两行链路（谁在查、查什么）。
+- `docs/01` 记忆闭环图改为 `MemoryPort.remember / recall`。
+- `AGENTS.md` 红线加第 8 条：新代码只走 MemoryPort，不直接 import 存储模块。
+
 ## 2026-11-11 · P5 收尾：profile 写入走契约
 
 - `learn.save_profile` 从 `apply_review` 抽出：纯文件写入、行为不变（合并 / 置信度 / seen / previous 规则只此一份）。

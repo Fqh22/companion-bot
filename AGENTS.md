@@ -63,6 +63,8 @@ ops/verify.sh                    # 全量
 5. 不许裸 `print`——统一 logger。
 6. domain 不许 import orchestration。
 7. adapters 不许 import `chat` / `chat_turn` / `tool_loop`。
+8. 新代码的记忆读写只走 `MemoryPort`（`docs/10`），不直接 import `memory` / `profile` / `wiki`。
+   已迁：fact 读写、knowledge 读写、profile 读写、forget、trace；mood/task 未进契约，别硬塞。
 
 ## 5. 改完要留什么
 
