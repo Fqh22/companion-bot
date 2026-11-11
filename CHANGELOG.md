@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P0/P1：记忆契约只读适配器
+
+- 新增 `app_core/memory_port.py`：`MemoryItem` / `MemoryPort` / `CoreMemoryPort`（P1 只读）。
+- `chat_turn` 的 fact 召回改走 Port；20 条真实消息对比旧路径，doc_id 列表 **20/20 一致**。
+- `chat.memory_port` 开关（默认 true），false 退回旧路径。
+- 新增 `ops/test-memory-port.py`（10 项）进 CI；smoke 覆盖。
+- knowledge / profile 仍走旧路径，P3 再迁（依赖 query/qv/降级链）。
+- 云端 verify 5/5 + port 10/10。
+
 ## 2026-11-11 · 重构方案：对话中心 → 记忆契约
 
 - 新增 `docs/10-重构方案.md`：MemoryPort 契约、五类记忆（fact/profile/knowledge/mood/task）、

@@ -174,10 +174,26 @@ class ChatTurnMixin:
         turn.seg_max = self.seg_max(turn.m)
 
     async def _prepare_recall(self, turn: Turn, user_text: str) -> None:
-        """召回记忆 + 二次召回影子。"""
+        """召回记忆 + 二次召回影子。
+
+        P1：fact 召回改走 `MemoryPort`（契约），结果与旧路径一致；
+        `chat.memory_port=false` 可退回旧路径。
+        """
         try:
-            turn.memories = await self.memory.recall(turn.query, 5, qv=turn.qv) if turn.owner else []
-        except Exception:
+            port = self._memory_port() if turn.owner else None
+            if port is not None:
+                items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv)
+                turn.memories = [{
+                    "doc_id": i.ref,
+                    "text": i.text,
+                    "meta": {"create_time": i.created,
+                             "last_access_time": i.last_used},
+                    "age_days": i.age_days,
+                } for i in items]
+            else:
+                turn.memories = await self.memory.recall(turn.query, 5, qv=turn.qv) if turn.owner else []
+        except Exception as e:  # noqa: BLE001
+            log.debug("召回失败（%s），本轮无记忆", e)
             turn.memories = []
         # 二次召回（影子）：他这句是在回指上文时，用上一轮他的话再捞一次。
         # 只落盘、不改变本轮注入的 memories；touch=False 是为了不污染

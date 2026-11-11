@@ -145,6 +145,7 @@ from app_core import (  # noqa: E402
     status as status_mod, runner as runner_mod,
     commands as commands_mod, introspect as introspect_mod, runtime as runtime_mod,
     proactive_runtime as proactive_runtime_mod,
+    memory_port as memory_port_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -179,6 +180,8 @@ check("introspect 有只读文本", hasattr(introspect_mod, "ping_text")
       and hasattr(introspect_mod, "usage_text"))
 check("runtime 有后台入口", hasattr(runtime_mod, "start_background"))
 check("proactive_runtime 有循环", hasattr(proactive_runtime_mod, "ProactiveRuntime"))
+check("memory_port 有契约", hasattr(memory_port_mod, "MemoryPort")
+      and hasattr(memory_port_mod, "MemoryItem"))
 check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
       and hasattr(engine_mod, "InboundMessage"))
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))

@@ -648,6 +648,23 @@ class ChatCore(ChatTurnMixin):
         return await self.llm.stream(messages, tools_arg, on_text,
                                      max_tokens=max_tokens, thinking=thinking)
 
+    def _memory_port(self):
+        """记忆契约的入口；`chat.memory_port=false` 时返回 None，走旧路径。
+
+        P1 只读：fact 召回已经迁过去；knowledge / profile 仍在旧路径（P3 再迁）。
+        """
+        try:
+            on = bool((config.load().get("chat") or {}).get("memory_port", True))
+        except Exception:  # noqa: BLE001
+            on = True
+        if not on:
+            return None
+        if getattr(self, "_mp", None) is None:
+            from app_core.memory_port import CoreMemoryPort
+
+            self._mp = CoreMemoryPort(self)
+        return self._mp
+
     def _style_mode(self) -> str:
         """rules = 旧规则；model = 只给人格和例子。未知值按 model。"""
         try:

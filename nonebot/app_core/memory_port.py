@@ -1,0 +1,107 @@
+"""[orchestration] 记忆契约：入口只通过这里读写记忆。
+
+P0/P1 阶段：**只读适配器**。把现有存储（memory / profile / wiki / kb）映射成统一的
+MemoryItem，不改表、不迁数据、不改变行为。
+
+五个类型（见 docs/09）：fact / profile / knowledge / mood / task。
+P1 第一刀只迁 fact 召回（最重、最影响行为）；knowledge / profile 仍走旧路径，P3 再迁。
+
+为什么要有这一层：入口（chat_turn / commands / tools / scheduler）现在直接 import
+memory / profile / wiki / diary，换存储或加记忆类型要改所有入口。契约定下来后，
+入口只认 recall / remember / forget。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+MEMORY_TYPES = ("fact", "profile", "knowledge", "mood", "task")
+
+
+@dataclass(frozen=True)
+class MemoryItem:
+    """一条记忆的统一形状；存储可以各异，语义必须一致。"""
+
+    type: str
+    text: str
+    ref: str = ""
+    source: str = ""
+    confidence: float = 1.0
+    created: float = 0.0
+    last_used: float = 0.0
+    age_days: float | None = None
+    expires: float | None = None
+    supersedes: str | None = None
+
+
+class MemoryPort(Protocol):
+    async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
+                     limit: int = 5, qv: list[float] | None = None) -> list[MemoryItem]: ...
+
+    async def remember(self, item: MemoryItem) -> str: ...
+
+    async def forget(self, ref: str) -> bool: ...
+
+    def explain(self) -> list[dict]: ...
+
+
+class CoreMemoryPort:
+    """把现有存储适配成统一契约。
+
+    P1 只实现读取；写入（remember/forget）留给 P2，先抛 NotImplementedError，
+    避免"看起来接上了、其实没写"。
+    """
+
+    def __init__(self, core) -> None:
+        self.core = core
+        self._trace: list[dict] = []
+
+    async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
+                     limit: int = 5, qv: list[float] | None = None) -> list[MemoryItem]:
+        out: list[MemoryItem] = []
+        self._trace = []
+
+        if "fact" in types:
+            rows = await self.core.memory.recall(query, limit, qv=qv)
+            for r in rows:
+                meta = r.get("meta") or {}
+                out.append(MemoryItem(
+                    type="fact",
+                    text=str(r.get("text") or ""),
+                    ref=str(r.get("doc_id") or ""),
+                    source="memory",
+                    created=float(meta.get("create_time") or 0.0),
+                    last_used=float(meta.get("last_access_time") or 0.0),
+                    age_days=r.get("age_days"),
+                    confidence=float(meta.get("importance") or 0.0),
+                ))
+            self._trace.append({"type": "fact", "n": len(rows), "limit": limit})
+
+        if "profile" in types:
+            try:
+                from app_core import learn
+                from app_core import profile as profile_mod
+
+                fields = learn.profile_fields()
+                if fields:
+                    text = profile_mod.compact(fields, learn.profile_conf(),
+                                               learn.profile_seen())
+                    if text:
+                        out.append(MemoryItem(type="profile", text=text,
+                                              ref="profile", source="review",
+                                              confidence=0.7))
+                        self._trace.append({"type": "profile", "n": 1})
+            except Exception:  # noqa: BLE001
+                pass
+
+        return out
+
+    async def remember(self, item: MemoryItem) -> str:
+        raise NotImplementedError("P2 才接写入；P1 只读")
+
+    async def forget(self, ref: str) -> bool:
+        raise NotImplementedError("P2 才接写入；P1 只读")
+
+    def explain(self) -> list[dict]:
+        """这一轮读了什么：类型、条数、上限。给 /debug trace 用。"""
+        return list(self._trace)
