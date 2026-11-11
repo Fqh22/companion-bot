@@ -215,10 +215,20 @@ class ChatTurnMixin:
         # 知识：优先注入索引（省 token、短查询更准）；索引还没建好时退回向量检索。
         # 不是本人就整段跳过——知识库里全是他自己的笔记和文档。
         if turn.owner:
-            try:
-                turn.knowledge = wiki.index_text()
-            except Exception:
-                turn.knowledge = ""
+            port = self._memory_port()
+            if port is not None:
+                try:
+                    items = await port.recall(turn.query, ("knowledge",))
+                    turn.knowledge = next(
+                        (i.text for i in items if i.type == "knowledge"), "")
+                except Exception as e:  # noqa: BLE001
+                    log.debug("知识读取失败（%s）", e)
+                    turn.knowledge = ""
+            else:
+                try:
+                    turn.knowledge = wiki.index_text()
+                except Exception:
+                    turn.knowledge = ""
             if not turn.knowledge:
                 try:
                     turn.knowledge = "\n\n".join(await kb.recall(turn.query, 3, qv=turn.qv))

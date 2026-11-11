@@ -318,6 +318,33 @@ class StoreMixin:
         self._bm25_n = -1
         return done
 
+    def delete(self, doc_id: str) -> bool:
+        """真删一条记忆（用户要求忘记）。不可恢复；内部清理请走归档。
+
+        逐表 DELETE 各自 try：老库里 memory_ranges 的列可能不同，
+        删不掉不该让整条记忆删一半还报错。
+        """
+        c = self._conn()
+        try:
+            row = c.execute("SELECT id FROM documents WHERE doc_id=?", (doc_id,)).fetchone()
+            if not row:
+                return False
+            mid = int(row[0])
+            with c:
+                for sql, args in (
+                    ("DELETE FROM memory_atoms WHERE parent_memory_id=?", (mid,)),
+                    ("DELETE FROM memory_vectors WHERE doc_id=?", (doc_id,)),
+                    ("DELETE FROM memory_ranges WHERE doc_id=?", (doc_id,)),
+                    ("DELETE FROM documents WHERE doc_id=?", (doc_id,)),
+                ):
+                    try:
+                        c.execute(sql, args)
+                    except Exception:  # noqa: BLE001
+                        pass
+            return True
+        finally:
+            c.close()
+
     def supersede(self, old_doc_id: str, by_doc_id: str, why: str = "") -> bool:
         """把一条旧记忆标成「已被取代」。软删：原文、向量、原子都还在。
 

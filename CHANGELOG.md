@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P3（部分）：forget 真删 + 知识读取走契约
+
+- `memory_store.delete`：真删 documents / memory_atoms / memory_vectors / memory_ranges（逐表 try）。
+- `CoreMemoryPort.forget`：用户要求忘记时真删，不走归档。
+- knowledge 读取改走 Port（wiki 索引）；`kb.recall` 降级仍留旧路径。
+- profile 读取未迁（需 async 改造）、`/forget` 命令入口未接，留 P3 剩余。
+- port 18/18；云端 5/5。
+
 ## 2026-11-11 · P2：总结写入走契约
 
 - `CoreMemoryPort.remember` 接 fact：`payload` 映射 session / topics / key_facts / vec / followups / range_key。

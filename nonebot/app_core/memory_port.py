@@ -80,6 +80,18 @@ class CoreMemoryPort:
                 ))
             self._trace.append({"type": "fact", "n": len(rows), "limit": limit})
 
+        if "knowledge" in types:
+            try:
+                from app_core import wiki
+
+                idx = wiki.index_text()
+                if idx:
+                    out.append(MemoryItem(type="knowledge", text=idx,
+                                          ref="wiki:index", source="wiki"))
+                    self._trace.append({"type": "knowledge", "n": 1})
+            except Exception:  # noqa: BLE001
+                pass
+
         if "profile" in types:
             try:
                 from app_core import learn
@@ -116,7 +128,8 @@ class CoreMemoryPort:
         )
 
     async def forget(self, ref: str) -> bool:
-        raise NotImplementedError("P2 才接写入；P1 只读")
+        """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。"""
+        return bool(self.core.memory.delete(ref))
 
     def explain(self) -> list[dict]:
         """这一轮读了什么：类型、条数、上限。给 /debug trace 用。"""

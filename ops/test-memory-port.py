@@ -41,6 +41,10 @@ class FakeMemory:
              "meta": {"create_time": 300.0, "last_access_time": 400.0, "importance": 0.9}},
         ][:top_k]
 
+    def delete(self, doc_id: str) -> bool:
+        self.deleted = getattr(self, "deleted", []) + [doc_id]
+        return doc_id == "d1"
+
     def add_document(self, text, session, importance, topics, key_facts,
                      atoms=None, vec=None, followups=None, range_key=""):
         self.calls.append({
@@ -108,6 +112,12 @@ async def main() -> None:
         check("非 fact 类型应未实现", False)
     except NotImplementedError:
         check("非 fact 类型未实现", True)
+
+    # P3：forget 真删（ref = doc_id）
+    check("forget 命中返回 True", await port.forget("d1") is True)
+    check("forget 未命中返回 False", await port.forget("nope") is False)
+    check("forget 调到了存储删除", core.memory.deleted == ["d1", "nope"],
+          str(getattr(core.memory, "deleted", [])))
 
     passed = sum(1 for x in RESULTS if x)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
