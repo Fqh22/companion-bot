@@ -88,7 +88,14 @@ class AffectPort(Protocol):
 | 三套路径并存（Port / 旧 / 新） | 每类迁完立刻删旧路径，不留双轨 |
 | `forget(task)` 被当成真删 | 语义写死：task 的 forget = 取消 |
 
-## 八、判据（什么算成功）
+## 八、进度
+
+- **2026-11-11：task 读完成。** `recall(("task",))` 返回 followup 未关闭项 + reminder 未发送项，
+  ref 形如 `followup:12` / `reminder:3`；影子对比生产库，旧路径与新 Port **6/6 完全相同**。
+  `MEMORY_TYPES` 已加 `task`，`UNIMPLEMENTED_TYPES` 只剩 `mood`。
+- 待做：task 写（remember 创建 / forget 取消）、mood 的 AffectPort。
+
+## 九、判据（什么算成功）
 
 - **task**：open 任务数不变、提醒送达不降、`/remind_list` 逐字一致；
 - **mood**：重放曲线的最大偏差 < 1e-6；

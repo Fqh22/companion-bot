@@ -156,8 +156,19 @@ async def main() -> None:
     finally:
         learn_mod.note_write = orig
 
+    # task 读：followup 与 reminder 都进契约
+    from app_core import followup_store
+    from app_core import paths as _paths_mp
+
+    _paths_mp.DATA.mkdir(parents=True, exist_ok=True)
+    followup_store.add("交房租", source="test")
+    tasks = await CoreMemoryPort(FakeCore()).recall("", ("task",), 10)
+    refs = [x.ref for x in tasks]
+    check("task 读含 followup", any(r.startswith("followup:") for r in refs), str(refs)[:80])
+    check("task 文本正确", any(x.text == "交房租" for x in tasks), str([x.text for x in tasks])[:60])
+
     # 契约宽度 = 实现宽度：未实现的类型必须显式报错，不能静默返回空
-    for bad_type in ("mood", "task"):
+    for bad_type in ("mood",):
         try:
             await CoreMemoryPort(FakeCore()).recall("", (bad_type,))
             check(f"recall({bad_type}) 应报错", False)

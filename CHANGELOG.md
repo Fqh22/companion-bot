@@ -15,6 +15,13 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · task 读进契约（4/5）
+
+- `recall(("task",))` 返回 followup 未关闭项 + reminder 未发送项，ref 为 `followup:12` / `reminder:3`。
+- `MEMORY_TYPES` 加 `task`；`UNIMPLEMENTED_TYPES` 只剩 `mood`。
+- 影子对比生产库：旧路径与新 Port **6/6 完全相同**。
+- port 30/30；云端 5/5。
+
 ## 2026-11-11 · mood/task 契约设计稿
 
 - 新增 `docs/11-mood-task设计.md`：结论 **task 进 MemoryPort，mood 另立 AffectPort**。

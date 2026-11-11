@@ -12,14 +12,17 @@ memory / profile / wiki / diary，换存储或加记忆类型要改所有入口�
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Protocol
+
+log = logging.getLogger("qqbot.memory_port")
 
 # 契约只声明**已实现**的类型。
 # 声明了却返回空列表，调用方会以为「没有相关记忆」——这和 2026-11-05 的
 # meme.find() 吞异常是同一类毛病：缺口无声。未实现的类型必须显式报错。
-MEMORY_TYPES = ("fact", "profile", "knowledge")
-UNIMPLEMENTED_TYPES = ("mood", "task")
+MEMORY_TYPES = ("fact", "profile", "knowledge", "task")
+UNIMPLEMENTED_TYPES = ("mood",)
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,31 @@ class CoreMemoryPort:
                     self._trace.append({"type": "knowledge", "n": 1})
             except Exception:  # noqa: BLE001
                 pass
+
+        if "task" in types:
+            try:
+                from app_core import followup
+                from app_core.scheduling import remind
+
+                n = 0
+                for r in followup.pending(limit):
+                    out.append(MemoryItem(
+                        type="task", text=str(r.get("text") or ""),
+                        ref=f"followup:{r.get('id')}",
+                        source=str(r.get("source") or ""),
+                        payload={"kind": "followup", "status": r.get("status"),
+                                 "asks": r.get("asks")}))
+                    n += 1
+                for r in remind.list_pending(limit):
+                    out.append(MemoryItem(
+                        type="task", text=str(r.get("text") or ""),
+                        ref=f"reminder:{r.get('id')}", source="remind",
+                        payload={"kind": "reminder",
+                                 "due_ts": r.get("due_ts")}))
+                    n += 1
+                self._trace.append({"type": "task", "n": n, "limit": limit})
+            except Exception as e:  # noqa: BLE001
+                log.warning("task 读取失败：%s", e)
 
         if "profile" in types:
             try:
