@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P3：/forget 命令入口（两步确认）
+
+- `introspect.forget_text`：关键词 → 列候选（前 8 位编号）；`/forget id:前缀` → 真删。
+- `memory_store.find_by_prefix` + `CoreMemoryPort.resolve`。
+- QQ 命令与 `default_registry` 各加一条（SUPERUSER）。
+- 误删防护：不做关键词直删，必须两步。
+- port 21/21；云端 5/5。
+
 ## 2026-11-11 · P3（部分）：forget 真删 + 知识读取走契约
 
 - `memory_store.delete`：真删 documents / memory_atoms / memory_vectors / memory_ranges（逐表 try）。

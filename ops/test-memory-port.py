@@ -41,6 +41,9 @@ class FakeMemory:
              "meta": {"create_time": 300.0, "last_access_time": 400.0, "importance": 0.9}},
         ][:top_k]
 
+    def find_by_prefix(self, prefix: str, limit: int = 5) -> list[str]:
+        return ["d1"] if prefix.startswith("d1") else []
+
     def delete(self, doc_id: str) -> bool:
         self.deleted = getattr(self, "deleted", []) + [doc_id]
         return doc_id == "d1"
@@ -58,6 +61,9 @@ class FakeMemory:
 class FakeCore:
     def __init__(self) -> None:
         self.memory = FakeMemory()
+
+    def _memory_port(self):
+        return CoreMemoryPort(self)
 
 
 async def main() -> None:
@@ -118,6 +124,17 @@ async def main() -> None:
     check("forget 未命中返回 False", await port.forget("nope") is False)
     check("forget 调到了存储删除", core.memory.deleted == ["d1", "nope"],
           str(getattr(core.memory, "deleted", [])))
+
+    # P3：/forget 两步确认
+    from app_core.introspect import forget_text
+
+    core3 = FakeCore()
+    out = await forget_text(core3, "工作")
+    check("候选里带编号", "[d1" in out, out[:50])
+    out2 = await forget_text(core3, "id:d123")
+    check("按编号真删", "已删掉" in out2, out2[:30])
+    out3 = await forget_text(core3, "id:zzzz")
+    check("找不到编号时报错", "没找到" in out3, out3[:30])
 
     passed = sum(1 for x in RESULTS if x)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")

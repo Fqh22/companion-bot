@@ -131,6 +131,10 @@ class CoreMemoryPort:
         """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。"""
         return bool(self.core.memory.delete(ref))
 
+    async def resolve(self, prefix: str) -> list[str]:
+        """按 doc_id 前缀找完整 id（/forget id:xxxx 用）。"""
+        return list(self.core.memory.find_by_prefix(prefix))
+
     def explain(self) -> list[dict]:
         """这一轮读了什么：类型、条数、上限。给 /debug trace 用。"""
         return list(self._trace)

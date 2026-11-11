@@ -22,6 +22,7 @@ diary_show = on_command("diary_show", priority=5, block=True, permission=SUPERUS
 diary_write = on_command("diary_write", priority=5, block=True, permission=SUPERUSER)
 diary_list = on_command("diary_list", priority=5, block=True, permission=SUPERUSER)
 review_now = on_command("review_now", priority=5, block=True, permission=SUPERUSER)
+forget_cmd = on_command("forget", priority=5, block=True, permission=SUPERUSER)
 weekly_now = on_command("weekly_now", priority=5, block=True, permission=SUPERUSER)
 note_list = on_command("note_list", priority=5, block=True, permission=SUPERUSER)
 kb_reindex = on_command("kb_reindex", priority=5, block=True, permission=SUPERUSER)
@@ -66,6 +67,12 @@ async def _(event: MessageEvent):
     lines.append(f"最好 {sm['best']['day'][5:]}（{sm['best']['valence']:+.2f}）"
                  f"，最差 {sm['worst']['day'][5:]}（{sm['worst']['valence']:+.2f}）")
     await mood_hist.finish(NL.join(lines))
+
+
+@forget_cmd.handle()
+async def _(event: MessageEvent):
+    """忘掉一条记忆：先列候选，再按编号真删。"""
+    await forget_cmd.finish(await introspect.forget_text(core, _arg(event, "/forget")))
 
 
 @remind_list_cmd.handle()

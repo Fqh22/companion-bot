@@ -318,6 +318,22 @@ class StoreMixin:
         self._bm25_n = -1
         return done
 
+    def find_by_prefix(self, prefix: str, limit: int = 5) -> list[str]:
+        """按 doc_id 前缀找（/forget id:xxxx 用）。只读。"""
+        p = (prefix or "").strip()
+        if len(p) < 4:
+            return []
+        c = self._conn()
+        try:
+            rows = c.execute(
+                "SELECT doc_id FROM documents WHERE doc_id LIKE ? LIMIT ?",
+                (p + "%", limit)).fetchall()
+            return [r[0] for r in rows]
+        except Exception:  # noqa: BLE001
+            return []
+        finally:
+            c.close()
+
     def delete(self, doc_id: str) -> bool:
         """真删一条记忆（用户要求忘记）。不可恢复；内部清理请走归档。
 

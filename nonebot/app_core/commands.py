@@ -112,6 +112,9 @@ def default_registry(core) -> CommandRegistry:
     async def _weekly(ctx: CommandContext) -> str:
         return str(await learn.weekly(core))[:1500]
 
+    async def _forget(ctx: CommandContext) -> str:
+        return await introspect.forget_text(core, ctx.args or "")
+
     r = CommandRegistry()
     for name, desc, fn in (
         ("ping", "测试 + 配置状态", _ping),
@@ -125,6 +128,7 @@ def default_registry(core) -> CommandRegistry:
         ("diary_write", "补写某天日记", _diary_write),
         ("review_now", "立刻复盘", _review),
         ("weekly_now", "立刻生成周报", _weekly),
+        ("forget", "忘掉一条记忆", _forget),
     ):
         r.register(CommandSpec(name, desc, fn))
     return r

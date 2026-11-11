@@ -10,6 +10,40 @@ from app_core import status
 NL = chr(10)
 
 
+async def forget_text(core, arg: str) -> str:
+    """忘记一条记忆：先列候选，再用编号真删。
+
+    不做「关键词直接删」——召回的 top1 可能是同主题的另一条，
+    删错不可恢复。两步是刻意的。
+    """
+    q = (arg or "").strip()
+    if not q:
+        return "用法：/forget 关键词 → 列出候选；/forget id:编号 → 删除"
+    port = core._memory_port() if hasattr(core, "_memory_port") else None
+    if port is None:
+        return "记忆契约未启用（chat.memory_port=false）"
+
+    if q.lower().startswith("id:"):
+        prefix = q[3:].strip()
+        if len(prefix) < 4:
+            return "编号至少给 4 位（候选里方括号内的前几位）"
+        ids = await port.resolve(prefix)
+        if not ids:
+            return "没找到这个编号的记忆"
+        if len(ids) > 1:
+            return "编号不唯一，再多给几位"
+        ok = await port.forget(ids[0])
+        return "已删掉这条记忆。" if ok else "删除失败（可能已经被清理）"
+
+    items = await port.recall(q, ("fact",), 3)
+    if not items:
+        return "没找到相关记忆。"
+    lines = ["要忘掉哪一条？用 /forget id:编号 确认："]
+    for it in items:
+        lines.append(f"[{it.ref[:8]}] {it.text[:40]}")
+    return NL.join(lines)
+
+
 def ping_text(core) -> str:
     """pong + 配置状态。admin 没配时记忆不写、主动消息不发，但服务看着正常。"""
     issues = core.config_issues()
