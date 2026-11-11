@@ -23,6 +23,7 @@ diary_write = on_command("diary_write", priority=5, block=True, permission=SUPER
 diary_list = on_command("diary_list", priority=5, block=True, permission=SUPERUSER)
 review_now = on_command("review_now", priority=5, block=True, permission=SUPERUSER)
 forget_cmd = on_command("forget", priority=5, block=True, permission=SUPERUSER)
+trace_cmd = on_command("trace", priority=5, block=True, permission=SUPERUSER)
 weekly_now = on_command("weekly_now", priority=5, block=True, permission=SUPERUSER)
 note_list = on_command("note_list", priority=5, block=True, permission=SUPERUSER)
 kb_reindex = on_command("kb_reindex", priority=5, block=True, permission=SUPERUSER)
@@ -67,6 +68,11 @@ async def _(event: MessageEvent):
     lines.append(f"最好 {sm['best']['day'][5:]}（{sm['best']['valence']:+.2f}）"
                  f"，最差 {sm['worst']['day'][5:]}（{sm['worst']['valence']:+.2f}）")
     await mood_hist.finish(NL.join(lines))
+
+
+@trace_cmd.handle()
+async def _():
+    await trace_cmd.finish(introspect.trace_text())
 
 
 @forget_cmd.handle()

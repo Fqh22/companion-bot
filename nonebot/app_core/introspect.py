@@ -5,7 +5,10 @@
 """
 from __future__ import annotations
 
-from app_core import status
+import json
+import time
+
+from app_core import paths, status
 
 NL = chr(10)
 
@@ -42,6 +45,28 @@ async def forget_text(core, arg: str) -> str:
     for it in items:
         lines.append(f"[{it.ref[:8]}] {it.text[:40]}")
     return NL.join(lines)
+
+
+def trace_text(n: int = 3) -> str:
+    """最近几轮「读了哪些记忆」：时间 / 问句 / 条数 / 类型分布。"""
+    path = paths.DATA / "memory_trace.jsonl"
+    if not path.exists():
+        return "还没有记忆轨迹。"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()[-n:]
+    except Exception:  # noqa: BLE001
+        return "读取记忆轨迹失败。"
+    out: list[str] = []
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except Exception:  # noqa: BLE001
+            continue
+        ts = time.strftime("%m-%d %H:%M", time.localtime(float(d.get("ts") or 0)))
+        ids = [i for i in (d.get("ids") or []) if i]
+        types = "，".join(f"{t.get('type')}×{t.get('n')}" for t in (d.get("trace") or []))
+        out.append(f"{ts} {str(d.get('query') or '')[:20]} → {len(ids)} 条（{types or '无'}）")
+    return "\n".join(out) or "还没有记忆轨迹。"
 
 
 def ping_text(core) -> str:

@@ -68,6 +68,7 @@ class Turn:
     img_budget: int = 0
     task_stats: dict = field(default_factory=dict)
     think: bool = False
+    memory_trace: list = field(default_factory=list)
 
 
 class ChatTurnMixin:
@@ -179,6 +180,7 @@ class ChatTurnMixin:
         P1：fact 召回改走 `MemoryPort`（契约），结果与旧路径一致；
         `chat.memory_port=false` 可退回旧路径。
         """
+        port = None
         try:
             port = self._memory_port() if turn.owner else None
             if port is not None:
@@ -195,6 +197,24 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("召回失败（%s），本轮无记忆", e)
             turn.memories = []
+        # P4：这一轮读了什么，落一条轨迹，/trace 可查。
+        if turn.owner and port is not None:
+            turn.memory_trace = port.explain()
+            try:
+                import json as _json
+
+                from app_core import paths as _paths
+
+                with (_paths.DATA / "memory_trace.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(_json.dumps({
+                        "ts": time.time(),
+                        "session": turn.session,
+                        "query": (turn.query or "")[:80],
+                        "ids": [m.get("doc_id") for m in turn.memories],
+                        "trace": turn.memory_trace,
+                    }, ensure_ascii=False) + "\n")
+            except Exception:  # noqa: BLE001
+                pass
         # 二次召回（影子）：他这句是在回指上文时，用上一轮他的话再捞一次。
         # 只落盘、不改变本轮注入的 memories；touch=False 是为了不污染
         # 「被想起过」的记账——影子不该改变清理和重复降权的依据。

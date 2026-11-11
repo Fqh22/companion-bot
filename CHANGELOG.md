@@ -2,6 +2,12 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P4：记忆轨迹（/trace）
+
+- 每轮 fact 召回后落一条 trace（ts / session / query / ids / 类型条数）到 `data/memory_trace.jsonl`。
+- `introspect.trace_text` 读最近几轮；`/trace` 命令（QQ + registry）可查。
+- port 23/23；云端 5/5。
+
 ## 2026-11-11 · P3：/forget 命令入口（两步确认）
 
 - `introspect.forget_text`：关键词 → 列候选（前 8 位编号）；`/forget id:前缀` → 真删。

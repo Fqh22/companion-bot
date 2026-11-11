@@ -36,6 +36,7 @@ DEBUG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("memory_cleanup", "手动跑一次分层归档"),
         ("memory_conflicts", "看被新事实推翻的旧记忆（判错了可恢复）"),
     ("forget", "忘掉一条记忆：/forget 关键词 → 编号确认"),
+    ("trace", "最近几轮读了哪些记忆"),
         ("memory_restore", "从归档/被取代里捞回来：/memory_restore 关键词"),
     ]),
     ("情绪", [

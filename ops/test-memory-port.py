@@ -136,6 +136,17 @@ async def main() -> None:
     out3 = await forget_text(core3, "id:zzzz")
     check("找不到编号时报错", "没找到" in out3, out3[:30])
 
+    # P4：记忆轨迹
+    from app_core.introspect import trace_text
+    from app_core import paths
+
+    check("无轨迹时给提示", "还没有" in trace_text())
+    line = '{"ts": 1700000000, "query": "工作", "ids": ["d1"], "trace": [{"type": "fact", "n": 1}]}'
+    paths.DATA.mkdir(parents=True, exist_ok=True)
+    (paths.DATA / "memory_trace.jsonl").write_text(line + "\n", encoding="utf-8")
+    got = trace_text()
+    check("轨迹含问句与条数", "工作" in got and "1 条" in got, got[:60])
+
     passed = sum(1 for x in RESULTS if x)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
     sys.exit(0 if passed == len(RESULTS) else 1)
