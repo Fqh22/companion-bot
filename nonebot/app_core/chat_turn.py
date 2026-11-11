@@ -391,6 +391,16 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("表情回应提示失败：%s", e)
 
+        # 关系小抄：称呼、梗、雷区——每轮注入，不走向量检索。
+        try:
+            from app_core import relation_notes
+
+            _rel = relation_notes.load()
+            if _rel:
+                turn.extra_system.append("[我们之间]\n" + _rel)
+        except Exception:  # noqa: BLE001
+            pass
+
         # 我答应过还没跟进的事：只取 3 条、每条截短，塞进 prompt 让它记得。
         # 关键：**只注入本轮聊到相关词的**——否则它会在无关话题里翻旧账，
         # 把用户随口一提的事当成议程（2026-11-11 反馈：base_url 那句被反复追问）。

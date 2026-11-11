@@ -150,6 +150,7 @@ from app_core import (  # noqa: E402
     fact_check as fact_check_mod,
     self_check as self_check_mod,
     asr as asr_mod,
+    relation_notes as relation_notes_mod,
     textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
@@ -192,6 +193,7 @@ check("fact_check 能检测", fact_check_mod.claims("789% 增长") == ["789%"])
 check("self_check 能剥标签",
       self_check_mod.parse("[自检] 主=判断\n正文")[1] == "正文")
 check("asr 有入口", hasattr(asr_mod, "transcribe") and hasattr(asr_mod, "to_wav"))
+check("relation_notes 有入口", hasattr(relation_notes_mod, "load"))
 check("engine 有 Engine 门面", hasattr(engine_mod, "Engine")
       and hasattr(engine_mod, "InboundMessage"))
 check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver"))

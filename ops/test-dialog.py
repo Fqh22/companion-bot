@@ -15,6 +15,7 @@ except Exception:  # noqa: BLE001
 
 from app_core.chat_turn import _topic_overlap  # noqa: E402
 from app_core.intent import looks_analytical  # noqa: E402
+from app_core import relation_notes  # noqa: E402
 
 RESULTS: list[bool] = []
 
@@ -37,6 +38,11 @@ def main() -> None:
     check("现在什么情况触发", looks_analytical("现在什么情况"))
     check("陈述不触发", not looks_analytical("我真想找个工作"))
     check("语气词不触发", not looks_analytical("还在学增删改查呢"))
+
+    check("没有小抄时为空", relation_notes.load() == "")
+    relation_notes.path().parent.mkdir(parents=True, exist_ok=True)
+    relation_notes.path().write_text("- 称呼：他叫我「你」", encoding="utf-8")
+    check("有小抄时能读", "称呼" in relation_notes.load())
 
     passed = sum(1 for x in RESULTS if x)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
