@@ -115,9 +115,18 @@ class CoreMemoryPort:
 
     async def remember(self, item: MemoryItem) -> str:
         """P2：先只接 fact（总结写入）。其它类型等各自的写入点迁过来再开。"""
-        if item.type != "fact":
-            raise NotImplementedError(f"P2 只接 fact 写入，收到 {item.type}")
         p = item.payload or {}
+        if item.type == "knowledge":
+            from app_core import learn
+
+            return learn.note_write(
+                str(p.get("title") or ""), item.text,
+                str(p.get("tag") or ""),
+                str(p.get("project") or ""),
+                str(p.get("source") or "自撰"),
+                int(p.get("stale_days") or 0))
+        if item.type != "fact":
+            raise NotImplementedError(f"记得的写入类型只有 fact / knowledge，收到 {item.type}")
         return self.core.memory.add_document(
             text=item.text,
             session=str(p.get("session") or ""),

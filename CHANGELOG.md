@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P5：knowledge 写入走契约
+
+- `Port.remember` 支持 knowledge → `learn.note_write`（payload：title / tag / project / source / stale_days）。
+- `tools.note_write` 改走 Port，可开关回退。
+- profile 写入**不硬塞**：它是 fields + conf + seen 三份数据，不是 `remember(text)` 的形状，
+  需要单独设计，留 P5 剩余。
+- 调度 / 主动消息入口依赖 profile 写入，继续留。
+- port 24/24；云端 5/5。
+
 ## 2026-11-11 · P3 收尾：工具入口走契约
 
 - `tools.memory_search` 改走 Port（fact 召回）；`read_full` 是全文读，不在 recall 契约，保持原样。

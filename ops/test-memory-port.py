@@ -136,6 +136,26 @@ async def main() -> None:
     out3 = await forget_text(core3, "id:zzzz")
     check("找不到编号时报错", "没找到" in out3, out3[:30])
 
+    # P5：knowledge 写入走 note_write
+    from app_core import learn as learn_mod
+
+    calls = []
+    orig = learn_mod.note_write
+
+    def fake_note(title, content, tag="", project="", source="自撰", stale_days=0):
+        calls.append((title, content, tag, stale_days))
+        return "已记下"
+
+    learn_mod.note_write = fake_note
+    try:
+        out_k = await port.remember(MemoryItem(
+            type="knowledge", text="2K 的两种定义",
+            payload={"title": "2K", "tag": "显示", "stale_days": 30}))
+        check("knowledge 写入走 note_write",
+              out_k == "已记下" and bool(calls) and calls[0][0] == "2K", str(calls)[:60])
+    finally:
+        learn_mod.note_write = orig
+
     # P4：记忆轨迹
     from app_core.introspect import trace_text
     from app_core import paths

@@ -108,6 +108,15 @@ async def _note_write(core, args, images) -> str:
         sd = int(args.get("stale_days") or 0)
     except Exception:
         sd = 0
+    port = core._memory_port() if hasattr(core, "_memory_port") else None
+    if port is not None:
+        from app_core.memory_port import MemoryItem
+
+        return await port.remember(MemoryItem(
+            type="knowledge", text=args.get("content", ""),
+            source="note_write",
+            payload={"title": args.get("title", ""), "tag": args.get("tag", ""),
+                     "stale_days": max(0, sd)}))
     return learn.note_write(args.get("title", ""), args.get("content", ""),
                             args.get("tag", ""), stale_days=max(0, sd))
 
