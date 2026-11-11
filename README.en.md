@@ -5,6 +5,16 @@
 
 Unofficial project, not affiliated with Tencent or QQ.
 
+## A short exchange
+
+> Sample, redacted.
+
+**Him**: I'm exhausted today.
+**It**: Then stop pushing. Have you eaten?
+
+**Him**: That 2K thing from last time — did you look it up?
+**It**: Yes. DCI's 2K is 2048×1080; consumer displays call 2560×1440 2K too. The term itself is inconsistent.
+
 ## What it is
 
 A **kernel plus adapters**, not a bot for one platform:

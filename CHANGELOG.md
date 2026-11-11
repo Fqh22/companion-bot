@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · 门面：架构图与 README 示例
+
+- `architecture.svg` 重画：内核居中（编排 / 领域 / 基础设施 / 数据），QQ 与 console 分列两侧；
+  去掉 agentd 与「QQ companion bot」的独占表述。
+- README 顶部加一段脱敏对话示例（短句接住、记忆延续、给判断不啰嗦）。
+- README 引用架构图；「它坏了」改为「通道失效时替换适配层，内核不变」。
+- README.en 同步。
+
 ## 2026-11-11 · 异地备份的替代方案：本地拉取
 
 - 新增 `ops/sync-from-cloud.ps1`：本地开机时从云端补拉 `cloud-*.tgz`，

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" font-family="Noto Sans SC, Microsoft YaHei, PingFang SC, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b"/>
@@ -14,89 +14,66 @@
       .sub   { font-size:12px; fill:#475569; }
       .tiny  { font-size:11px; fill:#64748b; }
       .h1    { font-size:22px; font-weight:700; fill:#0f172a; }
-      .h2    { font-size:12px; fill:#94a3b8; }
+      .h2    { font-size:13px; fill:#64748b; }
       .edge  { stroke:#64748b; stroke-width:1.3; fill:none; marker-end:url(#arrow); }
     </style>
   </defs>
 
-  <rect width="1200" height="820" fill="#fcfdff"/>
-  <text class="h1" x="40" y="46">companion-bot 架构</text>
-  <text class="h2" x="40" y="68">QQ companion bot · NoneBot2</text>
+  <rect width="1200" height="760" fill="#fcfdff"/>
+  <text class="h1" x="40" y="46">聊天内核 · companion</text>
+  <text class="h2" x="40" y="70">内核与通道：QQ 只是其中一种接入方式</text>
 
-  <!-- 左侧：QQ 与 OneBot -->
-  <rect class="box" x="60" y="110" width="220" height="58" rx="10"/>
-  <text class="title" x="80" y="136">QQ</text>
-  <text class="sub" x="80" y="155">手机 / 桌面客户端</text>
+  <!-- 左：QQ 通道 -->
+  <rect class="box amber" x="40" y="150" width="220" height="120" rx="10"/>
+  <text class="title" x="60" y="178">QQ</text>
+  <text class="sub" x="60" y="200">OneBot v11</text>
+  <text class="tiny" x="60" y="222">SnowLuma / NapCat / Lagrange</text>
+  <text class="tiny" x="60" y="242">adapters/qq + plugins/</text>
+  <text class="tiny" x="60" y="260">第三方实现，可替换</text>
 
-  <path class="edge" d="M170 168 L170 206"/>
-  <text class="tiny" x="178" y="192">消息</text>
+  <!-- 右：console 通道 -->
+  <rect class="box amber" x="940" y="150" width="220" height="120" rx="10"/>
+  <text class="title" x="960" y="178">console</text>
+  <text class="sub" x="960" y="200">终端</text>
+  <text class="tiny" x="960" y="222">adapters/console.py</text>
+  <text class="tiny" x="960" y="242">新通道的参考实现</text>
+  <text class="tiny" x="960" y="260">无平台依赖</text>
 
-  <rect class="box" x="60" y="206" width="220" height="86" rx="10"/>
-  <text class="title" x="80" y="232">OneBot v11</text>
-  <text class="sub" x="80" y="251">NapCat / SnowLuma / Lagrange</text>
-  <text class="tiny" x="80" y="272">第三方实现 · 可替换（改 .env）</text>
+  <!-- 通道 → 内核 -->
+  <path class="edge" d="M260 210 L316 210"/>
+  <text class="tiny" x="264" y="200">Channel</text>
+  <path class="edge" d="M940 210 L884 210"/>
+  <text class="tiny" x="890" y="200">Channel</text>
 
-  <path class="edge" d="M280 238 L352 238"/>
-  <text class="tiny" x="292" y="230">ws://</text>
-  <text class="tiny" x="292" y="252">127.0.0.1</text>
+  <!-- 内核面板 -->
+  <rect class="panel" x="320" y="110" width="580" height="520" rx="14"/>
+  <text class="title" x="340" y="138">内核 · app_core</text>
+  <text class="tiny" x="340" y="156">不 import 任何平台框架</text>
 
-  <!-- NoneBot 面板 -->
-  <rect class="panel" x="352" y="100" width="470" height="470" rx="14"/>
-  <text class="title" x="372" y="128">NoneBot 进程</text>
-  <text class="tiny" x="372" y="146">systemd · 单实例</text>
+  <rect class="box green" x="340" y="172" width="540" height="96" rx="10"/>
+  <text class="title" x="356" y="194">编排 · orchestration</text>
+  <text class="sub" x="356" y="216">Engine · TurnRunner · commands · runtime</text>
+  <text class="tiny" x="356" y="236">proactive_runtime · scheduler</text>
+  <text class="tiny" x="356" y="254">一轮对话：typing / 流式分段 / 45 秒硬线</text>
 
-  <rect class="box blue" x="372" y="164" width="200" height="96" rx="10"/>
-  <text class="title" x="388" y="188">plugins/ + adapters/</text>
-  <text class="sub" x="388" y="208">只做 IO：消息 ↔ 逻辑</text>
-  <text class="tiny" x="388" y="228">chat · group · agent</text>
-  <text class="tiny" x="388" y="244">commands · admin · schedule</text>
+  <rect class="box blue" x="340" y="286" width="540" height="92" rx="10"/>
+  <text class="title" x="356" y="308">领域 · domain</text>
+  <text class="sub" x="356" y="330">prompt · pacing · delivery · intent</text>
+  <text class="tiny" x="356" y="350">mood_domain · followup_domain · textsim</text>
+  <text class="tiny" x="356" y="368">纯规则，不碰 IO</text>
 
-  <path class="edge" d="M572 212 L628 212"/>
-  <text class="tiny" x="576" y="202">调用</text>
+  <rect class="box" x="340" y="396" width="540" height="72" rx="10"/>
+  <text class="title" x="356" y="418">基础设施 · infra</text>
+  <text class="sub" x="356" y="440">paths · config · files · kernel</text>
+  <text class="tiny" x="356" y="458">统一派生运行时路径</text>
 
-  <rect class="box green" x="628" y="164" width="176" height="96" rx="10"/>
-  <text class="title" x="644" y="188">app_core/</text>
-  <text class="sub" x="644" y="208">纯逻辑模块（约 52 个）</text>
-  <text class="tiny" x="644" y="228">不 import nonebot</text>
-  <text class="tiny" x="644" y="244">可离线单测</text>
+  <rect class="box" x="340" y="486" width="540" height="72" rx="10"/>
+  <text class="title" x="356" y="508">数据</text>
+  <text class="sub" x="356" y="530">chat.db · livingmemory.db · learn/</text>
+  <text class="tiny" x="356" y="548">消息 / 记忆 / 画像 / 知识 / 备份</text>
 
-  <rect class="box" x="372" y="310" width="200" height="70" rx="10"/>
-  <text class="title" x="388" y="334">chat.db</text>
-  <text class="tiny" x="388" y="352">消息 / 用量 / 纪要</text>
-  <text class="tiny" x="388" y="368">情绪 / 台账 / 任务</text>
+  <text class="tiny" x="340" y="600">分层由 lint-layers 强制：domain 不依赖 orchestration，adapters 只走门面。</text>
 
-  <rect class="box" x="628" y="310" width="176" height="70" rx="10"/>
-  <text class="title" x="644" y="334">livingmemory.db</text>
-  <text class="tiny" x="644" y="352">记忆原子 + 向量</text>
-  <text class="tiny" x="644" y="368">软删可恢复</text>
-
-  <path class="edge" d="M472 260 L472 306"/>
-  <text class="tiny" x="480" y="288">读写</text>
-  <path class="edge" d="M716 260 L716 306"/>
-  <text class="tiny" x="724" y="288">检索</text>
-
-  <text class="tiny" x="372" y="420">prompt = 人格 · 防注入 · 指南/例子 · 画像 · 纪要</text>
-  <text class="tiny" x="372" y="440">历史 → 情绪 → 背景(compact) → 锚点 → 输入</text>
-  <text class="tiny" x="372" y="470">45 秒硬线：超时补发已生成的部分</text>
-  <text class="tiny" x="372" y="490">流式发送：按情绪 18–32 字切段，节奏跟情绪</text>
-  <text class="tiny" x="372" y="520">影子模式：只落盘、不改行为（召回 / 补句 / 自指率…）</text>
-  <text class="tiny" x="372" y="540">矛盾检测：新记忆推翻旧记忆 → superseded</text>
-
-  <!-- 外部服务 -->
-  <rect class="box" x="352" y="610" width="200" height="60" rx="10"/>
-  <text class="title" x="368" y="634">LLM API</text>
-  <text class="tiny" x="368" y="652">DeepSeek / OpenAI 兼容</text>
-
-  <rect class="box" x="628" y="610" width="176" height="60" rx="10"/>
-  <text class="title" x="644" y="634">Embedding API</text>
-  <text class="tiny" x="644" y="652">向量化记忆与知识</text>
-
-  <path class="edge" d="M472 540 L452 606"/>
-  <path class="edge" d="M716 540 L716 606"/>
-
-  <!-- 说明 -->
-  <rect x="352" y="700" width="808" height="84" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/>
-  <text class="tiny" x="372" y="724">Engine 是入口：QQ/console 构造 InboundMessage；app_core 不 import nonebot，可离线驱动。</text>
-  <text class="tiny" x="372" y="746">单链路：QQ 只走陪伴聊天；引擎/白名单/离线测试保证边界。</text>
-  <text class="tiny" x="372" y="768">所有学习都落盘（SQLite + markdown），可 diff、可回滚、可被测试扫到。</text>
+  <text class="h2" x="40" y="690">通道只实现三个原语：发文本、发图、显示「正在输入」。会话循环由内核统一，换通道不改业务。</text>
+  <text class="tiny" x="40" y="716">仓库：github.com/Fqh22/companion-bot</text>
 </svg>
