@@ -66,6 +66,33 @@ def _http() -> httpx.AsyncClient:
     return _client
 
 
+_TAG_RE = re.compile(r"<[^>]{1,80}>")
+_SITE_RE = re.compile(
+    r"(来源[:：]\s*[^\s|｜]{1,16}\s*|來源[:：]\s*[^\s|｜]{1,16}\s*"
+    r"|責任編輯[:：]\s*[^\s|｜]{1,12}\s*|责任编辑[:：]\s*[^\s|｜]{1,12}\s*)")
+
+
+def clean_summary(text: str, title: str = "") -> str:
+    """清掉摘要里的 HTML、标题重复和站点模板。
+
+    这些不是洁癖：模型读的就是这段摘要，标题符和站点名会被它当成正文，
+    直接变成幻觉的原料。
+    """
+    s = _TAG_RE.sub("", text or "")
+    s = (s.replace("&nbsp;", " ").replace("&amp;", "&")
+         .replace("&quot;", '"').replace("&#39;", "'"))
+    s = _SITE_RE.sub("", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"^[#\s｜|·\-—]+", "", s)
+    # 开头的时间戳/作者行（新闻站点常见）：2026年09月28日13:59 | ...
+    s = re.sub(r"^\d{4}年\d{1,2}月\d{1,2}日[\d:：\s|｜·\-]*", "", s)
+    s = re.sub(r"^\d{4}-\d{2}-\d{2}[\d:：\s|｜·\-]*", "", s)
+    t = re.sub(r"\s+", "", title or "")
+    if len(t) >= 6 and re.sub(r"\s+", "", s).startswith(t[:6]):
+        s = s[len(t):].lstrip(" #：:｜|·-—")
+    return s[:240]
+
+
 async def search(query: str, count: int = 5) -> str:
     """联网搜索。DeepSeek 官方 Search API，5 元 / 1000 次。"""
     q = (query or "").strip()[:128]
@@ -92,8 +119,8 @@ async def search(query: str, count: int = 5) -> str:
     for i, it in enumerate(results[:count], 1):
         title = (it.get("title") or "").strip()
         url = it.get("url") or ""
-        summary = (it.get("summary") or it.get("snippet") or "").strip()
-        summary = re.sub(r"\s+", " ", summary)[:240]
+        summary = clean_summary(
+            it.get("summary") or it.get("snippet") or "", title)
         date = (it.get("date") or "")[:10]
         tail = f"（{date}）" if date else ""
         lines.append(f"{i}. {title}{tail}\n   {summary}\n   {url}")
