@@ -57,7 +57,7 @@ def check_no_nonebot(p: Path) -> list[str]:
     for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
         s = line.strip()
         if s.startswith(("import nonebot", "from nonebot")):
-            bad.append(f"line {i}: app_core 不得 import nonebot")
+            bad.append(f"line {i}: app_core 不得 import nonebot（业务逻辑留 app_core，平台调用放 plugins/）")
     return bad
 
 
@@ -174,7 +174,8 @@ def check_no_hardcoded_paths() -> list[str]:
                     bad.append(f"{_rel(p)}:{i}")
     if not bad:
         return []
-    return ["运行时路径写死了（改用 app_core/paths.py）：" + "、".join(bad)]
+    return ["运行时路径写死了：" + "、".join(bad)
+            + "（从 app_core/paths.py 的 DATA/QDATA 派生，别写字面量）"]
 
 
 # 插件可以直接碰的 ChatCore 成员（接口线）。

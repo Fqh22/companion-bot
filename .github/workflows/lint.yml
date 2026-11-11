@@ -70,6 +70,11 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/smoke-plugins.py
+      # 护栏自检：故意写违规，确认 lint 真的会红（规则不会悄悄失效）
+      - name: 护栏自检
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/test-guards.py
       # 通道无关层：换通道时真正要复用的那部分（流式/typing/超时）
       - name: 通道无关层
         env:

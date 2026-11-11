@@ -69,7 +69,8 @@ def check_domain_layers():
         for t in _targets(p):
             mod = t.split(".")[1] if t.count(".") >= 1 else ""
             if mod in ORCH:
-                FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}")
+                FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}"
+                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/07）")
 
 
 def check_adapters():
@@ -81,7 +82,8 @@ def check_adapters():
     for p in adapters.rglob("*.py"):
         for t in _targets(p):
             if t in banned:
-                FAILS.append(f"{p.relative_to(CORE.parent)}: 适配层不得 import 内部实现：{t}")
+                FAILS.append(f"{p.relative_to(CORE.parent)}: 适配层不得 import 内部实现：{t}"
+                             "（只走 engine / runner / commands / delivery 门面）")
 
 
 def imports(path: Path) -> list[str]:
@@ -104,7 +106,8 @@ def check_domain():
     for p in CORE.glob("*/domain.py"):
         bad = sorted(set(imports(p)) & IO_MODULES)
         if bad:
-            FAILS.append(f"{p.relative_to(CORE.parent)}: domain 里出现 IO import：{', '.join(bad)}")
+            FAILS.append(f"{p.relative_to(CORE.parent)}: domain 里出现 IO import：{', '.join(bad)}"
+                         "（读写/网络放 orchestration，domain 只做纯规则）")
 
 
 def check_kernel():
@@ -117,7 +120,8 @@ def check_kernel():
                      if m == "app_core"
                      or (m.startswith("app_core.") and not m.startswith("app_core.kernel")))
         if bad:
-            FAILS.append(f"{p.relative_to(CORE.parent)}: kernel 不得 import 业务包：{', '.join(bad)}")
+            FAILS.append(f"{p.relative_to(CORE.parent)}: kernel 不得 import 业务包：{', '.join(bad)}"
+                         "（kernel 只放基础设施，业务依赖反过来）")
 
 
 def check_plugins():

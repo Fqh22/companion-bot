@@ -103,65 +103,120 @@ READ_ONLY_TOOLS = frozenset({
 PUBLIC_TOOLS = frozenset({"web_search", "meme_send"})
 
 
+async def _note_write(core, args, images) -> str:
+    try:
+        sd = int(args.get("stale_days") or 0)
+    except Exception:
+        sd = 0
+    return learn.note_write(args.get("title", ""), args.get("content", ""),
+                            args.get("tag", ""), stale_days=max(0, sd))
+
+
+async def _note_list(core, args, images) -> str:
+    items = learn.note_list()
+    return "\n".join(items) if items else "还没有学习笔记"
+
+
+async def _web_search(core, args, images) -> str:
+    return await web.search(args.get("query", ""), args.get("count", 5) or 5)
+
+
+async def _web_open(core, args, images) -> str:
+    return await web.web_open(core, args.get("url", ""))
+
+
+async def _diary_read(core, args, images) -> str:
+    day = (args.get("day") or "").strip()
+    if not day:
+        days = diary.list_days(1)
+        day = days[0] if days else ""
+    return diary.read(day) if day else "还没有日记"
+
+
+async def _kb_read(core, args, images) -> str:
+    return wiki.read(args.get("title", ""))
+
+
+async def _kb_search(core, args, images) -> str:
+    hits = await kb.search_meta(args.get("query", ""), 4)
+    if not hits:
+        return "知识库里没搜到相关内容"
+    return "\n\n".join(
+        (f"【{h['path']}{h.get('label') or ''}】\n" if h.get("path") else "") + h["text"]
+        for h in hits)
+
+
+async def _memory_read(core, args, images) -> str:
+    return await core.memory.read_full(args.get("query", ""))
+
+
+async def _memory_search(core, args, images) -> str:
+    rows = await core.memory.recall(args.get("query", ""), 5)
+    return "\n".join(f"- {r['text'][:200]}" for r in rows) if rows else "没想起相关的事"
+
+
+async def _remind_me(core, args, images) -> str:
+    return remind.add(args.get("text", ""), args.get("when", ""))
+
+
+async def _remind_list(core, args, images) -> str:
+    return remind.describe_pending()
+
+
+async def _remind_cancel(core, args, images) -> str:
+    try:
+        rid = int(args.get("id") or 0)
+    except Exception:
+        return "编号要是数字，先调 remind_list 看方括号里的数字"
+    return remind.cancel(rid)
+
+
+async def _meme_send(core, args, images) -> str:
+    path, mode, score = await meme.find_ex(args.get("query", ""))
+    if not path:
+        return "表情包库里没找到"
+    if images is not None:
+        images.append(path)
+    if mode == "semantic":
+        return f"已发了一张表情包（语义匹配 {score:.2f}）"
+    return "已发了一张表情包（没找到贴合的，按分类挑的，可能不太对味）"
+
+
+# 工具名 → 实现。**加工具只改两处**：TOOLS 里的 schema、这里的 HANDLERS，不再动 execute。
+# 两边名字必须一致；模块加载时会自检，不一致直接抛错（比等测试红更早）。
+HANDLERS = {
+    "note_write": _note_write,
+    "note_list": _note_list,
+    "web_search": _web_search,
+    "web_open": _web_open,
+    "diary_read": _diary_read,
+    "kb_read": _kb_read,
+    "kb_search": _kb_search,
+    "memory_read": _memory_read,
+    "memory_search": _memory_search,
+    "remind_me": _remind_me,
+    "remind_list": _remind_list,
+    "remind_cancel": _remind_cancel,
+    "meme_send": _meme_send,
+}
+
+
 async def execute(core, name: str, args: dict, images: list[str] | None = None) -> str:
     """执行一个工具。images 是本轮回复要附带的图片，由调用方持有，避免跨会话串图。"""
+    handler = HANDLERS.get(name)
+    if handler is None:
+        return f"未知工具：{name}"
     try:
-        if name == "note_write":
-            try:
-                sd = int(args.get("stale_days") or 0)
-            except Exception:
-                sd = 0
-            return learn.note_write(args.get("title", ""), args.get("content", ""),
-                                    args.get("tag", ""), stale_days=max(0, sd))
-        if name == "note_list":
-            items = learn.note_list()
-            return "\n".join(items) if items else "还没有学习笔记"
-        if name == "web_search":
-            return await web.search(args.get("query", ""), args.get("count", 5) or 5)
-        if name == "web_open":
-            return await web.web_open(core, args.get("url", ""))
-        if name == "diary_read":
-            day = (args.get("day") or "").strip()
-            if not day:
-                days = diary.list_days(1)
-                day = days[0] if days else ""
-            return diary.read(day) if day else "还没有日记"
-        if name == "kb_read":
-            return wiki.read(args.get("title", ""))
-        if name == "kb_search":
-            hits = await kb.search_meta(args.get("query", ""), 4)
-            if not hits:
-                return "知识库里没搜到相关内容"
-            return "\n\n".join(
-                (f"【{h['path']}{h.get('label') or ''}】\n" if h.get("path") else "") + h["text"]
-                for h in hits)
-        if name == "memory_read":
-            return await core.memory.read_full(args.get("query", ""))
-        if name == "memory_search":
-            rows = await core.memory.recall(args.get("query", ""), 5)
-            return "\n".join(f"- {r['text'][:200]}" for r in rows) if rows else "没想起相关的事"
-        if name == "remind_me":
-            return remind.add(args.get("text", ""), args.get("when", ""))
-        if name == "remind_list":
-            return remind.describe_pending()
-        if name == "remind_cancel":
-            try:
-                rid = int(args.get("id") or 0)
-            except Exception:
-                return "编号要是数字，先调 remind_list 看方括号里的数字"
-            return remind.cancel(rid)
-        if name == "meme_send":
-            path, mode, score = await meme.find_ex(args.get("query", ""))
-            if not path:
-                return "表情包库里没找到"
-            if images is not None:
-                images.append(path)
-            if mode == "semantic":
-                return f"已发了一张表情包（语义匹配 {score:.2f}）"
-            return "已发了一张表情包（没找到贴合的，按分类挑的，可能不太对味）"
+        return await handler(core, args, images)
     except Exception as e:  # noqa: BLE001
         return f"工具执行失败：{type(e).__name__}: {e}"
-    return f"未知工具：{name}"
+
+
+# 启动自检：schema 与实现必须一一对应。漏了这里会立刻炸，而不是等到模型调工具才报未知。
+_SCHEMA_NAMES = {t["function"]["name"] for t in TOOLS}
+if _SCHEMA_NAMES != set(HANDLERS):
+    raise RuntimeError(
+        "工具 schema 与实现不一致：" + ", ".join(sorted(_SCHEMA_NAMES ^ set(HANDLERS))))
 
 
 

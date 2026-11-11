@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · 规范化：入口文档 + 工具注册表 + 护栏自检 + 扩展指南
+
+- 新增 `AGENTS.md`：先跑什么、五条扩展路径、红线、已定决策、AI 常见错误。
+- `tools.execute` 从 13 个 `if name ==` 改成 `HANDLERS` 注册表；模块加载时自检 schema 与实现一致。
+- lint 报错带修复指引（import nonebot / 硬编码路径 / domain 反向依赖 / adapters 越界）。
+- 新增 `docs/08-扩展指南.md`：五条路径 + 检查命令 + 常见错误。
+- 新增 `ops/test-guards.py`：故意写违规必须 FAIL（4 条），进 CI，防止规则悄悄失效。
+- 21 套本地全绿；云端 verify 5/5 + guards 4/4。
+
 ## 2026-11-10 · 主动消息循环抽到内核；影子跟进关闭
 
 - 新增 `app_core/proactive_runtime.py`：频控、回应率、话题冷却、生成、落库全在这里；
