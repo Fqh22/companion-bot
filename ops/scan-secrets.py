@@ -82,6 +82,11 @@ def main() -> int:
     if bad:
         print(f"\n发现 {bad} 处可疑内容，先处理再提交。")
         return 1
+    if not paths:
+        # 没有 .git（zip 下载、某些 CI）时 files_from_git 返回空。
+        # 扫 0 个文件却报"没问题"是最危险的假绿——宁可失败。
+        print("没有可扫描的文件（不在 git 仓库？）；跳过扫描不等于安全。")
+        return 2
     print(f"检查了 {len(paths)} 个文件，没发现问题。")
     return 0
 

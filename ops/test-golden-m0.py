@@ -74,8 +74,10 @@ def norm(s):
 
 async def main():
     if not FIXTURE.exists():
-        print("SKIP 没有 M0 fixture：", FIXTURE)
-        return 0
+        # 没跑 ≠ 通过。返回 2 让调用方区分"跳过"和"跑过且过"，
+        # 否则新机器上这道防线根本不存在，报告却显示全绿。
+        print("SKIP（未执行）没有 M0 fixture：", FIXTURE)
+        return 2
     cases = json.loads(FIXTURE.read_text(encoding="utf-8"))
     check("fixture 恰好 10 条", len(cases) == 10, len(cases))
 
@@ -107,5 +109,8 @@ if __name__ == "__main__":
         rc = asyncio.run(main())
     finally:
         shutil.rmtree(ROOT, ignore_errors=True)
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
+    if rc == 2:
+        print("\n=== 未执行（缺 fixture）===")
+    else:
+        print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
     raise SystemExit(rc)
