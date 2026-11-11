@@ -15,6 +15,12 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · mood/task 契约设计稿
+
+- 新增 `docs/11-mood-task设计.md`：结论 **task 进 MemoryPort，mood 另立 AffectPort**。
+- 依据：`MemoryItem` 是条目语义（可枚举/可删），mood 是单例状态（连续衰减），塞进去会让 `recall` 失去意义。
+- 含 task 状态机、AffectPort 接口、五步迁移顺序、四个风险与判据。
+
 ## 2026-11-11 · 外部评审修复：两处假绿、文档断档、3/5 如实标注
 
 - `test-golden-m0.py`：缺 fixture 时 `exit 2`（未执行），不再打印「0/0 通过」。
