@@ -156,6 +156,19 @@ async def main() -> None:
     finally:
         learn_mod.note_write = orig
 
+    # 契约宽度 = 实现宽度：未实现的类型必须显式报错，不能静默返回空
+    for bad_type in ("mood", "task"):
+        try:
+            await CoreMemoryPort(FakeCore()).recall("", (bad_type,))
+            check(f"recall({bad_type}) 应报错", False)
+        except NotImplementedError:
+            check(f"recall({bad_type}) 未实现即报错", True)
+    try:
+        await CoreMemoryPort(FakeCore()).forget("d1", type="task")
+        check("forget(task) 应报错", False)
+    except NotImplementedError:
+        check("forget(task) 未实现即报错", True)
+
     # P5：profile 写入（抽出的 save_profile）
     from app_core import learn as learn_mod2
     from app_core import profile as profile_mod2

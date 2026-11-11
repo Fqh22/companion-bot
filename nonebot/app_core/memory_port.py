@@ -15,7 +15,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-MEMORY_TYPES = ("fact", "profile", "knowledge", "mood", "task")
+# 契约只声明**已实现**的类型。
+# 声明了却返回空列表，调用方会以为「没有相关记忆」——这和 2026-11-05 的
+# meme.find() 吞异常是同一类毛病：缺口无声。未实现的类型必须显式报错。
+MEMORY_TYPES = ("fact", "profile", "knowledge")
+UNIMPLEMENTED_TYPES = ("mood", "task")
 
 
 @dataclass(frozen=True)
@@ -44,7 +48,7 @@ class MemoryPort(Protocol):
 
     async def remember(self, item: MemoryItem) -> str: ...
 
-    async def forget(self, ref: str) -> bool: ...
+    async def forget(self, ref: str, type: str = "fact") -> bool: ...
 
     def explain(self) -> list[dict]: ...
 
@@ -63,6 +67,11 @@ class CoreMemoryPort:
     async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
                      limit: int = 5, qv: list[float] | None = None,
                      touch: bool = True) -> list[MemoryItem]:
+        bad = [t for t in types if t not in MEMORY_TYPES]
+        if bad:
+            raise NotImplementedError(
+                f"记忆类型未实现：{', '.join(bad)}（已实现：{', '.join(MEMORY_TYPES)}）")
+
         out: list[MemoryItem] = []
         self._trace = []
 
@@ -138,8 +147,14 @@ class CoreMemoryPort:
             range_key=str(p.get("range_key") or ""),
         )
 
-    async def forget(self, ref: str) -> bool:
-        """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。"""
+    async def forget(self, ref: str, type: str = "fact") -> bool:
+        """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。
+
+        type 只支持 fact；传其它类型显式报错，而不是返回 False——
+        "没找到"和"这类型不支持"必须能区分。
+        """
+        if type != "fact":
+            raise NotImplementedError(f"forget 只支持 fact，收到 {type}")
         return bool(self.core.memory.delete(ref))
 
     async def remember_profile(self, fields: dict, conf: dict | None = None,

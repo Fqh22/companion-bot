@@ -15,6 +15,17 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · 契约宽度 = 实现宽度（用户发现的静默缺口）
+
+- `MEMORY_TYPES` 只声明**已实现**的三类（fact / profile / knowledge）；mood / task 移出，
+  另立 `UNIMPLEMENTED_TYPES` 记录。
+- `recall` 收到未实现类型直接 `NotImplementedError`，不再静默返回空列表
+  （和 2026-11-05 `meme.find()` 吞异常是同一类毛病）。
+- `forget(ref, type="fact")`：非 fact 显式报错，区分「没找到」和「这类型不支持」。
+- 测试补 4 条（mood/task recall 报错、task forget 报错）。
+- docs/09、docs/10 同步：五类表加「契约状态」列。
+- port 29/29；云端 5/5。
+
 ## 2026-11-11 · 文档同步：MemoryPort 进模板 / 分层 / 联动矩阵 / 系统图
 
 - `config.example.yaml` 加 `chat.memory_port`（排障开关，默认 true）。
