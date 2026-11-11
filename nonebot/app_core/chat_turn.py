@@ -266,7 +266,7 @@ class ChatTurnMixin:
             except Exception:
                 turn.lessons = ""
 
-    def _prepare_profile(self, turn: Turn) -> None:
+    async def _prepare_profile(self, turn: Turn) -> None:
         """画像注入准备。
 
         画像一周才变一次，属于稳定前缀，放在纪要之前几乎不打断缓存。
@@ -275,8 +275,13 @@ class ChatTurnMixin:
         try:
             _pfields = learn.profile_fields() if turn.owner else {}
             if _pfields:
-                _ptext = profile_mod.compact(_pfields, learn.profile_conf(),
-                                             learn.profile_seen())
+                port = self._memory_port()
+                if port is not None:
+                    items = await port.recall(turn.query, ("profile",))
+                    _ptext = next((i.text for i in items if i.type == "profile"), "")
+                else:
+                    _ptext = profile_mod.compact(_pfields, learn.profile_conf(),
+                                                 learn.profile_seen())
                 # YAML 里写 on/off 会被解析成布尔 True/False（YAML 1.1 的老毛病），
                 # 这里统一归一成字符串，别让「写对了却没生效」再坑一次。
                 _pm = (config.load().get("profile") or {}).get("inject", "shadow")

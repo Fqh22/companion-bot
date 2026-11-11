@@ -39,7 +39,8 @@ class MemoryItem:
 
 class MemoryPort(Protocol):
     async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
-                     limit: int = 5, qv: list[float] | None = None) -> list[MemoryItem]: ...
+                     limit: int = 5, qv: list[float] | None = None,
+                     touch: bool = True) -> list[MemoryItem]: ...
 
     async def remember(self, item: MemoryItem) -> str: ...
 
@@ -60,12 +61,13 @@ class CoreMemoryPort:
         self._trace: list[dict] = []
 
     async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
-                     limit: int = 5, qv: list[float] | None = None) -> list[MemoryItem]:
+                     limit: int = 5, qv: list[float] | None = None,
+                     touch: bool = True) -> list[MemoryItem]:
         out: list[MemoryItem] = []
         self._trace = []
 
         if "fact" in types:
-            rows = await self.core.memory.recall(query, limit, qv=qv)
+            rows = await self.core.memory.recall(query, limit, qv=qv, touch=touch)
             for r in rows:
                 meta = r.get("meta") or {}
                 out.append(MemoryItem(

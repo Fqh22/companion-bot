@@ -2,6 +2,15 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P3 收尾：profile 走契约 + 影子判断脚本
+
+- `_prepare_profile` 改 async，画像文本走 Port（profile 类型）；fields 仍从旧路径取给影子记录。
+- 影子对比：6 个字段 / 197 字，Port 与旧 `compact` 完全相同。
+- `MemoryPort.recall` 加 `touch` 参数（影子用 `touch=False`，不污染访问时间）。
+- 新增 `ops/shadow-memory.py`：真实消息对比新旧召回 + 空结果率，写 `data/memory_shadow.json`。
+- 判据结果：30/30 一致、空结果 3%、平均 4.83 条 → 可继续。
+- port 23/23；云端 5/5。
+
 ## 2026-11-11 · P4：记忆轨迹（/trace）
 
 - 每轮 fact 召回后落一条 trace（ts / session / query / ids / 类型条数）到 `data/memory_trace.jsonl`。
