@@ -115,7 +115,7 @@ class ChatTurnMixin:
 
         await self._prepare_knowledge(turn, user_text)
 
-        self._prepare_profile(turn)
+        await self._prepare_profile(turn)
         return turn
 
     def _prepare_followup(self, turn: Turn, user_text: str) -> None:

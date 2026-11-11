@@ -2,6 +2,16 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · 全链路重放测试；修复画像注入缺 await
+
+- 新增 `ops/replay-diff.py`：复制生产库到临时根，取真实对话重放，比较旧回复与新回复
+  （召回一致率 / 长度比 / 2-gram 相似度），写 `replay_diff.json`。
+- **抓到真 bug**：`_prepare_profile` 改 async 后调用处缺 `await`，画像注入实际未生效
+  （`RuntimeWarning: coroutine was never awaited`）。已修复并部署。
+- 重放结果：召回 10/10 一致；平均相似度 0.07、长度比 0.84。相似度低是重放的固有噪声
+  （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
+- 云端 verify 5/5。
+
 ## 2026-11-11 · P5：knowledge 写入走契约
 
 - `Port.remember` 支持 knowledge → `learn.note_write`（payload：title / tag / project / source / stale_days）。
