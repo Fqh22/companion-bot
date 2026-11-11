@@ -151,6 +151,11 @@ async def _memory_read(core, args, images) -> str:
 
 
 async def _memory_search(core, args, images) -> str:
+    """工具入口也走记忆契约（P3）；read_full 是全文读，不在 recall 契约里，保持原样。"""
+    port = core._memory_port() if hasattr(core, "_memory_port") else None
+    if port is not None:
+        items = await port.recall(args.get("query", ""), ("fact",), 5)
+        return "\n".join(f"- {i.text[:200]}" for i in items) if items else "没想起相关的事"
     rows = await core.memory.recall(args.get("query", ""), 5)
     return "\n".join(f"- {r['text'][:200]}" for r in rows) if rows else "没想起相关的事"
 

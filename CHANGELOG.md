@@ -2,6 +2,13 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P3 收尾：工具入口走契约
+
+- `tools.memory_search` 改走 Port（fact 召回）；`read_full` 是全文读，不在 recall 契约，保持原样。
+- 调度 / 主动消息入口**不迁**：它们写的是 profile / knowledge，契约的 `remember` 还没覆盖，
+  迁过去等于假装接上。
+- 云端 verify 5/5。
+
 ## 2026-11-11 · P3 收尾：profile 走契约 + 影子判断脚本
 
 - `_prepare_profile` 改 async，画像文本走 Port（profile 类型）；fields 仍从旧路径取给影子记录。
