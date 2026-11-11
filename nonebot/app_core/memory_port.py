@@ -170,7 +170,8 @@ class CoreMemoryPort:
                     "它要解析自然语言时间，不属于契约层）")
             from app_core import followup, followup_store
 
-            if not followup.add(item.text, str(p.get("source") or "memory")):
+            if not followup.add(item.text, str(p.get("source") or "memory"),
+                                 str(p.get("ref") or "")):
                 raise RuntimeError("跟进创建失败（可能近似重复，或不像待办）")
             fid = followup_store.id_for_text(item.text)
             return f"followup:{fid}" if fid else "followup:"

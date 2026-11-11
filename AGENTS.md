@@ -18,6 +18,7 @@ python ops/link-check.py
 python ops/smoke-plugins.py
 python ops/test-guards.py         # 护栏自检：lint 规则必须能抓到反例
 python ops/replay-diff.py 5       # 全链路冒烟：真实对话重放，只看召回一致/无异常（会调 LLM，不进 CI）
+python ops/memory-report.py 7     # 记忆使用周报：0 条率 / 平均条数 / 类型分布（观察期每周跑）
 
 # 云端：五件套
 ops/verify.sh --pre              # 重启前：不碰生产库

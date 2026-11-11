@@ -15,6 +15,13 @@
   （LLM 随机 + 时间/情绪不同），**不作为回归判据**；判据仍是注入一致 + 647/241/43。
 - 云端 verify 5/5。
 
+## 2026-11-11 · task 写入口接入；记忆使用周报
+
+- 总结时的 followups 改走 `Port.remember(task)`（逐条，等价于 `add_many` 的循环）。
+- 新增 `ops/memory-report.py`：读 `memory_trace.jsonl`，输出 0 条率 / 平均条数 / 类型分布。
+- 首份报告：最近 7 轮，0 条 0%，**平均 5.0 条/轮**（贴着上限 5）——观察一周再决定是否调 `recall_min_score`。
+- 647 / 242 / 43 / 34 / 5 全过；云端 5/5。
+
 ## 2026-11-11 · mood 进 AffectPort（五类骨架完成）
 
 - 新增 `app_core/affect_port.py`：`read / observe / write`，纯转发 `mood.py`。

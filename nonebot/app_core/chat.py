@@ -1138,7 +1138,20 @@ class ChatCore(ChatTurnMixin):
                 log.warning("矛盾检测失败：%s", e)
             # followup 单独存一份：记忆会被清理归档，跟进事项不该跟着消失
             if data.get("followups"):
-                followup.add_many(data["followups"], "memory", doc_id)
+                port_t = self._memory_port()
+                if port_t is not None:
+                    from app_core.memory_port import MemoryItem
+
+                    for _t in data["followups"]:
+                        try:
+                            await port_t.remember(MemoryItem(
+                                type="task", text=str(_t), source="memory",
+                                payload={"kind": "followup", "source": "memory",
+                                         "ref": doc_id}))
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("跟进写入跳过（%s）：%s", type(e).__name__, _t)
+                else:
+                    followup.add_many(data["followups"], "memory", doc_id)
             # 滚动纪要：历史原文只留最近 2500 字，更早的靠这段纪要接住。
             # 优先用同一次调用带回来的 digest；模型没给（或太短）再退回单独一次调用，
             # 保证旧行为可用，不会因为一次 JSON 缺字段就把纪要停更。
