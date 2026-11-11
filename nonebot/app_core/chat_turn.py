@@ -164,7 +164,7 @@ class ChatTurnMixin:
         except Exception:  # noqa: BLE001
             pass
         t = (user_text or "").strip()
-        if len(t) < 4 or not any(k in t for k in self._ANALYTIC_HINTS):
+        if len(t) < 4 or not intent.looks_analytical(t):
             return
         try:
             res = await web_mod.search(t[:64], 3)

@@ -58,6 +58,21 @@ def refers_to_previous(text: str) -> bool:
     return any(w in t for w in REFER)
 
 
+# 分析类意图：疑问形式 + 分析词，**两条都中**才算。
+# 只命中一条会误伤陈述句（「还在学增删改查呢」有「呢」，但不是要判断）；
+# 语义相似度试过，分布太平（陈述句 0.55-0.62，真问题 0.51），不用。
+_Q_FORM = ("？", "?", "吗", "呢", "怎么", "什么", "哪", "该不该", "行不行",
+           "值不值", "靠不靠谱", "是不是")
+_ANALYTIC = ("选", "该", "值", "靠", "对比", "分析", "形势", "趋势", "缺口",
+             "风险", "问题", "方向", "方案", "情况", "区别", "行不行")
+
+
+def looks_analytical(text: str) -> bool:
+    """这句是不是在「要判断 / 要方向」，而不是陈述或闲聊。"""
+    t = text or ""
+    return any(k in t for k in _Q_FORM) and any(k in t for k in _ANALYTIC)
+
+
 def keywords(text: str, limit: int = 6) -> list[str]:
     """粗提主题词，用来做「相关记忆」的检索 query。
 
