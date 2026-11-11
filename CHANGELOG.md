@@ -2,6 +2,14 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-11 · P2：总结写入走契约
+
+- `CoreMemoryPort.remember` 接 fact：`payload` 映射 session / topics / key_facts / vec / followups / range_key。
+- `_summarize_once` 写记忆改走 Port；`chat.memory_port=false` 仍走旧路径。
+- 双写校验用**参数级对比**：旧调用与 Port 调用的参数字典完全相等（不做物理双写，避免重复记一条）。
+- `forget` 仍未实现（随 P3 清理逻辑一起做）。
+- 云端 verify 5/5 + port 15/15。
+
 ## 2026-11-11 · P0/P1：记忆契约只读适配器
 
 - 新增 `app_core/memory_port.py`：`MemoryItem` / `MemoryPort` / `CoreMemoryPort`（P1 只读）。

@@ -1090,14 +1090,31 @@ class ChatCore(ChatTurnMixin):
             mood.apply_progress(data["progress"])
         try:
             vec = (await self.memory.embed([data["summary"]]))[0]
-            doc_id = self.memory.add_document(
-                text=data["summary"], session=session,
-                importance=data.get("importance", 0.5),
-                topics=data.get("topics", []),
-                key_facts=data.get("key_facts", []),
-                vec=vec,
-                followups=data.get("followups", []),
-                range_key=f"{session}:{last_id}-{target}")
+            payload = {
+                "session": session,
+                "topics": data.get("topics", []),
+                "key_facts": data.get("key_facts", []),
+                "vec": vec,
+                "followups": data.get("followups", []),
+                "range_key": f"{session}:{last_id}-{target}",
+            }
+            port = self._memory_port()
+            if port is not None:
+                from app_core.memory_port import MemoryItem
+
+                doc_id = await port.remember(MemoryItem(
+                    type="fact", text=data["summary"],
+                    confidence=float(data.get("importance", 0.5) or 0.5),
+                    source="summary", payload=payload))
+            else:
+                doc_id = self.memory.add_document(
+                    text=data["summary"], session=session,
+                    importance=data.get("importance", 0.5),
+                    topics=data.get("topics", []),
+                    key_facts=data.get("key_facts", []),
+                    vec=vec,
+                    followups=data.get("followups", []),
+                    range_key=f"{session}:{last_id}-{target}")
             # 矛盾检测：新记忆可能让旧记忆过时（「在找工作」→「已入职」）。
             # 只在相似度够高时才多问一次模型；失败不影响写入。
             try:

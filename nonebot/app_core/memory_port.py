@@ -12,7 +12,7 @@ memory / profile / wiki / diary，换存储或加记忆类型要改所有入口�
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 MEMORY_TYPES = ("fact", "profile", "knowledge", "mood", "task")
@@ -32,6 +32,9 @@ class MemoryItem:
     age_days: float | None = None
     expires: float | None = None
     supersedes: str | None = None
+    # 存储相关的附加参数（session / topics / vec / range_key …）。
+    # 契约只规定语义字段；具体后端需要的东西放这里，避免契约被某个存储绑架。
+    payload: dict = field(default_factory=dict)
 
 
 class MemoryPort(Protocol):
@@ -97,7 +100,20 @@ class CoreMemoryPort:
         return out
 
     async def remember(self, item: MemoryItem) -> str:
-        raise NotImplementedError("P2 才接写入；P1 只读")
+        """P2：先只接 fact（总结写入）。其它类型等各自的写入点迁过来再开。"""
+        if item.type != "fact":
+            raise NotImplementedError(f"P2 只接 fact 写入，收到 {item.type}")
+        p = item.payload or {}
+        return self.core.memory.add_document(
+            text=item.text,
+            session=str(p.get("session") or ""),
+            importance=float(item.confidence),
+            topics=list(p.get("topics") or []),
+            key_facts=list(p.get("key_facts") or []),
+            vec=p.get("vec"),
+            followups=list(p.get("followups") or []),
+            range_key=str(p.get("range_key") or ""),
+        )
 
     async def forget(self, ref: str) -> bool:
         raise NotImplementedError("P2 才接写入；P1 只读")

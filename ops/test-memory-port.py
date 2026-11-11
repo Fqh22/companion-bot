@@ -30,6 +30,9 @@ def check(name: str, cond: bool, extra: str = "") -> None:
 
 
 class FakeMemory:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
     async def recall(self, query, top_k=5, qv=None, touch=True):
         return [
             {"doc_id": "d1", "text": "他喜欢下雨天", "age_days": 3.0,
@@ -37,6 +40,15 @@ class FakeMemory:
             {"doc_id": "d2", "text": "他在找工作", "age_days": 1.0,
              "meta": {"create_time": 300.0, "last_access_time": 400.0, "importance": 0.9}},
         ][:top_k]
+
+    def add_document(self, text, session, importance, topics, key_facts,
+                     atoms=None, vec=None, followups=None, range_key=""):
+        self.calls.append({
+            "text": text, "session": session, "importance": importance,
+            "topics": topics, "key_facts": key_facts, "vec": vec,
+            "followups": followups, "range_key": range_key,
+        })
+        return "doc-new"
 
 
 class FakeCore:
@@ -63,11 +75,39 @@ async def main() -> None:
     check("转换回旧结构一致",
           rows[0]["doc_id"] == "d1" and rows[1]["text"] == "他在找工作")
 
+    # P2：fact 写入走契约，参数与旧调用一致
+    core = FakeCore()
+    port = CoreMemoryPort(core)
+    payload = {"session": "private:1", "topics": ["工作"], "key_facts": ["在找工作"],
+               "vec": [0.1, 0.2], "followups": ["问进度"], "range_key": "private:1:1-9"}
+    doc = await port.remember(MemoryItem(type="fact", text="他在找工作",
+                                         confidence=0.8, payload=payload))
+    check("remember 返回 doc_id", doc == "doc-new", str(doc))
+    call = core.memory.calls[-1]
+    check("session / importance 映射正确",
+          call["session"] == "private:1" and call["importance"] == 0.8, str(call)[:80])
+    check("topics / key_facts / vec / range_key 映射正确",
+          call["topics"] == ["工作"] and call["key_facts"] == ["在找工作"]
+          and call["vec"] == [0.1, 0.2] and call["range_key"] == "private:1:1-9")
+    check("followups 映射正确", call["followups"] == ["问进度"])
+
+    # 一致性：旧调用与契约调用产生的参数完全相同
+    core2 = FakeCore()
+    core2.memory.add_document(text="他在找工作", session="private:1", importance=0.8,
+                              topics=["工作"], key_facts=["在找工作"],
+                              vec=[0.1, 0.2], followups=["问进度"],
+                              range_key="private:1:1-9")
+    old_call = dict(core2.memory.calls[-1])
+    new_call = dict(call)
+    check("新旧写入参数完全一致", old_call == new_call,
+          str({k: (old_call.get(k), new_call.get(k)) for k in old_call
+               if old_call.get(k) != new_call.get(k)})[:80])
+
     try:
-        await port.remember(MemoryItem(type="fact", text="x"))
-        check("remember 应未实现", False)
+        await port.remember(MemoryItem(type="profile", text="x"))
+        check("非 fact 类型应未实现", False)
     except NotImplementedError:
-        check("remember 未实现", True)
+        check("非 fact 类型未实现", True)
 
     passed = sum(1 for x in RESULTS if x)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
