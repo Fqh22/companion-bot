@@ -480,6 +480,27 @@ class ChatTurnMixin:
             except Exception:  # noqa: BLE001
                 pass
 
+            # 无来源断言检测（只记录，不改回复）：先摸误报率，再决定要不要拦截。
+            try:
+                import json as _json
+
+                from app_core import fact_check
+                from app_core import paths as _paths
+
+                _allowed = "\n".join(
+                    [str(m.get("text") or "") for m in turn.memories]
+                    + [turn.knowledge or "", turn.profile_block or "",
+                       turn.user_text or ""])
+                _bad = fact_check.unsourced(turn.text or turn.buffer, _allowed)
+                if _bad:
+                    with (_paths.DATA / "fact_check.jsonl").open("a", encoding="utf-8") as f:
+                        f.write(_json.dumps({
+                            "ts": time.time(), "session": turn.session,
+                            "claims": _bad, "text": (turn.text or "")[:200],
+                        }, ensure_ascii=False) + "\n")
+            except Exception:  # noqa: BLE001
+                pass
+
         # 注意力记账：这条回复有多少在说他、多少在说自己。
         # 不评判好坏，只看两周后的趋势——自指率往上走，就是开始表演了。
         if turn.owner:
