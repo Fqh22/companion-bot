@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ if not CORE.is_dir():
 
 IO_MODULES = {"sqlite3", "aiosqlite", "httpx", "requests", "nonebot", "websockets"}
 FAILS: list[str] = []
+WARNS: list[str] = []
 
 # 三层（见 docs/07-分层.md）：
 #   domain        纯规则：可以被任意层依赖，自己只能依赖 domain / infra
@@ -139,12 +141,42 @@ def check_plugins():
             pass
 
 
+# 外包模块（docs/14）：只做「一次调用 → 一个结果」，不持有跨轮状态。
+# 只有装配点和热路径可以 import；其它模块要外部能力，走这些模块的接口。
+OUTSOURCED = frozenset({"web", "asr", "llm"})
+OUTSOURCED_ALLOWED = frozenset({
+    "chat", "chat_turn", "memory", "tools", "engine", "group", "__init__",
+})
+
+
+def check_outsourced() -> None:
+    """非装配点/热路径 import 外包模块 → WARN（先观察，不阻断）。"""
+    for p in sorted(CORE.glob("*.py")):
+        name = p.stem
+        if name in OUTSOURCED or name in OUTSOURCED_ALLOWED:
+            continue
+        for i, line in enumerate(
+                p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            t = line.strip()
+            if t.startswith("#"):
+                continue
+            for mod in OUTSOURCED:
+                hit = (f"app_core.{mod}" in t) or (
+                    t.startswith("from app_core import") and re.search(rf"\b{mod}\b", t))
+                if hit:
+                    WARNS.append(f"{p.name}:{i}: import 外包模块 {mod}（见 docs/14）")
+
+
 def main() -> int:
     check_kernel()
     check_domain()
     check_domain_layers()
     check_adapters()
     check_plugins()
+    check_outsourced()
+    if WARNS:
+        for x in WARNS:
+            print("WARN", x)
     if FAILS:
         print("=== 分层失败 ===")
         for x in FAILS:

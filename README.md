@@ -135,6 +135,7 @@ ops/drill-console.py   # 断线演练：没有 QQ 也能跑一轮真实对话
 | 回话自检（替代场景枚举） | [docs/12-回话自检.md](docs/12-回话自检.md) |
 | 语音输入（转写 / 场景 / 兜底） | [docs/13-语音输入方案.md](docs/13-语音输入方案.md) |
 | 关系小抄（称呼 / 共同经历 / 雷区） | [docs/relation.example.md](docs/relation.example.md) |
+| 什么该自己做、什么该外包 | [docs/14-内核与外包.md](docs/14-内核与外包.md) |
 | 内核分层、新模块放哪 | [docs/07-分层.md](docs/07-分层.md) |
 | 加模块 / 通道 / 命令 / 工具 / 任务 | [docs/08-扩展指南.md](docs/08-扩展指南.md) |
 | 消息流、数据布局 | [docs/01-系统.md](docs/01-系统.md) |
