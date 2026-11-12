@@ -163,5 +163,6 @@ async def run(core, msgs: list[dict], *,
     try:
         final = await complete(work, None)
         return (final.get("content") or "").strip()
-    except Exception:
+    except Exception as e:  # noqa: BLE001
+        log.warning("工具轮数用尽后补问失败：%s", e)
         return ""

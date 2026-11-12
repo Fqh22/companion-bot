@@ -83,7 +83,7 @@ ops/verify.sh                    # 全量
 | 主动消息只在「有 followup 话头」时开口 | `proactive.py` |
 | 思考常开（`llm.thinking_casual=false`） | `config.py` |
 | 引用回复默认关（`chat.quote_reply=false`） | `config.py` |
-| 分层不物理搬家，用 docstring 标记 + lint | `docs/07` |
+| 分层不物理搬家，用 docstring 标记 + lint | `docs/06` |
 
 ## 7. 常见错误（AI 最容易犯）
 

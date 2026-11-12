@@ -24,7 +24,7 @@ IO_MODULES = {"sqlite3", "aiosqlite", "httpx", "requests", "nonebot", "websocket
 FAILS: list[str] = []
 WARNS: list[str] = []
 
-# 三层（见 docs/07-分层.md）：
+# 三层（见 docs/06-扩展与移植.md）：
 #   domain        纯规则：可以被任意层依赖，自己只能依赖 domain / infra
 #   orchestration 编排：调多个领域模块、碰 IO，可以被 adapters/plugins 依赖
 #   infra         基础设施：paths/config/files/kernel，谁都能用
@@ -72,7 +72,7 @@ def check_domain_layers():
             mod = t.split(".")[1] if t.count(".") >= 1 else ""
             if mod in ORCH:
                 FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}"
-                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/07）")
+                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/06）")
 
 
 def check_adapters():
@@ -141,7 +141,7 @@ def check_plugins():
             pass
 
 
-# 外包模块（docs/14）：只做「一次调用 → 一个结果」，不持有跨轮状态。
+# 外包模块（docs/10）：只做「一次调用 → 一个结果」，不持有跨轮状态。
 # 只有装配点和热路径可以 import；其它模块要外部能力，走这些模块的接口。
 OUTSOURCED = frozenset({"web", "asr", "llm"})
 OUTSOURCED_ALLOWED = frozenset({
@@ -164,7 +164,7 @@ def check_outsourced() -> None:
                 hit = (f"app_core.{mod}" in t) or (
                     t.startswith("from app_core import") and re.search(rf"\b{mod}\b", t))
                 if hit:
-                    WARNS.append(f"{p.name}:{i}: import 外包模块 {mod}（见 docs/14）")
+                    WARNS.append(f"{p.name}:{i}: import 外包模块 {mod}（见 docs/10）")
 
 
 def main() -> int:

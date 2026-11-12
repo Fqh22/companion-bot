@@ -6,6 +6,7 @@ import json
 import logging
 import random
 import re
+import sqlite3
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -318,8 +319,11 @@ class ChatCore(ChatTurnMixin):
                         "ALTER TABLE usage ADD COLUMN purpose TEXT DEFAULT ''"):
                 try:
                     await db.execute(ddl)
-                except Exception:
-                    pass
+                except sqlite3.OperationalError as e:
+                    # 「列已存在」是正常迁移；其它（库锁/磁盘/语法）必须留痕，
+                    # 否则 usage 表会永远缺列，直到 /usage 崩了才发现。
+                    if "duplicate column" not in str(e).lower():
+                        log.warning("chat.db 迁移失败：%s（%s）", ddl, e)
             # /usage 按时间窗口聚合，之前没有索引是整表扫（EXPLAIN 里是 SCAN usage）
             await db.execute("CREATE INDEX IF NOT EXISTS idx_usage_ts ON usage(ts)")
             # 跨进程/跨重启的任务锁：抢到才执行，避免重启重跑、多实例重复

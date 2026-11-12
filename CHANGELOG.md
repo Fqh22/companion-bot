@@ -2,6 +2,22 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-12 · 体检修复：文档漂移 / 预搜索超时 / 迁移静默 / 清理
+
+- 文档：修 docs/00 的 `10-重构方案.md` 坏链，647/239 → 648/247；AGENTS 与 lint 注释里的
+  docs/07、docs/13、docs/14 → 06/10。docs/06 的 `14-内核与外包.md` 坏链由新检查抓到。
+- `link-check.py` 加三条静态检查：文档内相对链接必须存在；app_core 不得新增 import 环；
+  环内不得双向顶层 import（现有 5 组环白名单，新增必须显式登记）。联动 43 → 46。
+- `_prepare_search` 加 5 秒独立超时：web.search 自身 25s，会吃掉 45s 总预算。
+- `init_db` 的 7 条 ALTER 只吞 `duplicate column`，其它记 warning；`_turn_commit` 7 处
+  静默 except 补 log.debug；tool_loop 轮数用尽后补问失败留痕。
+- 离线测试桩补 `temperature` 参数，新增「矛盾检测真的走到模型」断言——之前桩签名旧，
+  TypeError 被上层吞掉，648 全绿但这条路径从没跑过。
+- 清理：删空的乱码目录 `澶囦唤`（GBK 事故残留）；删 10 个已合并 `backup/*` 分支；
+  `git gc` 后 .git 41.1MB → 34.5MB。分支 SHA 备份在 `_archive/companion-bot-20261112`。
+- 实测：离线 649/649、全链路 247/247、联动 46/46、kernel 7、commands 11、runner 7、
+  guards 4、插件 6/6、密钥扫描 193 文件干净。
+
 ## 2026-11-11 · 全链路重放测试；修复画像注入缺 await
 
 - `replay-diff.py` 改为**冒烟判据**：召回一致 + 无异常 + 无空回复；相似度只记录、不判死。

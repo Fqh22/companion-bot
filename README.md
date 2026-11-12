@@ -73,6 +73,9 @@ async def on_message(platform_msg):
 
 Python **3.12**（CI 只测这个版本）。
 
+`nonebot/requirements.txt` 是完整部署环境（含 QQ 适配器）；`pyproject.toml` 只是内核包
+`companion-core` 的依赖（不含平台），两条线用途不同，别互相替代。
+
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -r nonebot/requirements.txt

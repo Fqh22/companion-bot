@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -129,6 +130,126 @@ def static_checks() -> None:
         check("config.example.yaml 覆盖 DEFAULTS 的所有段", not missing, ", ".join(missing))
     else:
         print("SKIP config.example.yaml 不在部署目录（云端正常），跳过键对齐检查")
+
+    docs_link_checks()
+    import_cycle_checks()
+
+
+# ---------------- 静态：文档链接 ----------------
+_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+
+def docs_link_checks() -> None:
+    """文档里的相对链接必须真的能打开。
+
+    link-check 以前只管代码接线，文档链接没人查：docs/00 的
+    「10-重构方案.md」在文档合并后就不存在了，链接一直挂着。云端只部署
+    nonebot/，没有 docs —— 那里跳过，不冒充通过。
+    """
+    repo = CODE.parent
+    if not (repo / "docs").is_dir():
+        print("SKIP 部署目录没有 docs（云端正常），跳过文档链接检查")
+        return
+    broken = []
+    mds = sorted(repo.glob("*.md")) + sorted((repo / "docs").rglob("*.md"))
+    seen = set()
+    for p in mds:
+        if p.name == "交接卡.md" or p in seen:
+            continue
+        seen.add(p)
+        for m in _MD_LINK.finditer(p.read_text(encoding="utf-8", errors="replace")):
+            target = m.group(1).split("#", 1)[0].strip()
+            if not target or "://" in target or target.startswith(("mailto:", "#")):
+                continue
+            if not (p.parent / target).exists():
+                broken.append(f"{p.relative_to(repo)} -> {target}")
+    check("文档内相对链接都有效", not broken, "; ".join(broken)[:200])
+
+
+# ---------------- 静态：import 环 ----------------
+# 已存在的环是历史结构（门面反向引用 / learn-review-wiki 三角）。
+# 新环必须显式加进来，否则就是一个以后会在 import 顺序上炸的定时炸弹。
+_ALLOWED_CYCLES = {
+    frozenset({"app_core.learn", "app_core.review", "app_core.wiki"}),
+    frozenset({"app_core.mood", "app_core.mood_store"}),
+    frozenset({"app_core.followup", "app_core.followup_store"}),
+    frozenset({"app_core.remind", "app_core.scheduling.remind"}),
+    frozenset({"app_core.scheduler", "app_core.scheduling.scheduler"}),
+}
+
+
+def import_cycle_checks() -> None:
+    """app_core 内部不能出现新的 import 环，环内也不能双向顶层 import。
+
+    环本身不一定炸（函数内 import 能绕），但双向**顶层** import 一定炸。
+    这条检查是给未来的人看的：加一行顶层 import 就会红，不用等线上
+    ImportError。
+    """
+    mods = {}
+    for p in (CODE / "app_core").rglob("*.py"):
+        if "__pycache__" in p.parts:
+            continue
+        rel = p.relative_to(CODE).with_suffix("")
+        name = ".".join(rel.parts)
+        if name.endswith(".__init__"):
+            name = name[:-9]
+        mods[name] = p
+
+    def edges(p, top_only=False):
+        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+        nodes = tree.body if top_only else ast.walk(tree)
+        out = set()
+        for n in nodes:
+            if isinstance(n, ast.ImportFrom) and n.module and n.module.startswith("app_core"):
+                out.add(n.module)
+                for a in n.names:
+                    cand = n.module + "." + a.name
+                    if cand in mods:
+                        out.add(cand)
+        return {x for x in out if x in mods}
+
+    graph = {m: edges(p) for m, p in mods.items()}
+    top = {m: edges(p, top_only=True) for m, p in mods.items()}
+
+    index, low, stack, on, sccs = {}, {}, [], set(), []
+    counter = [0]
+
+    def strong(v):
+        index[v] = low[v] = counter[0]
+        counter[0] += 1
+        stack.append(v)
+        on.add(v)
+        for w in graph.get(v, ()):
+            if w not in index:
+                strong(w)
+                low[v] = min(low[v], low[w])
+            elif w in on:
+                low[v] = min(low[v], index[w])
+        if low[v] == index[v]:
+            comp = []
+            while True:
+                w = stack.pop()
+                on.discard(w)
+                comp.append(w)
+                if w == v:
+                    break
+            if len(comp) > 1:
+                sccs.append(frozenset(comp))
+
+    for v in graph:
+        if v not in index:
+            strong(v)
+
+    new_cycles = [sorted(c) for c in sccs if c not in _ALLOWED_CYCLES]
+    check("没有新的 import 环", not new_cycles, str(new_cycles)[:200])
+
+    twins = []
+    for c in sccs:
+        for u in c:
+            for v in top.get(u, ()):
+                if v in c and v != u and u in top.get(v, ()):
+                    twins.append(f"{u} <-> {v}")
+    check("环内没有双向顶层 import", not twins, "; ".join(twins))
 
 
 # ---------------- 动态：把 handler 真跑一遍 ----------------

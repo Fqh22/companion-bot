@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import random
@@ -169,8 +170,13 @@ class ChatTurnMixin:
         t = (user_text or "").strip()
         if len(t) < 4 or not intent.looks_analytical(t):
             return
+        # 预搜索是锦上添花，不能吃掉整轮预算：web.search 自己的超时是 25s，
+        # 而整轮 deadline 只有 45s —— 慢一次就只剩 20s 给模型，首字都可能出不来。
         try:
-            res = await web_mod.search(t[:64], 3)
+            res = await asyncio.wait_for(web_mod.search(t[:64], 3), timeout=5.0)
+        except asyncio.TimeoutError:
+            log.info("分析类预搜索超时（>5s），本轮不注入")
+            return
         except Exception as e:  # noqa: BLE001
             log.debug("分析类预搜索失败：%s", e)
             return
@@ -572,16 +578,16 @@ class ChatTurnMixin:
                         "query": (turn.user_text or "")[:60],
                         "reply": (turn.text or "")[:120],
                     }, ensure_ascii=False) + "\n")
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as e:  # noqa: BLE001
+            log.debug("自检标签记录失败：%s", e)
         # 影子记录：不改行为，只攒样本（补一句的候选 + 正反馈样本）。
         # 只记本人的：这些样本是用来调他的机器人语气/频率的基线，
         # 混进陌生人的对话（还是鲸鱼人格）会把基线带偏。
         if turn.owner:
             try:
                 self._schedule_shadow(turn.user_text, turn.text or turn.buffer)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                log.debug("影子记录失败：%s", e)
 
             # 无来源断言检测（只记录，不改回复）：先摸误报率，再决定要不要拦截。
             try:
@@ -601,8 +607,8 @@ class ChatTurnMixin:
                             "ts": time.time(), "session": turn.session,
                             "claims": _bad, "text": (turn.text or "")[:200],
                         }, ensure_ascii=False) + "\n")
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                log.debug("事实检查记录失败：%s", e)
 
         # 注意力记账：这条回复有多少在说他、多少在说自己。
         # 不评判好坏，只看两周后的趋势——自指率往上走，就是开始表演了。
@@ -611,8 +617,8 @@ class ChatTurnMixin:
                 _ar = attention.self_ref_ratio(turn.text or turn.buffer)
                 shadow.record_attention(turn.text or turn.buffer, _ar["ratio"],
                                         _ar["self"], _ar["you"], turn.user_text)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                log.debug("注意力记账失败：%s", e)
 
         # 事后硬剪只属于 rules 模式；model 模式让模型自己决定，不再二次加工。
         # **但他在征求意见时不剪**——「该不该/怎么办」的答案本身就是建议。
@@ -627,15 +633,15 @@ class ChatTurnMixin:
                     try:
                         await on_sentence(turn.held)
                         turn.sent_parts.append(turn.held)
-                    except Exception:  # noqa: BLE001
-                        pass
+                    except Exception as e:  # noqa: BLE001
+                        log.debug("流式补发失败：%s", e)
                 turn.held = ""
             elif turn.held:
                 try:
                     await on_sentence(turn.held)
                     turn.sent_parts.append(turn.held)
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as e:  # noqa: BLE001
+                    log.debug("流式补发失败：%s", e)
                 turn.held = ""
         elif not _model_first:
             try:
@@ -651,8 +657,8 @@ class ChatTurnMixin:
                     turn.text = _cut
                     if _cut != turn.buffer:
                         turn.buffer = _cut
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                log.debug("结尾建议修剪失败：%s", e)
 
         # 写历史的是「用户真正看到的那几句」：流式用已发出的片段 + 还要补发的尾巴，
         # 非流式用剪完建议、去掉语气词之后的文本。放在剪之后再写，否则历史里留着

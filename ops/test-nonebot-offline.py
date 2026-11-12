@@ -740,10 +740,13 @@ async def main() -> None:
 
     summary_inputs = []
 
-    async def fake_complete_summary(msgs, max_tokens=None):
-        # 滚动纪要走的是同一个函数，别把它算进「总结次数」
-        if "滚动纪要" in (msgs[0].get("content") or ""):
+    async def fake_complete_summary(msgs, max_tokens=None, temperature=None):
+        # 滚动纪要和矛盾检测走的是同一个函数，别把它们算进「总结次数」
+        head = msgs[0].get("content") or ""
+        if "滚动纪要" in head:
             return "这段时间在调记忆水位，顺手把滚动纪要也接上了。"
+        if "核对记忆有没有自相矛盾" in head:
+            return '{"pairs": []}'
         summary_inputs.append(msgs[-1]["content"])
         return json.dumps({"summary": f"第{len(summary_inputs)}段记忆",
                            "key_facts": ["f"], "topics": ["t"], "importance": 0.6},
@@ -751,6 +754,27 @@ async def main() -> None:
 
     core.complete_summary = fake_complete_summary
     mem.embed = fake_embed
+
+    # 矛盾检测走的是 complete_summary(..., temperature=0.0)。桩的签名以前落后，
+    # 调用直接 TypeError 被上层的 except 吞掉——648 项全绿，但这条路径从没跑过。
+    # 这里显式走一遍，签名再漂移就会红。
+    contra_calls = []
+
+    async def fake_contra(msgs, max_tokens=None, temperature=None):
+        contra_calls.append(temperature)
+        return "[]"
+
+    _old_similar = mem.similar_active
+    mem.similar_active = lambda *a, **k: [{"doc_id": "old-doc", "score": 0.9,
+                                           "text": "旧记忆"}]
+    core.complete_summary = fake_contra
+    try:
+        await core._check_contradictions("new-doc", {"summary": "新事实", "key_facts": []},
+                                         [0.1, 0.2])
+    finally:
+        mem.similar_active = _old_similar
+        core.complete_summary = fake_complete_summary
+    check("矛盾检测真的走到模型（temperature=0.0）", contra_calls == [0.0], str(contra_calls))
 
     await core._maybe_summarize(session)
     await core._maybe_summarize(session)  # 没有新消息
