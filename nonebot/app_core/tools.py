@@ -220,6 +220,18 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
     handler = HANDLERS.get(name)
     if handler is None:
         return f"未知工具：{name}"
+    # 工具使用埋点：只记名字和成败，用来决定「砍哪些」——没有数据时砍工具是拍脑袋。
+    try:
+        import json as _json
+        import time as _t
+
+        from app_core import paths as _p
+
+        with (_p.DATA / "tool_usage.jsonl").open("a", encoding="utf-8") as f:
+            f.write(_json.dumps({"ts": _t.time(), "tool": name},
+                                ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
     try:
         return await handler(core, args, images)
     except Exception as e:  # noqa: BLE001
