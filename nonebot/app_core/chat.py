@@ -450,8 +450,8 @@ class ChatCore(ChatTurnMixin):
 
         content: list[dict] = [{
             "type": "text",
-            "text": "一句话描述这张图：画面里有什么、什么气氛。30 字内，"
-                    "只描述，不评论、不建议、不猜用途。"}]
+            "text": "先读图里的文字：报错、标题、按钮、聊天内容，照抄最关键的 2-3 行；"
+                    "再一句话说这是什么场景。总共 60 字内，只描述，不评论、不建议。"}]
         for p in (paths or [])[:limit]:
             url = to_data_url(p)
             if url:
@@ -460,8 +460,8 @@ class ChatCore(ChatTurnMixin):
             return ""
         try:
             msg = await self.complete_raw([{"role": "user", "content": content}],
-                                          None, max_tokens=90, thinking=False)
-            return (msg.get("content") or "").strip()[:120]
+                                          None, max_tokens=140, thinking=False)
+            return (msg.get("content") or "").strip()[:200]
         except Exception as e:  # noqa: BLE001
             log.debug("生成图注失败：%s", e)
             return ""
