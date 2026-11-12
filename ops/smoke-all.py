@@ -469,11 +469,12 @@ async def main() -> None:
         check("maintenance 截断老日志", _tr["dropped"] == 1 and _tr["kept"] == 1, str(_tr))
 
         # ---------- help（命令清单） ----------
-        _hn = help_mod.names()
+        _hn = help_mod.all_names()
+        _shown = help_mod.names()
         check("help 清单非空且不重复",
               len(_hn) > 20 and len(_hn) == len(set(_hn)), f"{len(_hn)} 条")
         _ht = help_mod.text() + "\n" + help_mod.debug_text()
-        check("help 文案带斜杠", _ht.count("/") >= len(_hn), f"{_ht.count('/')} / {len(_hn)}")
+        check("help 文案带斜杠", _ht.count("/") >= len(_shown), f"{_ht.count('/')} / {len(_shown)}")
         check("日常清单不展开维护命令",
               "/mem_status" not in help_mod.text() and "/mem_status" in help_mod.debug_text())
 

@@ -2,13 +2,10 @@
 
 **为什么单独放一层**：命令分散在 6 个插件里，/help 的文字以前在 admin 里手写，
 两边没有约束——实测注册了 36 条，help 只列了 6 条，自己做的东西自己都想不起来。
-现在命令只写在这里，admin 只负责渲染；lint 会核对「注册了但没写进清单」，
-以及「写进清单但根本没注册」。
 
-**为什么分成日常/维护**：29 条命令全展开，/help 本身就成了说明书。
-实际数据（2026-11-10，11 天日志）显示日常只用到 /usage、/help、/prompt_last 几条，
-维护命令十几条从没被敲过。日常的留在 /help，其余收进 /debug——能力一个不少，
-但看 /help 不用再扫一遍运维手册。
+**为什么只剩 12 条**：2026-11-12 实测，维护命令从没被敲过。清单只留日常和排障必需的；
+其余命令**代码还在**（能用），但不再出现在 /help 和 /debug 里——能力不删，表面积减半。
+它们登记在 `HIDDEN` 里，lint 用它区分「没写」和「故意不展示」。
 """
 from __future__ import annotations
 
@@ -20,53 +17,48 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("usage", "今日 / 近 7 天 token 与费用"),
         ("mood", "当前心情 / 精力 / 互动热度"),
         ("profile", "看它记住的你（置信度、多久没确认、上次是什么）"),
-        ("diary_show", "看某天的日记：/diary_show 11-04"),
-        ("remind_list", "看还没到期的提醒"),
-        ("remind_cancel", "取消一条：/remind_cancel 序号"),
-        ("note_list", "最近写了哪些笔记"),
-        ("meme", "手动发一张：/meme 开心"),
-        ("debug", "维护与排障命令（18 条）"),
+        ("debug", "维护与排障命令"),
     ]),
 ]
 
-# 维护：低频，但坏了要靠它们。全部收在 /debug 下面。
+# 维护：低频，但坏了要靠它们。
 DEBUG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("记忆", [
         ("mem_status", "记忆链路健康快照（条数 / 最近召回 / 今日矛盾判定）"),
-        ("memory_cleanup", "手动跑一次分层归档"),
-        ("memory_conflicts", "看被新事实推翻的旧记忆（判错了可恢复）"),
-    ("forget", "忘掉一条记忆：/forget 关键词 → 编号确认"),
-    ("trace", "最近几轮读了哪些记忆"),
+        ("forget", "忘掉一条记忆：/forget 关键词 → 编号确认"),
+        ("trace", "最近几轮读了哪些记忆"),
         ("memory_restore", "从归档/被取代里捞回来：/memory_restore 关键词"),
-    ]),
-    ("情绪", [
-        ("mood_history", "最近几天的情绪曲线：/mood_history 7"),
-    ]),
-    ("日记与复盘", [
-        ("diary_list", "最近写了哪些日记"),
-        ("diary_write", "补写今天的日记"),
-        ("review_now", "立刻跑一次复盘（不等到 03:40）"),
-        ("weekly_now", "立刻生成一份周报"),
-    ]),
-    ("知识库", [
-        ("kb_reindex", "重建知识索引（改了笔记不想等整点）"),
-        ("kb_verify", "人工确认某页还成立：/kb_verify 标题"),
-        ("kb_deprecate", "把某页标成已废弃：/kb_deprecate 标题"),
-        ("raw_archive", "把昨天的对话原文归档"),
     ]),
     ("系统", [
         ("prompt_last", "看最近一轮发给模型的 prompt（排障）"),
-        ("meme_stats", "表情包使用统计"),
-        ("profile_forget", "删一个画像字段：/profile_forget 职业与求职"),
-        ("profile_clear", "清空整份画像（会从下次复盘重新长）"),
         ("reload_persona", "重载人格文件，不用重启"),
     ]),
 ]
 
+# 注册了但不再展示：代码与 handler 都还在，只是不进 /help、不进 /debug。
+# lint 看到它们在注册表里，会跳过「没写进清单」的检查。
+HIDDEN = frozenset({
+    # 日常里撤下来的
+    "diary_show", "remind_list", "remind_cancel", "note_list", "meme",
+    # 记忆 / 情绪
+    "memory_cleanup", "memory_conflicts", "mood_history",
+    # 日记与复盘（有定时任务代替）
+    "diary_list", "diary_write", "review_now", "weekly_now",
+    # 知识库
+    "kb_reindex", "kb_verify", "kb_deprecate", "raw_archive",
+    # 系统
+    "meme_stats", "profile_forget", "profile_clear",
+})
+
 
 def names() -> list[str]:
-    """全部命令名（不带斜杠）。lint 用它核对注册表，日常 + 维护都要算。"""
+    """展示中的命令名（不带斜杠）。"""
     return [n for _, items in GROUPS + DEBUG_GROUPS for n, _ in items]
+
+
+def hidden() -> frozenset:
+    """注册但不展示的命令。"""
+    return HIDDEN
 
 
 def _render(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
@@ -79,11 +71,13 @@ def _render(groups: list[tuple[str, list[tuple[str, str]]]]) -> str:
 
 
 def text() -> str:
-    """日常清单。/debug 里那 18 条不展开，只留一句提示。"""
-    tail = "其余维护命令：/debug（记忆 / 情绪 / 复盘 / 知识库 / 系统）"
-    return chr(10).join([_render(GROUPS), tail, "全部为超管命令；群里不响应。"])
+    return chr(10).join([_render(GROUPS), "全部为超管命令；群里不响应。"])
 
 
 def debug_text() -> str:
-    """/debug 的正文：维护命令全量。"""
     return chr(10).join([_render(DEBUG_GROUPS), "全部为超管命令；群里不响应。"])
+
+
+def all_names() -> list[str]:
+    """展示 + 隐藏，给需要完整清单的地方用（比如测试）。"""
+    return names() + sorted(HIDDEN)

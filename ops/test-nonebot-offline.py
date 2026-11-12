@@ -1783,7 +1783,9 @@ async def main() -> None:
 
     # 命令清单：/help 的唯一真相源（lint 会核对注册表，这里只保证内容可用）
     from app_core import help as help_mod
-    check("help 清单够全", len(help_mod.names()) >= 29, str(len(help_mod.names())))
+    check("help 清单够全（展示+隐藏）",
+      len(help_mod.all_names()) >= 29, str(len(help_mod.all_names())))
+    check("展示的清单已精简", len(help_mod.names()) <= 13, str(len(help_mod.names())))
     check("help 无重复", len(help_mod.names()) == len(set(help_mod.names())))
     check("help 文案分组", "【日常】" in help_mod.text() and "/ping" in help_mod.text())
 

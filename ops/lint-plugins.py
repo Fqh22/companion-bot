@@ -143,9 +143,10 @@ def check_help_coverage() -> tuple[list[str], list[str]]:
     except Exception as e:  # noqa: BLE001
         return [], [f"读不到 app_core/help.py：{type(e).__name__}: {e}"]
     listed = set(help_mod.names())
+    hidden = set(help_mod.hidden()) if hasattr(help_mod, "hidden") else set()
     registered = set(_scan_commands())
     fails: list[str] = []
-    missing = sorted(registered - listed)
+    missing = sorted(registered - listed - hidden)
     if missing:
         fails.append("这些命令注册了但没写进 /help：/" + "、/".join(missing))
     extra = sorted(listed - registered)
