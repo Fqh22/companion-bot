@@ -98,6 +98,7 @@ class Turn:
     think: bool = False
     memory_trace: list = field(default_factory=list)
     self_check: str = ""
+    meta_leak: bool = False
 
 
 class ChatTurnMixin:
@@ -500,6 +501,10 @@ class ChatTurnMixin:
                         part = prompt_mod.soften_tone(part)  # 去掉「哈哈哈」这类轻浮语气
                     if not part.strip():
                         continue
+                    if self_check_mod.is_meta(part):
+                        log.warning("[chat] 丢弃元叙述片段：%s", part[:60])
+                        turn.meta_leak = True
+                        continue
                     if turn.held:
                         await on_sentence(turn.held)
                         turn.sent_parts.append(turn.held)
@@ -542,7 +547,23 @@ class ChatTurnMixin:
                     log.info("流式失败，回退非流式成功")
                 except Exception as e2:  # noqa: BLE001
                     log.warning("回退非流式也失败：%s", e2)
-        if not turn.text and not turn.streamed:
+        # 元叙述：模型把「怎么组织回复」写进了正文。流式片段已在 sink 里拦掉，
+        # 这里再兜一次整段（非流式路径）；还没发出去就重试一次，且关掉思考。
+        if self_check_mod.is_meta(turn.text or turn.buffer):
+            log.warning("[chat] 整段是元叙述，丢弃后重试：%s",
+                        (turn.text or turn.buffer)[:80])
+            turn.meta_leak = True
+            turn.text, turn.buffer = "", ""
+            if not turn.sent_parts:
+                try:
+                    turn.text = await self._run_tools(
+                        turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
+                        budget=turn.img_budget, stats=turn.task_stats,
+                        thinking=False, allow_tools=turn.owner)
+                    turn.streamed = False      # 重试是非流式，交回给 reply 发
+                except Exception as e:  # noqa: BLE001
+                    log.warning("元叙述重试失败：%s", e)
+        if not turn.text and not turn.sent_parts:
             turn.text = random.choice(_chat().FALLBACK_LINES)
         # 这一轮到底费不费劲：查了几轮工具、答了多长。问一句答一句几乎不耗，
         # 查三次资料再写长答案才该累——按条数扣钱会把这两件事算成一样。

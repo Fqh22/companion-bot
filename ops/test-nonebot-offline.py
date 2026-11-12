@@ -824,6 +824,36 @@ async def main() -> None:
     check("reply 返回 (分段列表, 图片列表)",
           isinstance(replies, list) and isinstance(imgs, list) and len(replies) >= 1, str(replies))
 
+    # ---------- F1b. 元叙述不发给用户 ----------
+    # 2026-11-12 线上真实样本：模型把「怎么组织回复」的独白当正文发了出来。
+    from app_core import self_check as self_check_mod
+
+    _meta_text = ("自检那行先按要求写？系统要求格式——需写一行自检。"
+                  "但注意「标签不会发给用户」。我照写。正文：哪个想法，"
+                  "联合那套还是连 Claude 也不碰了短一点。")
+    check("识别元叙述（真实样本）", self_check_mod.is_meta(_meta_text))
+    check("正常回复不误判",
+          not self_check_mod.is_meta("嗯，那省事。省下来的时间够你把手头那点事弄完了。"))
+    check("长文里的「正文：」不误判",
+          not self_check_mod.is_meta("正文：" + "这是一段正文。" * 80))
+
+    _mt = {"n": 0}
+
+    async def _fake_run_tools(*a, **k):
+        _mt["n"] += 1
+        return _meta_text if _mt["n"] == 1 else "好，那就不弄了。"
+
+    _old_run_tools = core._run_tools
+    core._run_tools = _fake_run_tools
+    try:
+        _meta_replies, _ = await core.reply(session, "放弃这个想法")
+    finally:
+        core._run_tools = _old_run_tools
+    _joined = "".join(_meta_replies)
+    check("元叙述没有发给用户",
+          "正文：" not in _joined and "自检那行" not in _joined, _joined[:60])
+    check("重试后拿到正常回复", "不弄了" in _joined, _joined[:60])
+
     # ---------- F2. 本轮用户消息在 prompt 里只出现一次 ----------
     # 旧实现先把用户消息写库、再读历史，于是历史末尾就是这句话，
     # build_messages 又追加一次 —— prompt 里连出两条一模一样的 user。
