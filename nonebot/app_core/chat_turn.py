@@ -391,6 +391,17 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("表情回应提示失败：%s", e)
 
+        # 当前轮就能"看见"图：图注原本只在事后补进历史，等于这一轮模型只看到
+        # 「附了 1 张图」，问「这是什么」时答不出来。这里先给一次图注，再进 prompt。
+        if turn.images:
+            try:
+                _cap = await self.caption_images(turn.images)
+                if _cap:
+                    turn.extra_system.append(
+                        "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
+            except Exception as e:  # noqa: BLE001
+                log.debug("当前轮图注失败：%s", e)
+
         # 此刻：他最近在聊什么、还挂着什么、情绪如何——状态，不是事实。
         try:
             from app_core import situation
