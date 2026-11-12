@@ -102,6 +102,9 @@ READ_ONLY_TOOLS = frozenset({
 # 而且这条路径不受「插件只做 IO」约束——陌生人不该有写入口。
 PUBLIC_TOOLS = frozenset({"web_search", "meme_send"})
 
+# 单次工具返回的上限：超了截断并说明，别让一条记忆撑满上下文。
+MAX_RESULT_CHARS = 2000
+
 
 async def _note_write(core, args, images) -> str:
     try:
@@ -233,9 +236,19 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
     except Exception:  # noqa: BLE001
         pass
     try:
-        return await handler(core, args, images)
+        out = await handler(core, args, images)
+    except (ValueError, TypeError, KeyError) as e:
+        # 参数错要能自我纠正：告诉它「格式不对」，不是「执行失败」。
+        return f"参数不对：{e}（检查格式再试一次）"
     except Exception as e:  # noqa: BLE001
+        if "Timeout" in type(e).__name__:
+            return f"工具超时：{name}（换种说法或稍后再试）"
         return f"工具执行失败：{type(e).__name__}: {e}"
+    # 返回截断：memory_read 这类可能返回几千字，直接撑满上下文。
+    s = str(out if out is not None else "")
+    if len(s) > MAX_RESULT_CHARS:
+        s = s[:MAX_RESULT_CHARS] + f"\n（内容太长已截断，原文共 {len(s)} 字）"
+    return s
 
 
 # 启动自检：schema 与实现必须一一对应。漏了这里会立刻炸，而不是等到模型调工具才报未知。
