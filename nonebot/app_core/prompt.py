@@ -247,6 +247,13 @@ LANDMINES = (
     "玩笑：解释笑点、突然正经、上价值、连回三条。"
 )
 
+# 表情包：库里有 174 张，但模型从不主动调（2026-11-12 反馈「好像没发过」）。
+# 工具描述管不住，得在 prompt 里明确说一次「该发」。
+MEME_HINT = (
+    "情绪明显、自嘲、或者一句话太干的时候，发一张表情包（meme_send）比打字更像人；"
+    "每轮最多一张，别连着发。"
+)
+
 # 接住（docs/09）：允许问、允许不接——这两条比任何「怎么回」的规则都更接近接住。
 CATCHING_RULE = (
     "状态不明时先问一句「怎么了」或「你说的是哪件」，别猜着往下说。"
@@ -639,6 +646,7 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
             msgs.append({"role": "system", "content": SELF_CHECK_RULE})
             msgs.append({"role": "system", "content": LANDMINES})
             msgs.append({"role": "system", "content": CATCHING_RULE})
+            msgs.append({"role": "system", "content": MEME_HINT})
     # 时间放在最后一段：每轮都变，只能放易变区；但 model / rules 都必须拿到，
     # 否则「明天几点」这类话只能靠猜（以前只有 rules 模式的 style_block 带时间）。
     msgs.append({"role": "system", "content": now_line().replace("[现在] ", "现在：")})
