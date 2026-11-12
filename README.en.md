@@ -41,7 +41,7 @@ platform
 ## Layers
 
 Three layers inside the kernel, enforced by `ops/lint-layers.py`
-(see [docs/07-分层.md](docs/07-分层.md)):
+(see [docs/06-扩展与移植.md](docs/06-扩展与移植.md)):
 
 | Layer | Responsibility | Examples |
 |---|---|---|
@@ -72,7 +72,7 @@ registry = default_registry(engine.core)
 reply = await registry.dispatch("/mood", CommandContext(session=my_session, is_owner=True))
 ```
 
-That is all. See [docs/06-移植指南.md](docs/06-移植指南.md) (Chinese).
+That is all. See [docs/06-扩展与移植.md](docs/06-扩展与移植.md) (Chinese).
 
 ## Quick start (no platform needed)
 
@@ -129,11 +129,11 @@ ops/drill-console.py   # offline drill: a real conversation with no QQ
 
 | Topic | File |
 |---|---|
-| Layers and where new modules go | [docs/07-分层.md](docs/07-分层.md) |
+| Layers and where new modules go | [docs/06-扩展与移植.md](docs/06-扩展与移植.md) |
 | Message flow and data layout | [docs/01-系统.md](docs/01-系统.md) |
 | Deploy, backup, troubleshooting | [docs/02-运维.md](docs/02-运维.md) |
 | Which test guards which wiring | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
-| Porting away from QQ | [docs/06-移植指南.md](docs/06-移植指南.md) |
+| Porting away from QQ | [docs/06-扩展与移植.md](docs/06-扩展与移植.md) |
 
 ## License
 

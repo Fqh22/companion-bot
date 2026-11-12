@@ -37,7 +37,7 @@
 
 ## 分层
 
-规则由 `ops/lint-layers.py` 强制，详见 [docs/07-分层.md](docs/07-分层.md)：
+规则由 `ops/lint-layers.py` 强制，详见 [docs/06-扩展与移植.md](docs/06-扩展与移植.md)：
 
 | 层 | 职责 | 例子 |
 |---|---|---|
@@ -67,7 +67,7 @@ async def on_message(platform_msg):
 
 命令用现成的注册表：`registry = default_registry(engine.core)`，然后 `registry.dispatch("/mood", ctx)`。
 
-记忆、情绪、prompt、分段、45 秒硬线、只读命令全部复用。完整说明见 [docs/06-移植指南.md](docs/06-移植指南.md)。
+记忆、情绪、prompt、分段、45 秒硬线、只读命令全部复用。完整说明见 [docs/06-扩展与移植.md](docs/06-扩展与移植.md)。
 
 ## 快速开始（不需要任何平台）
 
@@ -129,20 +129,15 @@ ops/drill-console.py   # 断线演练：没有 QQ 也能跑一轮真实对话
 
 | 想了解 | 读 |
 |---|---|
-| 项目定义与决策判据 | [docs/09-设计初衷.md](docs/09-设计初衷.md) |
-| 从对话中心迁到记忆契约 | [docs/10-重构方案.md](docs/10-重构方案.md) |
-| mood / task 怎么进契约 | [docs/11-mood-task设计.md](docs/11-mood-task设计.md) |
-| 回话自检（替代场景枚举） | [docs/12-回话自检.md](docs/12-回话自检.md) |
-| 语音输入（转写 / 场景 / 兜底） | [docs/13-语音输入方案.md](docs/13-语音输入方案.md) |
-| 关系小抄（称呼 / 共同经历 / 雷区） | [docs/relation.example.md](docs/relation.example.md) |
-| 什么该自己做、什么该外包 | [docs/14-内核与外包.md](docs/14-内核与外包.md) |
-| 内核分层、新模块放哪 | [docs/07-分层.md](docs/07-分层.md) |
-| 加模块 / 通道 / 命令 / 工具 / 任务 | [docs/08-扩展指南.md](docs/08-扩展指南.md) |
+| 项目定义与判断（接住） | [docs/09-设计初衷.md](docs/09-设计初衷.md) |
+| 设计决策（内核/外包、记忆契约、mood-task、自检、语音） | [docs/10-设计决策.md](docs/10-设计决策.md) |
+| 分层与扩展（三层、通道、五条路径） | [docs/06-扩展与移植.md](docs/06-扩展与移植.md) |
 | 消息流、数据布局 | [docs/01-系统.md](docs/01-系统.md) |
 | 工具循环、提醒、为什么没有多步 agent | [docs/03-对话与工具.md](docs/03-对话与工具.md) |
 | 部署、备份、排障 | [docs/02-运维.md](docs/02-运维.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
-| 换掉 QQ、移植到别的平台 | [docs/06-移植指南.md](docs/06-移植指南.md) |
+| 可视化改配置 | [docs/05-配置界面.md](docs/05-配置界面.md) |
+| 关系小抄示例 | [docs/relation.example.md](docs/relation.example.md) |
 
 ## License
 

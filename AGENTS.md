@@ -38,7 +38,7 @@ ops/verify.sh                    # 全量
 | `ops/` | 运维/测试 | 每个脚本可独立跑 |
 | `docs/` | 文档 | 00 概览、01 系统、02 运维、04 联动、06 移植、07 分层 |
 
-分层规则由 `ops/lint-layers.py` 强制（详见 `docs/07-分层.md`）：
+分层规则由 `ops/lint-layers.py` 强制（详见 `docs/06-扩展与移植.md`）：
 
 - **domain**（`prompt` `pacing` `delivery` `intent` `mood_domain` …）只做纯规则，不碰 IO，不 import orchestration；
 - **orchestration**（`engine` `runner` `commands` `runtime` `chat` `scheduler` `proactive_runtime` …）负责编排；
@@ -112,4 +112,4 @@ ops/verify.sh                    # 全量
 | 记忆不写 | `/ping` 的配置状态；`admin.user_id` 是否配 |
 | 定时任务没跑 | `job_runs` 表；`/debug`；`missing_jobs` |
 | 语气/长度不对 | `data/prompt_log` 的最近一条；`/prompt_last` |
-| 通道断了 | `docs/06-移植指南.md` |
+| 通道断了 | `docs/06-扩展与移植.md` |
