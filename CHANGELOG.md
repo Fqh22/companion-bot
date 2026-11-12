@@ -2,6 +2,17 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-12 · 红线 8 可执行：记忆直连基线检查
+
+- `lint-plugins.py` 新增 `check_memory_port()`：按「文件 → 模块 → 符号」冻结入口对
+  `memory/profile/wiki/kb/diary/learn` 的存量直连（9 个文件）。新增文件、新模块、新符号
+  一律 FAIL；白名单里没人用的符号 WARN，提示收紧。
+- 装配点与实现层豁免（`chat` / `memory_port` / `memory` / `kb` / `learn` / `wiki` 等），
+  避免把「适配器自己」也当成违规。
+- 验证：临时造一个 import `wiki` 的新文件 → FAIL；在 `chat_turn.py` 加
+  `wiki.archive_stale()` → FAIL 并给出文件:行号；恢复后 PASS。
+- AGENTS 红线 8、docs/10 补了检查名与白名单机制。lint 仍 0 FAIL / 0 WARN。
+
 ## 2026-11-12 · 体检修复：文档漂移 / 预搜索超时 / 迁移静默 / 清理
 
 - 文档：修 docs/00 的 `10-重构方案.md` 坏链，647/239 → 648/247；AGENTS 与 lint 注释里的

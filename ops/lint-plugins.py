@@ -11,6 +11,7 @@
   app_core/   语法、不得 import nonebot（分层红线）、不得裸 print
   plugins/    每个包有 __init__.py、语法、不得裸 print、README 缺失记 WARN
   跨插件      命令名不得重复（重名时高优先级的 matcher 会把另一个整个吞掉）
+  红线 8      入口的记忆读写只走 MemoryPort（存量按 _MEM_ALLOWED 冻结，新增即 FAIL）
 """
 from __future__ import annotations
 
@@ -255,6 +256,122 @@ def check_core_api() -> tuple[list[str], list[str]]:
     return fails, sorted(set(warns))
 
 
+# ---------------- 红线 8：记忆读写只走 MemoryPort ----------------
+# AGENTS 红线 8 / docs/10：入口只认 recall / remember / forget / explain。
+# 存量直连按「文件 -> 模块 -> 允许的符号」冻结：新增文件、新增模块、新增符号一律 FAIL；
+# 迁掉一个符号就从这里删一个（白名单里没人用的条目会 WARN，提醒收紧）。
+_MEM_MODULES = frozenset({"memory", "profile", "wiki", "kb", "diary", "learn"})
+
+# 装配点与实现层豁免：chat 持有 Memory 实例，memory_port 就是适配器本身，
+# memory/kb/wiki/learn/review/purge/web 是存储实现及它们的内部协作。
+_MEM_EXEMPT = frozenset({
+    "app_core/chat.py", "app_core/memory_port.py", "app_core/memory.py",
+    "app_core/memory_store.py", "app_core/memory_index.py", "app_core/kb.py",
+    "app_core/learn.py", "app_core/wiki.py", "app_core/review.py",
+    "app_core/purge.py", "app_core/web.py", "app_core/meme.py",
+})
+
+_MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
+    "app_core/chat_turn.py": {
+        "kb": {"recall"},                       # 索引没建好时的向量兜底
+        "learn": {"profile_conf", "profile_fields", "profile_seen",
+                  "recent_corrections", "skill_match"},   # 画像 / 技能 / 纠正清单
+        "memory": {"embed", "recall"},          # 向量与召回（port 内部也走这里）
+        "profile": {"compact"},                 # 画像压缩块
+        "wiki": {"index_text"},                 # 知识索引
+    },
+    "app_core/tools.py": {
+        "diary": {"list_days", "read"}, "kb": {"search_meta"},
+        "learn": {"note_list", "note_write"}, "memory": {"read_full", "recall"},
+        "wiki": {"read"},
+    },
+    "app_core/commands.py": {"diary": {"write_day"}, "learn": {"review", "weekly"}},
+    "app_core/scheduling/scheduler.py": {
+        "diary": {"write_day"}, "kb": {"index"},
+        "learn": {"archive_raw", "review", "spaced_review", "weekly"},
+        "wiki": {"archive_stale", "refresh", "weekly_text"},
+    },
+    "app_core/introspect.py": {"profile": {"MIN_CONF", "age_days", "effective_conf"}},
+    "app_core/proactive_sources.py": {"learn": {"CURIOUS", "curious_ok", "read_list"}},
+    "plugins/admin/__init__.py": {"learn": {"profile_fields", "profile_path"},
+                                  "profile": {"clear", "forget"}},
+    "plugins/commands/__init__.py": {
+        "diary": {"list_days", "read", "write_day"}, "kb": {"index"},
+        "learn": {"archive_raw", "note_list", "parse_ts", "review", "set_meta", "weekly"},
+        "wiki": {"resolve", "set_verified"},
+    },
+    "plugins/schedule/__init__.py": {"kb": {"index"}, "wiki": {"refresh"}},
+}
+
+
+def _mem_usage(p: Path):
+    """返回 ([(行号, 模块, 符号)], {导入的模块})。
+
+    只认 `from app_core import learn` 这类别名，以及 `self.memory.*` / `core.memory.*`。
+    """
+    try:
+        tree = ast.parse(p.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return [], set()
+    alias = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and n.module == "app_core":
+            for a in n.names:
+                if a.name in _MEM_MODULES:
+                    alias[a.asname or a.name] = a.name
+        elif isinstance(n, ast.ImportFrom) and (n.module or "").startswith("app_core."):
+            m = n.module.split(".")[1]
+            if m in _MEM_MODULES:
+                alias[n.module.split(".")[-1]] = m
+    hits = []
+    for n in ast.walk(tree):
+        if not isinstance(n, ast.Attribute):
+            continue
+        base = n.value
+        if isinstance(base, ast.Name) and base.id in alias:
+            hits.append((n.lineno, alias[base.id], n.attr))
+        elif (isinstance(base, ast.Attribute) and base.attr == "memory"
+              and isinstance(base.value, ast.Name)
+              and base.value.id in ("self", "core")):
+            hits.append((n.lineno, "memory", n.attr))
+    return hits, set(alias.values())
+
+
+def check_memory_port():
+    fails = []
+    warns = []
+    for p in sorted(list(CORE.rglob("*.py")) + list(PLUGINS.rglob("*.py"))):
+        if "__pycache__" in p.parts:
+            continue
+        rel = p.relative_to(NB).as_posix()
+        if rel in _MEM_EXEMPT:
+            continue
+        hits, imported = _mem_usage(p)
+        if not hits and not imported:
+            continue
+        allowed = _MEM_ALLOWED.get(rel)
+        if allowed is None:
+            seen = sorted({f"{m}.{s}" for _, m, s in hits})
+            fails.append(
+                f"{rel}: 直接读写记忆（{', '.join(seen) or '仅 import'}）——红线 8："
+                f"入口只走 MemoryPort；确有必要就登记到 ops/lint-plugins.py 的 _MEM_ALLOWED")
+            continue
+        for mod in sorted(imported - set(allowed)):
+            fails.append(f"{rel}: import 了未登记的记忆模块 {mod}——红线 8 要显式登记")
+        for ln, mod, sym in hits:
+            if sym not in allowed.get(mod, set()):
+                fails.append(
+                    f"{rel}:{ln}: {mod}.{sym} 未登记——红线 8：新代码记忆读写走 "
+                    f"MemoryPort（要保留存量先登记）")
+        used = {(m, s) for _, m, s in hits}
+        for mod, syms in allowed.items():
+            for sym in sorted(syms):
+                if (mod, sym) not in used and mod in imported:
+                    warns.append(
+                        f"{rel}: 白名单 {mod}.{sym} 已无人使用，可以从 _MEM_ALLOWED 删掉")
+    return fails, sorted(set(warns))
+
+
 def check_duplicate_commands() -> list[str]:
     """命令名不许重复：同名的两个 matcher，优先级高的会把另一个整个吞掉。
 
@@ -302,6 +419,9 @@ def main() -> int:
         api_fails, api_warns = check_core_api()
         all_fails += api_fails
         all_warns += api_warns
+        mp_fails, mp_warns = check_memory_port()
+        all_fails += mp_fails
+        all_warns += mp_warns
         help_fails, help_warns = check_help_coverage()
         all_fails += help_fails
         all_warns += help_warns

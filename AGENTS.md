@@ -66,6 +66,8 @@ ops/verify.sh                    # 全量
 7. adapters 不许 import `chat` / `chat_turn` / `tool_loop`。
 8. 新代码的记忆读写只走 `MemoryPort`（`docs/10`），不直接 import `memory` / `profile` / `wiki`。
    已迁：fact 读写、knowledge 读写、profile 读写、forget、trace；mood/task 未进契约，别硬塞。
+   机器检查：`lint-plugins.py` 的 `_MEM_ALLOWED` 按「文件 → 模块 → 符号」冻结存量直连；
+   新增文件 / 新模块 / 新符号直接 FAIL，迁掉一个就从白名单删一个（没人用的条目会 WARN）。
 
 ## 5. 改完要留什么
 
