@@ -142,6 +142,7 @@ from app_core import (  # noqa: E402
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
     maintenance as maint_mod, paths as paths_mod, review as review_mod,
     parse_log as parse_log_mod, reality as reality_mod,
+    perception as perception_mod,
     vec as vec_mod,
     status as status_mod, runner as runner_mod,
     commands as commands_mod, introspect as introspect_mod, runtime as runtime_mod,
@@ -171,6 +172,8 @@ check("现实校验：夜里说早安会记录",
       "morning_word_at_night" in reality_mod.check("早上好", 22, "记忆"))
 check("现实校验：正常回复不写",
       reality_mod.check("嗯，那省事。", 22, "记忆") == [])
+check("天气词表命中", perception_mod.should_read("今天下雨吗"))
+check("天气词表不误伤", not perception_mod.should_read("今天好累"))
 memory_mod.DB = TMP / "livingmemory.db"
 kb_mod.DB, kb_mod.LEARN = TMP / "chat.db", LEARN
 learn_mod.LEARN, learn_mod.MEM_DB, learn_mod.CHAT_DB = LEARN, memory_mod.DB, TMP / "chat.db"

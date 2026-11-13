@@ -1695,6 +1695,25 @@ async def main() -> None:
     check("没有来源的现势断言被记",
           "live_claim_no_source" in reality_mod.check("现在多少钱", 15, "无"))
     check("正常回复不记", reality_mod.check("嗯，那省事。", 15, "记忆") == [])
+    from app_core import perception as perception_mod
+    check("天气词表命中", perception_mod.should_read("今天下雨吗"))
+    check("天气词表不误伤", not perception_mod.should_read("今天好累"))
+    _pcalls = {"n": 0}
+
+    async def _fake_wttr(name):
+        _pcalls["n"] += 1
+        return {"text": "晴 20°C", "as_of": 0, "source": "test"}
+
+    _old_wttr = perception_mod._wttr
+    perception_mod._wttr = _fake_wttr
+    perception_mod.clear_cache()
+    try:
+        _a = await perception_mod.read("深圳")
+        _b = await perception_mod.read("深圳")
+    finally:
+        perception_mod._wttr = _old_wttr
+        perception_mod.clear_cache()
+    check("天气缓存命中", _pcalls["n"] == 1 and bool(_a) and bool(_b), str(_pcalls))
     check("时段：7 点是早上", decide.period(7) == "早上", decide.period(7))
     check("时段：2 点是深夜", decide.period(2) == "深夜", decide.period(2))
     check("时段：14 点是下午", decide.period(14) == "下午", decide.period(14))

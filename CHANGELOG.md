@@ -2,6 +2,17 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-14 · 天气感知 v1：按需、缓存、失败不编
+
+- 新增 `perception.py`：`should_read` 词表命中才查；wttr.in 免 key，失败退
+  `web.search`；缓存 30 分钟；失败返回 `None`（unknown），不返回空串。
+- `chat_turn` 命中词表注入「【天气】…（HH:MM 查的）」；查不到给一句
+  「这次没查到，不知道就直说，别编」。
+- `config.example.yaml` 加 `weather.city / cache_minutes`；云端 `config.yaml`
+  已加 `city: 深圳`（备份 `config.yaml.bak-weather-20261114`）。
+- `lint-layers` 允许 `perception` import `web`（感知层是外包入口）。
+- 686/686、252/252、46/46；云端 verify 5/5；实测：深圳 `Heavy rain 23°C`。
+
 ## 2026-11-14 · 现实层 v1：clock、影子校验、现势下限
 
 - `now_line` 加时段（早上/深夜）与「距上次说话 >6h」；`prompt/chat/chat_turn` 透传，

@@ -146,6 +146,8 @@ def check_plugins():
 OUTSOURCED = frozenset({"web", "asr", "llm"})
 OUTSOURCED_ALLOWED = frozenset({
     "chat", "chat_turn", "memory", "tools", "engine", "group", "__init__",
+    # 感知层本身就是外包入口：天气源失败时退到 web.search，属于装配逻辑
+    "perception",
 })
 
 

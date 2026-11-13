@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app_core import (attention, config, followup, intent, kb, learn, mood,
-                      relational, shadow, wiki)
+                      perception, relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
 from app_core import self_check as self_check_mod
@@ -125,6 +125,20 @@ class ChatTurnMixin:
 
         self._prepare_followup(turn, user_text)
         await self._prepare_search(turn, user_text)
+        # 天气只在命中词表时查（不是每轮碰外部 API）；失败不常驻 prompt，
+        # 只在「他确实问了」时给一句「没查到，别编」（docs/15 的失败双路语义）。
+        if perception.should_read(user_text):
+            try:
+                _w = await asyncio.wait_for(perception.read(), timeout=10)
+            except Exception:  # noqa: BLE001
+                _w = None
+            if _w:
+                turn.extra_system.append(
+                    "【天气】" + str(_w.get("text") or "")[:200]
+                    + "（" + time.strftime("%H:%M", time.localtime(_w.get("as_of") or time.time()))
+                    + " 查的；只作依据，别把没说的天气硬塞进去）")
+            else:
+                turn.extra_system.append("【天气】这次没查到，不知道就直说，别编。")
 
         try:
             turn.digest = await self.get_digest(session)
