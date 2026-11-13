@@ -45,8 +45,78 @@ def init() -> None:
     c.close()
 
 
-def _parse(when: str) -> float | None:
-    """支持 `YYYY-MM-DD HH:MM`、`YYYY-MM-DD HH:MM:SS`、`YYYY-MM-DD`。"""
+_CN_NUM = {"零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+           "六": 6, "七": 7, "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12}
+
+
+def _num(s: str) -> int | None:
+    s = (s or "").strip()
+    if s.isdigit():
+        return int(s)
+    return _CN_NUM.get(s)
+
+
+def _parse_loose(when: str, now: float | None = None) -> float | None:
+    """模型没按 `YYYY-MM-DD HH:MM` 写时的兜底。
+
+    只认几种明确说法（明天 9:00 / 明早九点 / 今晚八点 / 一小时后 / 30 分钟后），
+    认不出就返回 None，让 add 继续回「时间看不懂」——**不猜日期**，猜错比报错糟。
+    """
+    s = (when or "").strip()
+    if not s:
+        return None
+    now = now if now is not None else time.time()
+    base = datetime.fromtimestamp(now)
+
+    m = re.search(r"(\d+|[一二两三四五六七八九十]+)\s*(分钟|分|小时|钟头|天)\s*(?:以)?后", s)
+    if m:
+        n = _num(m.group(1))
+        if n is None:
+            return None
+        unit = m.group(2)
+        secs = n * (60 if unit in ("分钟", "分") else 3600 if unit in ("小时", "钟头") else 86400)
+        return (base + timedelta(seconds=secs)).timestamp()
+    if "半小时后" in s:
+        return (base + timedelta(minutes=30)).timestamp()
+
+    day = None
+    for word, off in (("大后天", 3), ("后天", 2), ("明天", 1), ("明早", 1),
+                      ("明晚", 1), ("今天", 0), ("今晚", 0)):
+        if word in s:
+            day = off
+            break
+
+    period = None
+    for word, h in (("凌晨", 0), ("早上", 0), ("上午", 0), ("中午", 12),
+                    ("下午", 12), ("傍晚", 12), ("晚上", 12), ("今晚", 12), ("明晚", 12)):
+        if word in s:
+            period = h
+            break
+
+    tm = re.search(r"(\d{1,2}|[一二两三四五六七八九十]{1,2})\s*(?:[:：]|点)\s*"
+                   r"(\d{1,2}|[一二三四五六七八九十]{1,2})?\s*分?", s)
+    if not tm:
+        return None
+    hour = _num(tm.group(1))
+    minute = _num(tm.group(2)) if tm.group(2) else 0
+    if hour is None or minute is None:
+        return None
+    if period == 12 and hour < 12:
+        hour += 12
+    if hour > 23 or minute > 59:
+        return None
+
+    target = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    if day is not None:
+        target += timedelta(days=day)
+    target = target.replace(hour=hour, minute=minute)
+    if day is None and target <= base:
+        target += timedelta(days=1)
+    return target.timestamp()
+
+
+def _parse(when: str, now: float | None = None) -> float | None:
+    """支持 `YYYY-MM-DD HH:MM`、`YYYY-MM-DD HH:MM:SS`、`YYYY-MM-DD`，再兜底自然语言。"""
     s = (when or "").strip().replace("/", "-").replace("T", " ")
     if not s:
         return None
@@ -55,7 +125,7 @@ def _parse(when: str) -> float | None:
             return datetime.strptime(s, fmt).timestamp()
         except ValueError:
             continue
-    return None
+    return _parse_loose(s, now)
 
 
 def _fmt(ts: float) -> str:

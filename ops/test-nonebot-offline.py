@@ -1094,6 +1094,20 @@ async def main() -> None:
     ok_msg = remind_mod.add("交周报", tomorrow)
     check("提醒能创建", "记下了" in ok_msg, ok_msg)
     check("非法时间被拒", "看不懂" in remind_mod.add("x", "明天早上"))
+    _now = datetime(2026, 11, 13, 20, 0).timestamp()
+    _ip = remind_mod._parse
+    check("自然语言：明天 9:00",
+          _ip("明天 9:00", now=_now) == datetime(2026, 11, 14, 9, 0).timestamp(),
+          str(_ip("明天 9:00", now=_now)))
+    check("自然语言：明早九点",
+          _ip("明早九点", now=_now) == datetime(2026, 11, 14, 9, 0).timestamp(),
+          str(_ip("明早九点", now=_now)))
+    check("自然语言：今晚八点",
+          _ip("今晚八点", now=_now) == datetime(2026, 11, 13, 20, 0).timestamp(),
+          str(_ip("今晚八点", now=_now)))
+    check("自然语言：一小时后",
+          _ip("一小时后", now=_now) == datetime(2026, 11, 13, 21, 0).timestamp(),
+          str(_ip("一小时后", now=_now)))
     check("过去时间被拒", "已经过去" in remind_mod.add("x", "2020-01-01 00:00"))
     check("超远时间被拒", "太远" in remind_mod.add("x", "2099-01-01 00:00"))
 
