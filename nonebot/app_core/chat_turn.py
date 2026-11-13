@@ -153,7 +153,6 @@ class ChatTurnMixin:
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
         turn.user_msg_id = await self.remember_safe(session, "user", turn.stored) or 0
-        self.user_msg_id = turn.user_msg_id
         if not turn.user_msg_id:
             turn.degraded += 1
         # 距上一条用户消息多久（排除本轮刚写的这条）。>6h 才会写进 prompt，
@@ -275,7 +274,8 @@ class ChatTurnMixin:
         try:
             port = self._memory_port() if turn.owner else None
             if port is not None:
-                items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv)
+                items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv,
+                                          trace=turn.memory_trace)
                 turn.memories = [{
                     "doc_id": i.ref,
                     "text": i.text,
@@ -289,8 +289,9 @@ class ChatTurnMixin:
             log.debug("召回失败（%s），本轮无记忆", e)
             turn.memories = []
         # P4：这一轮读了什么，落一条轨迹，/trace 可查。
+        # 轨迹由 recall 直接追加进 turn.memory_trace——port 是共享单例，
+        # 不能再当「上一轮读了什么」的状态容器，否则并发轮次会互相覆盖。
         if turn.owner and port is not None:
-            turn.memory_trace = port.explain()
             try:
                 import json as _json
 
@@ -329,7 +330,8 @@ class ChatTurnMixin:
             port = self._memory_port()
             if port is not None:
                 try:
-                    items = await port.recall(turn.query, ("knowledge",))
+                    items = await port.recall(turn.query, ("knowledge",),
+                                              trace=turn.memory_trace)
                     turn.knowledge = next(
                         (i.text for i in items if i.type == "knowledge"), "")
                 except Exception as e:  # noqa: BLE001
@@ -368,7 +370,8 @@ class ChatTurnMixin:
             if _pfields:
                 port = self._memory_port()
                 if port is not None:
-                    items = await port.recall(turn.query, ("profile",))
+                    items = await port.recall(turn.query, ("profile",),
+                                              trace=turn.memory_trace)
                     _ptext = next((i.text for i in items if i.type == "profile"), "")
                 else:
                     _ptext = profile_mod.compact(_pfields, learn.profile_conf(),

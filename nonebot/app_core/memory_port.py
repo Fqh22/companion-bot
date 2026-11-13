@@ -47,36 +47,40 @@ class MemoryItem:
 class MemoryPort(Protocol):
     async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
                      limit: int = 5, qv: list[float] | None = None,
-                     touch: bool = True) -> list[MemoryItem]: ...
+                     touch: bool = True,
+                     trace: list[dict] | None = None) -> list[MemoryItem]: ...
 
     async def remember(self, item: MemoryItem) -> str: ...
 
     async def forget(self, ref: str, type: str = "fact") -> bool: ...
 
-    def explain(self) -> list[dict]: ...
-
 
 class CoreMemoryPort:
     """把现有存储适配成统一契约。
 
-    P1 只实现读取；写入（remember/forget）留给 P2，先抛 NotImplementedError，
-    避免"看起来接上了、其实没写"。
+    读（recall）与写（remember/forget）都已接上；未实现的类型显式抛错，
+    不返回空列表——缺口无声比缺口本身更糟（见 MEMORY_TYPES 的注释）。
+
+    轨迹（trace）**不挂在实例上**：port 是进程内单例（chat.py 的 _memory_port
+    缓存到 self._mp），挂在实例上意味着两个并发的轮次会互相覆盖对方的「这一轮
+    读了什么」。调用方传自己的 list 进来，各归各的。
     """
 
     def __init__(self, core) -> None:
         self.core = core
-        self._trace: list[dict] = []
 
     async def recall(self, query: str, types: tuple[str, ...] = MEMORY_TYPES,
                      limit: int = 5, qv: list[float] | None = None,
-                     touch: bool = True) -> list[MemoryItem]:
+                     touch: bool = True,
+                     trace: list[dict] | None = None) -> list[MemoryItem]:
         bad = [t for t in types if t not in MEMORY_TYPES]
         if bad:
             raise NotImplementedError(
                 f"记忆类型未实现：{', '.join(bad)}（已实现：{', '.join(MEMORY_TYPES)}）")
 
         out: list[MemoryItem] = []
-        self._trace = []
+        # 本地轨迹：只在这次调用内累积，结束时才交给调用方。
+        tr: list[dict] = []
 
         if "fact" in types:
             rows = await self.core.memory.recall(query, limit, qv=qv, touch=touch)
@@ -92,7 +96,7 @@ class CoreMemoryPort:
                     age_days=r.get("age_days"),
                     confidence=float(meta.get("importance") or 0.0),
                 ))
-            self._trace.append({"type": "fact", "n": len(rows), "limit": limit})
+            tr.append({"type": "fact", "n": len(rows), "limit": limit})
 
         if "knowledge" in types:
             try:
@@ -102,7 +106,7 @@ class CoreMemoryPort:
                 if idx:
                     out.append(MemoryItem(type="knowledge", text=idx,
                                           ref="wiki:index", source="wiki"))
-                    self._trace.append({"type": "knowledge", "n": 1})
+                    tr.append({"type": "knowledge", "n": 1})
             except Exception:  # noqa: BLE001
                 pass
 
@@ -127,7 +131,7 @@ class CoreMemoryPort:
                         payload={"kind": "reminder",
                                  "due_ts": r.get("due_ts")}))
                     n += 1
-                self._trace.append({"type": "task", "n": n, "limit": limit})
+                tr.append({"type": "task", "n": n, "limit": limit})
             except Exception as e:  # noqa: BLE001
                 log.warning("task 读取失败：%s", e)
 
@@ -144,10 +148,13 @@ class CoreMemoryPort:
                         out.append(MemoryItem(type="profile", text=text,
                                               ref="profile", source="review",
                                               confidence=0.7))
-                        self._trace.append({"type": "profile", "n": 1})
+                        tr.append({"type": "profile", "n": 1})
             except Exception:  # noqa: BLE001
                 pass
 
+        # 轨迹交给调用方自己的 list：并发轮次各记各的，不会互相覆盖。
+        if trace is not None:
+            trace.extend(tr)
         return out
 
     async def remember(self, item: MemoryItem) -> str:
@@ -227,7 +234,3 @@ class CoreMemoryPort:
     async def resolve(self, prefix: str) -> list[str]:
         """按 doc_id 前缀找完整 id（/forget id:xxxx 用）。"""
         return list(self.core.memory.find_by_prefix(prefix))
-
-    def explain(self) -> list[dict]:
-        """这一轮读了什么：类型、条数、上限。给 /debug trace 用。"""
-        return list(self._trace)

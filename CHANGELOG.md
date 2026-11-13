@@ -2,6 +2,19 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-14 · 分块记账 + 轨迹归调用方
+
+- `prompt_log` 加 `blocks`：每条 message 就是一个注入块，记 `{i, role, chars, label}`；
+  `/prompt_last` 显示占比最大的 6 块。不改组装、不缩一个字，先让「哪块在长」可见。
+- `CoreMemoryPort` 去掉实例上的 `_trace`：`recall(..., trace=[...])` 由调用方传入。
+  port 是进程内单例（`chat.py:_memory_port` 缓存 `_mp`），之前两个并发轮次会互相
+  覆盖 `/trace` 与 `memory_trace.jsonl`；现在各记各的。
+- 删 `ChatCore.user_msg_id`：只写不读的残留（真正在用的是 `Turn.user_msg_id`）。
+- 补契约测试：多个注入块之间的顺序（此前只有「单块在历史之后」，多块顺序无保护，
+  并发化或重排时顺序漂移不会被发现）、分块账标签/多模态/落库、trace 不跨调用累积。
+- `_memory_port` 注释更新：fact / knowledge / profile / task 都已走契约，不是「P1 只读」。
+- 离线 704/704（+4）、memory-port 37/37、lint-layers / lint-plugins PASS。
+
 ## 2026-11-14 · 纠正分诊：当场识别，后台判断，三类去处
 
 - 新增 `correction.py`：`CORRECTION_HINTS` + 上一轮 assistant 存在 → 候选；

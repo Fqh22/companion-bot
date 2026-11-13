@@ -134,6 +134,28 @@ split_reply = prompt_mod.split_reply
 from app_core.chat_turn import ChatTurnMixin, Turn
 
 
+def prompt_blocks(msgs: list[dict]) -> list[dict]:
+    """把一份 messages 拆成「块账」：每块是什么、占多少字符。
+
+    块边界就是 message 边界——prompt.py 里每个注入块都是一条独立 system，
+    所以不用改组装逻辑，也不用给每块加标记。label 取首行前 16 字：
+    现有块都以 [方括号] 或 【全角】 开头，够辨认。
+    """
+    out: list[dict] = []
+    for i, m in enumerate(msgs or []):
+        c = m.get("content")
+        if isinstance(c, str):
+            chars = len(c)
+            label = " ".join(c.split())[:16]
+        else:
+            # 多模态：content 是 [{type:text,...}, {type:image_url,...}]
+            chars = len(json.dumps(c, ensure_ascii=False))
+            label = "[多模态]"
+        out.append({"i": i, "role": str(m.get("role") or ""),
+                    "chars": chars, "label": label or "(空)"})
+    return out
+
+
 class ChatCore(ChatTurnMixin):
     """聊天编排器。**插件只许调下面列出的成员**（ops/lint-plugins.py 会查）。
 
@@ -158,8 +180,6 @@ class ChatCore(ChatTurnMixin):
         self.stranger_persona = load_stranger_persona()
         self.memory = Memory()
         self._summarizing: set[str] = set()
-        # 最近一条用户消息的行号。图片轮靠它事后补图注（见 caption_images）。
-        self.user_msg_id: int = 0
         cfg = config.load()
         llm = cfg["llm"]
         summ = cfg["summary"]
@@ -339,9 +359,15 @@ class ChatCore(ChatTurnMixin):
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS prompt_log ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, session TEXT, "
-                "sha TEXT, chars INTEGER, flags TEXT, body TEXT)")
+                "sha TEXT, chars INTEGER, flags TEXT, body TEXT, blocks TEXT)")
             try:
                 await db.execute("ALTER TABLE prompt_log ADD COLUMN body TEXT")
+            except Exception:  # noqa: BLE001
+                pass          # 已经有了
+            try:
+                # 分块记账：每块各占多少字符。不记这个，就没人答得上
+                # 「现在一轮 prompt 里各块各占多少」——膨胀只能靠感觉。
+                await db.execute("ALTER TABLE prompt_log ADD COLUMN blocks TEXT")
             except Exception:  # noqa: BLE001
                 pass          # 已经有了
             await db.commit()
@@ -479,15 +505,24 @@ class ChatCore(ChatTurnMixin):
             return ""
 
     async def last_prompts(self, n: int = 1) -> list[dict]:
-        """最近几条 prompt 快照（含正文）。排障用：它当时到底看到了什么。"""
+        """最近几条 prompt 快照（含正文与分块账）。排障用：它当时到底看到了什么。"""
         n = max(1, min(5, int(n or 1)))
         async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
-                "SELECT ts, session, chars, flags, COALESCE(body,'') AS body "
+                "SELECT ts, session, chars, flags, COALESCE(body,'') AS body, "
+                "COALESCE(blocks,'') AS blocks "
                 "FROM prompt_log ORDER BY id DESC LIMIT ?", (n,))
             rows = await cur.fetchall()
-        return [{"ts": r[0], "session": r[1], "chars": r[2],
-                 "flags": r[3] or "", "body": r[4] or ""} for r in rows]
+        out = []
+        for r in rows:
+            try:
+                blocks = json.loads(r[5]) if r[5] else []
+            except Exception:  # noqa: BLE001
+                blocks = []
+            out.append({"ts": r[0], "session": r[1], "chars": r[2],
+                        "flags": r[3] or "", "body": r[4] or "",
+                        "blocks": blocks})
+        return out
 
     async def remember(self, session: str, role: str, content: str) -> int:
         """写一条消息，返回行号。行号用来事后补写（比如给图片补图注）。"""
@@ -510,12 +545,14 @@ class ChatCore(ChatTurnMixin):
             blob = json.dumps(msgs, ensure_ascii=False).encode()
             tag = ",".join(k for k, v in flags.items() if v)
             body = blob.decode("utf-8", errors="replace")[:6000]
+            # 分块账：和正文一起落，事后才答得上「哪块在长」。
+            blocks = json.dumps(prompt_blocks(msgs), ensure_ascii=False)
             async with aiosqlite.connect(DB, timeout=15) as db:
                 await db.execute(
-                    "INSERT INTO prompt_log(ts,session,sha,chars,flags,body) "
-                    "VALUES(?,?,?,?,?,?)",
+                    "INSERT INTO prompt_log(ts,session,sha,chars,flags,body,blocks) "
+                    "VALUES(?,?,?,?,?,?,?)",
                     (time.time(), session, hashlib.sha256(blob).hexdigest()[:16],
-                     len(blob), tag, body))
+                     len(blob), tag, body, blocks))
                 # 只留最近 100 条：正文占空间，排障也只看最近的
                 await db.execute(
                     "DELETE FROM prompt_log WHERE id < "
@@ -664,7 +701,9 @@ class ChatCore(ChatTurnMixin):
     def _memory_port(self):
         """记忆契约的入口；`chat.memory_port=false` 时返回 None，走旧路径。
 
-        P1 只读：fact 召回已经迁过去；knowledge / profile 仍在旧路径（P3 再迁）。
+        读已覆盖 fact / knowledge / profile / task（mood 未实现，调用即显式报错）；
+        写入接 fact / knowledge / task，画像走 remember_profile。旧注释里
+        「P1 只读、knowledge/profile 仍走旧路径」已被 fdf8199 之后的提交追平。
         """
         try:
             on = bool((config.load().get("chat") or {}).get("memory_port", True))

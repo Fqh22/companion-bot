@@ -217,6 +217,12 @@ async def _(event: MessageEvent):
         except Exception:  # noqa: BLE001
             when = "?"
         head = f"[{when}] {r['session']} · {r['chars']} 字符 · {r['flags'] or '无标记'}"
+        bl = r.get("blocks") or []
+        if bl:
+            # 只列最大的 6 块：排障看的是「谁在长」，不是逐条清单。
+            top = sorted(bl, key=lambda b: b.get("chars") or 0, reverse=True)[:6]
+            head += NL + "分块：" + " | ".join(
+                f"{b.get('label') or '?'}×{b.get('chars') or 0}" for b in top)
         body = r["body"] or "（这条是加正文之前记的，只有指纹）"
         blocks.append(head + NL + body[:600] + ("…" if len(body) > 600 else ""))
     await prompt_last_cmd.finish((NL + NL).join(blocks)[:1800])

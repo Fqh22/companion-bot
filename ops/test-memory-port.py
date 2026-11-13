@@ -78,8 +78,19 @@ async def main() -> None:
           items[0].created == 100.0 and items[0].last_used == 200.0)
     check("confidence 取 importance", items[1].confidence == 0.9)
 
-    trace = port.explain()
-    check("explain 记录了读取", bool(trace) and trace[0]["type"] == "fact", str(trace))
+    # trace 是 per-call 的：调用方传自己的 list，port 实例上不留状态。
+    tr_a: list[dict] = []
+    await port.recall("工作", ("fact",), 5, trace=tr_a)
+    check("trace 记录了读取", bool(tr_a) and tr_a[0]["type"] == "fact", str(tr_a))
+    tr_b: list[dict] = []
+    await port.recall("工作", ("fact",), 5, trace=tr_b)
+    check("两次调用各记各的", len(tr_a) == 1 and len(tr_b) == 1,
+          f"{len(tr_a)} / {len(tr_b)}")
+    tr_c: list[dict] = []
+    await port.recall("工作", ("fact",), 5, trace=tr_c)
+    check("第三次调用不影响前两次的账本", len(tr_a) == 1 and len(tr_b) == 1 and len(tr_c) == 1,
+          f"{len(tr_a)} / {len(tr_b)} / {len(tr_c)}")
+    check("port 上没有 _trace 残留", not hasattr(port, "_trace"))
 
     rows = [{"doc_id": i.ref, "text": i.text, "age_days": i.age_days} for i in items]
     check("转换回旧结构一致",

@@ -1975,6 +1975,18 @@ async def main() -> None:
           bool(_pl) and "探针内容 ABC" in _pl[0]["body"], str(_pl)[:100])
     check("prompt 快照带标记", bool(_pl) and "digest" in _pl[0]["flags"],
           str(_pl)[:100])
+    # 分块账：不记这个，就答不上「每轮 prompt 里各块各占多少」
+    _blk = chat_mod.prompt_blocks([
+        {"role": "system", "content": "[你记得的事]\n- 甲"},
+        {"role": "user", "content": [{"type": "text", "text": "图"}]}])
+    check("分块账：带上可辨认的标签",
+          _blk[0]["label"].startswith("[你记得的事]"), str(_blk[0]))
+    check("分块账：多模态按序列化长度算",
+          _blk[1]["chars"] > 0 and _blk[1]["label"] == "[多模态]", str(_blk[1]))
+    check("快照里存了分块账",
+          bool(_pl) and bool(_pl[0].get("blocks"))
+          and _pl[0]["blocks"][0]["chars"] > 0,
+          str(_pl[0].get("blocks"))[:120])
     _real_perr = chat_mod._PERSONA_ERROR
     chat_mod._PERSONA_ERROR = "system_prompt 为空"
     check("人格异常进自检",
@@ -3258,6 +3270,18 @@ async def main() -> None:
     idx_hint = next(i for i, x in enumerate(msgs_h)
                     if "【这次的形式】" in (x.get("content") or ""))
     check("形式约束排在历史之后", idx_hint > idx_hist, f"{idx_hist} -> {idx_hint}")
+
+    # 多块顺序：extra_system 是 list，拼接必须保持顺序。
+    # 之前只有「单块在历史之后」这一条——多个注入块之间谁先谁后没有任何断言，
+    # 并发化或重排时顺序漂移不会被发现。这里把契约补上。
+    msgs_o = core.build_messages([], "在吗",
+                                 extra_system=["【块一】甲", "【块二】乙", "【块三】丙"])
+    _pos = {}
+    for _k in ("块一", "块二", "块三"):
+        _pos[_k] = next(i for i, x in enumerate(msgs_o)
+                        if ("【%s】" % _k) in (x.get("content") or ""))
+    check("多个注入块的顺序与传入一致",
+          _pos["块一"] < _pos["块二"] < _pos["块三"], str(_pos))
 
     # ---------- Z11. 跨层：写完就能看见 / 删了要清 / 名字要对得上 ----------
     learn_mod.NOTES = wiki_mod.NOTES
