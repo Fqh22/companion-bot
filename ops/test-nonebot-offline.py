@@ -868,6 +868,19 @@ async def main() -> None:
     check("只有标签没有正文时判空", bool(_t6) and _b6 == "", repr(_b6))
     check("中文括号首片也认", self_check_mod.looks_like_tag("【"))
 
+    # 残片：模型整段漏写「[自检] 主」，直接从「=接住」开始（2026-11-14 第 3143 条）
+    _t7, _b7 = self_check_mod.parse(
+        "=接住 次=事实 置信=高 | 依据=有 来源=记忆这条我认。我脑子里东西不少")
+    check("残片标签也能剥", _b7.startswith("这条我认") and "来源=" not in _b7,
+          repr(_b7[:40]))
+    _t8, _b8 = self_check_mod.parse("=接梗 次=轻接 置信=高 依据=有 来源=无\n那吃坏肚子就归命运管了")
+    check("残片 + 换行也能剥", _b8.startswith("那吃坏肚子"), repr(_b8[:40]))
+    _t9, _b9 = self_check_mod.parse("今天有点累，先睡了")
+    check("普通正文不误伤", _b9 == "今天有点累，先睡了" and _t9 == "")
+    check("残片首片也认作标签开头",
+          self_check_mod.looks_like_tag("=接") and self_check_mod.looks_like_tag("主=接住"))
+    check("等号开头普通文本不误判", not self_check_mod.looks_like_tag("= 4 条结论"))
+
     _mt = {"n": 0}
 
     async def _fake_run_tools(*a, **k):

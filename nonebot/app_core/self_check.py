@@ -24,6 +24,13 @@ _RE_LINE = re.compile(r"^\s*\[自检\]\s*(.+?)\s*\n", re.S)
 _RE_DRAFT = re.compile(r"^(?:\|[^\n]{0,4}\n+|[+＋][^\n]{0,6}\n+|\|(?:无|有|记忆|搜索)|[+＋](?:推理|思考))\s*")
 # 括号也可能写成「【自检】」或在括号里加空格：「[ 自检 ]」。
 _RE_OPEN = re.compile(r"^\s*[\[【]\s*自\s*检\s*[\]】]")
+# 残片：模型偶尔整段漏写「[自检] 主」，直接以「=接住 次=事实 … 来源=记忆」开头，
+# 正文还紧贴其后。2026-11-14 线上第 3143 条整行被原样发给用户。
+# 这里兜底：允许没有前缀，只认「=主 / 主=」+ 枚举值 + 来源=。
+_RE_FRAG = re.compile(
+    r"^\s*((?:[\[【]\s*自\s*检\s*[\]】]\s*)?(?:主\s*)?[=＝]\s*"
+    r"(?:接住|判断|事实|执行|轻接|接梗|读懂)"
+    r"[^\n]{0,80}?来源\s*=\s*" + _SRC + r")\s*", re.S)
 
 
 def _clean(body: str) -> str:
@@ -36,7 +43,7 @@ def parse(text: str) -> tuple[str, str]:
     m = _RE_OPEN.match(t)
     if m:
         t = "[自检]" + t[m.end():]
-    for rx in (_RE_FULL, _RE_LINE):
+    for rx in (_RE_FULL, _RE_LINE, _RE_FRAG):
         m = rx.match(t)
         if m:
             return m.group(1).strip(), _clean(t[m.end():])
@@ -60,6 +67,10 @@ def looks_like_tag(text: str) -> bool:
     for tag in ("[自检]", "【自检】"):
         if t.startswith(tag) or tag.startswith(t):
             return True
+    # 残片形态：模型漏写「[自检] 主」，直接以「=接住」「主=接住」开头。
+    # 不认这个的话，流式第一片就判成正文，后面再怎么 parse 也晚了。
+    if re.match(r"^(?:主\s*)?[=＝]\s*(?:接|判|事|执|轻|读)", t):
+        return True
     return False
 
 
