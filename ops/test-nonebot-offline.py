@@ -1681,6 +1681,10 @@ async def main() -> None:
 
     # ---------- AB. 主动消息判断层（纯函数，可离线测） ----------
     from app_core import proactive as decide
+    check("时段：22 点是晚上", decide.period(22) == "晚上", decide.period(22))
+    check("时段：7 点是早上", decide.period(7) == "早上", decide.period(7))
+    check("时段：2 点是深夜", decide.period(2) == "深夜", decide.period(2))
+    check("时段：14 点是下午", decide.period(14) == "下午", decide.period(14))
     ok, why = decide.gate(3, 99999, 99999, 0, 4, {}, [0.1, 0.1, 0.1])
     check("夜里不开口", not ok and "时段" in why, why)
     ok, why = decide.gate(15, 60, 99999, 0, 4, {}, [0.1, 0.1, 0.1])

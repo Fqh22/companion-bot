@@ -7,6 +7,21 @@
 from __future__ import annotations
 
 HOUR_START, HOUR_END = 9, 23   # 只在这段时间开口
+
+
+def period(hour: int) -> str:
+    """给主动消息的提示词用：模型对「现在几点」没有直觉，得把时段写给它。"""
+    if 5 <= hour < 9:
+        return "早上"
+    if 9 <= hour < 12:
+        return "上午"
+    if 12 <= hour < 14:
+        return "中午"
+    if 14 <= hour < 18:
+        return "下午"
+    if 18 <= hour < 23:
+        return "晚上"
+    return "深夜"
 MIN_GAP = 7200                 # 两次之间至少 2 小时
 QUIET_AFTER_USER = 1200        # 刚聊过 20 分钟不打扰
 DAILY_MAX = 4
