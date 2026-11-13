@@ -142,6 +142,7 @@ ops/drill-console.py   # 断线演练：没有 QQ 也能跑一轮真实对话
 | 可视化改配置 | [docs/05-配置界面.md](docs/05-配置界面.md) |
 | 现实层：时间、感知、影子校验 | [docs/15-现实层.md](docs/15-现实层.md) |
 | 纠正分诊：当场识别、后台判断、三类去处 | [docs/16-纠正分诊.md](docs/16-纠正分诊.md) |
+| 分享轮：能读多深、什么时候停（设计稿） | [docs/17-分享轮.md](docs/17-分享轮.md) |
 | 关系小抄示例 | [docs/relation.example.md](docs/relation.example.md) |
 
 ## License
