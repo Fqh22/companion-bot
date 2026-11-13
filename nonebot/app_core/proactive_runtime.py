@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app_core import followup, mood, paths
+from app_core import followup, mood, paths, perception
 from app_core import proactive as decide
 from app_core import proactive_sources as sources
 
@@ -174,15 +174,36 @@ class ProactiveRuntime:
             m = {"valence": 0.0, "energy": 0.7}
 
         cap = decide.daily_cap(self.reply_rate())
+        # 天气突变：世界给的开口理由，比 followup 更「在场」。同样受时段/频率约束，
+        # 一周最多一次；他今天没提过天气/出门，就不打扰。
+        _wc = None
+        try:
+            if perception.mentioned_today(self._session()) and perception.alert_allowed(now):
+                _ch = await perception.change()
+                if _ch:
+                    _wc = ("weather:" + now.strftime("%Y-%m-%d"),
+                           f"今天比昨天降温 {abs(_ch['delta']):.0f} 度，他今天提过要出门",
+                           "天气突变")
+        except Exception as e:  # noqa: BLE001
+            log.debug("天气突变检查失败：%s", e)
         ok, why = decide.gate(
             now.hour,
             time.time() - self.last_sent_ts(),
             time.time() - self.last_user_ts(),
             self.daily_count(), cap, m,
             [random.random(), random.random(), random.random()],
-            threads=len(followup.due_for_asking(5)))
+            threads=1 if _wc else len(followup.due_for_asking(5)))
         log.info("[proactive] 评估：今日 %d/%d，%s", self.daily_count(), cap, why)
         if not ok:
+            return
+
+        if _wc:
+            key, topic, why2 = _wc
+            text = await self.compose(topic, why2, mood.describe(m) if m else "")
+            if text and len(text) >= 6 and await self.send(text):
+                self.log_send(key, topic, text)
+                perception.mark_alert(now)
+                log.info("[proactive] 天气突变已发送（key=%s）：%r", key, text[:60])
             return
 
         try:

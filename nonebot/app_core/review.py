@@ -241,6 +241,21 @@ def quality_metrics(days: int = 7, session: str = "") -> dict:
     except Exception:  # noqa: BLE001
         pass
     return out
+def _reality_lines(days: int, session: str) -> str:
+    """现实痕迹：只给次数和日期。模型可以引用，但不许编原因。"""
+    try:
+        from app_core import reality
+
+        rows = reality.weekly(days, session)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not rows:
+        return ""
+    lines = [f"- {r['name']}：{r['count']} 次（{'、'.join(r['times'][-3:])}）" for r in rows]
+    return ("【现实痕迹（只陈述次数和日期；不要解释原因、不要给建议）】\n"
+            + "\n".join(lines))
+
+
 async def weekly(core) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
     session = _session_of(core)
@@ -256,6 +271,8 @@ async def weekly(core) -> str:
         f"【他纠正过我、不能再犯的】\n" + ("\n".join(f"- {x}" for x in corr) or "（没有）") + "\n\n"
         f"【我还没搞懂的事】\n" + ("\n".join(f"- {x}" for x in cur) or "（没有）") + "\n\n"
         f"【这一周的状态】\n{_day_context(7, session) or '（没有记录）'}\n\n"
+        + _reality_lines(7, session)
+        + "\n\n"
         f"【这一周（{today} 往前 7 天）的记忆】\n{joined}\n\n"
         "写一份发给主人的记忆周报，并检查这周有没有再犯纠正清单里的错。"
     )

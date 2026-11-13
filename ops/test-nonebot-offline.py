@@ -1714,6 +1714,18 @@ async def main() -> None:
         perception_mod._wttr = _old_wttr
         perception_mod.clear_cache()
     check("天气缓存命中", _pcalls["n"] == 1 and bool(_a) and bool(_b), str(_pcalls))
+    perception_mod.DB = TMP / "chat.db"
+    _pc = sqlite3.connect(TMP / "chat.db")
+    with _pc:
+        _pc.execute("INSERT INTO messages(session, role, content, ts) VALUES(?,?,?,?)",
+                    ("private:wx", "user", "明天出门要带伞吗", time.time()))
+    _pc.close()
+    check("天气：今天提过出门", perception_mod.mentioned_today("private:wx"))
+    check("天气：没提过就不算", not perception_mod.mentioned_today("private:none"))
+    check("天气突变：白天允许",
+          perception_mod.alert_allowed(datetime(2026, 11, 14, 10)))
+    check("天气突变：夜里不允许",
+          not perception_mod.alert_allowed(datetime(2026, 11, 14, 2)))
     check("时段：7 点是早上", decide.period(7) == "早上", decide.period(7))
     check("时段：2 点是深夜", decide.period(2) == "深夜", decide.period(2))
     check("时段：14 点是下午", decide.period(14) == "下午", decide.period(14))

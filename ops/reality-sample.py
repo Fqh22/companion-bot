@@ -16,18 +16,10 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DB = Path(os.environ.get("QQBOT_CHAT_DB") or "/opt/nonebot/data/chat.db")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "nonebot"))
+from app_core.reality import GROUPS, _NOT  # noqa: E402
 
-GROUPS = {
-    "累": ("累", "撑不住", "快废了", "疲惫", "扛不住", "没力气"),
-    "失眠": ("睡不着", "失眠", "没睡", "凌晨"),
-    "熬夜": ("熬夜", "通宵"),
-    "忙": ("忙", "加班", "没空"),
-}
-# 采样不是检测器：这几个词会误伤（「积累」不是累、「帮忙」不是忙），
-# 先排除，等真有语义层再替掉。
-_NOT = ("积累", "累积", "累计", "不累", "累不累", "帮忙", "不忙",
-        "赶紧", "赶快", "赶不上")
+DB = Path(os.environ.get("QQBOT_CHAT_DB") or "/opt/nonebot/data/chat.db")
 
 
 def hits(days: int) -> dict[str, list[tuple[str, str]]]:

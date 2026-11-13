@@ -14,6 +14,7 @@ import re
 import time
 
 from app_core import config
+from app_core import paths as _paths
 
 log = logging.getLogger("qqbot.perception")
 
@@ -24,6 +25,7 @@ _WORDS = ("天气", "下雨", "降温", "气温", "穿衣", "出门", "刮风",
           "带伞", "冷不冷", "热不热")
 
 _CACHE: dict[str, tuple[float, dict | None]] = {}
+DB = _paths.CHAT_DB
 
 
 def _cfg() -> dict:
@@ -91,3 +93,87 @@ async def read(city_name: str | None = None) -> dict | None:
 
 def clear_cache() -> None:
     _CACHE.clear()
+
+_STATE = _paths.DATA / "weather_state.json"
+_ALERT = _paths.DATA / "weather_alert.json"
+
+
+def _load(path):
+    try:
+        import json
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save(path, data) -> None:
+    try:
+        import json
+        _paths.DATA.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def mentioned_today(session: str) -> bool:
+    """他今天提过天气/出门/穿衣吗？天气突变只在这种日子开口。"""
+    from datetime import datetime
+    import sqlite3
+
+    now = datetime.now()
+    since = datetime(now.year, now.month, now.day).timestamp()
+    sql = "SELECT content FROM messages WHERE role='user' AND ts>=?"
+    args: list = [since]
+    if session:
+        sql += " AND session=?"
+        args.append(session)
+    try:
+        c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=10)
+        rows = c.execute(sql, args).fetchall()
+        c.close()
+    except Exception:  # noqa: BLE001
+        return False
+    return any(should_read(r[0]) for r in rows)
+
+
+def alert_allowed(now=None) -> bool:
+    """一周最多一次；只在 8-21 点。"""
+    from datetime import datetime
+
+    now = now or datetime.now()
+    if not (8 <= now.hour < 21):
+        return False
+    return _load(_ALERT).get("week") != now.strftime("%Y-W%W")
+
+
+def mark_alert(now=None) -> None:
+    from datetime import datetime
+
+    now = now or datetime.now()
+    _save(_ALERT, {"week": now.strftime("%Y-W%W"), "ts": time.time()})
+
+
+def _temp(text: str) -> int | None:
+    m = re.search(r"(-?\d+)\s*°C", text or "")
+    return int(m.group(1)) if m else None
+
+
+async def change() -> dict | None:
+    """跨天比较温度；降 5 度以上返回突变信息。同一天只更新基线，不重复报。"""
+    from datetime import datetime
+
+    data = await read()
+    temp = _temp((data or {}).get("text") or "")
+    if temp is None:
+        return None
+    today = datetime.now().strftime("%Y-%m-%d")
+    prev = _load(_STATE)
+    if prev.get("date") and prev.get("date") != today and prev.get("temp") is not None:
+        delta = temp - int(prev["temp"])
+        _save(_STATE, {"date": today, "temp": temp, "ts": time.time()})
+        if delta <= -5:
+            return {"delta": delta, "temp": temp, "prev": prev["temp"],
+                    "text": data.get("text") or ""}
+        return None
+    _save(_STATE, {"date": today, "temp": temp, "ts": time.time()})
+    return None
