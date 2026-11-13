@@ -16,6 +16,7 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 
+from app_core import parse_log
 from app_core import profile as profile_mod
 from app_core import learn
 from app_core.learn import (SYSTEM_PROFILE, SYSTEM_REVIEW, SYSTEM_WEEKLY,
@@ -65,8 +66,12 @@ def _extract_json(text: str) -> dict:
             t = t[i:j + 1]
     try:
         d = json.loads(t)
-        return d if isinstance(d, dict) else {}
+        if not isinstance(d, dict):
+            parse_log.note("review", text, "type=" + type(d).__name__)
+            return {}
+        return d
     except Exception:
+        parse_log.note("review", text, "json")
         return {}
 # ---------- 记忆读取 ----------
 def _documents_since(days: float) -> list[str]:

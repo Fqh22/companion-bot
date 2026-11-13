@@ -22,6 +22,7 @@ import re
 import time
 from pathlib import Path
 
+from app_core import parse_log
 from app_core import paths as _paths
 
 CAND_MIN_SCORE = 0.50
@@ -79,9 +80,11 @@ def parse(raw: str) -> list[dict]:
     try:
         data = json.loads(t)
     except Exception:  # noqa: BLE001
+        parse_log.note("contradict", raw, "json")
         return []
     pairs = data.get("pairs") if isinstance(data, dict) else data
     if not isinstance(pairs, list):
+        parse_log.note("contradict", raw, "pairs=" + type(pairs).__name__)
         return []
     out: list[dict] = []
     for p in pairs:

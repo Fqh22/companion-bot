@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import re
 
+from app_core import parse_log
+
 SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 JSON，不要解释：
 {
  "summary": "120-200 字，第一人称，写清发生了什么、对方在意什么、我该记住什么",
@@ -59,6 +61,28 @@ def format_dialog(rows: list[tuple[str, str]]) -> str:
     return "\n".join(lines)
 
 
+def _as_list(value, limit: int, field: str, raw: str) -> list[str]:
+    """模型偶尔把数组写成字符串。
+
+    `for x in "他讨厌空话"` 会逐字符迭代，存成 6 条单字事实——而且不报错。
+    字符串当一项；其它非列表直接丢弃，两种情况都记一条 parse_fail。
+    """
+    if isinstance(value, str):
+        if value.strip():
+            parse_log.note("summary", raw, field + "=str")
+            return [value.strip()][:limit]
+        return []
+    if not isinstance(value, (list, tuple)):
+        if value is not None:
+            parse_log.note("summary", raw, field + "=" + type(value).__name__)
+        return []
+    out = [str(x).strip() for x in value
+           if isinstance(x, (str, int, float)) and str(x).strip()]
+    if len(out) != len(value):
+        parse_log.note("summary", raw, field + "=mixed")
+    return out[:limit]
+
+
 def parse(text: str) -> dict:
     t = (text or "").strip()
     m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", t, re.S)
@@ -71,14 +95,20 @@ def parse(text: str) -> dict:
     try:
         data = json.loads(t)
     except Exception:
+        parse_log.note("summary", text, "json")
         return {}
     if not isinstance(data, dict):
+        parse_log.note("summary", text, "type=" + type(data).__name__)
         return {}
+    _summary = data.get("summary")
+    if _summary is not None and not isinstance(_summary, str):
+        parse_log.note("summary", text, "summary=non-str")
+        _summary = str(_summary) if isinstance(_summary, (int, float)) else ""
     out = {
-        "summary": str(data.get("summary") or "").strip(),
-        "key_facts": [str(x).strip() for x in (data.get("key_facts") or []) if str(x).strip()][:6],
-        "topics": [str(x).strip() for x in (data.get("topics") or []) if str(x).strip()][:4],
-        "followups": [str(x).strip() for x in (data.get("followups") or []) if str(x).strip()][:4],
+        "summary": str(_summary or "").strip(),
+        "key_facts": _as_list(data.get("key_facts"), 6, "key_facts", text),
+        "topics": _as_list(data.get("topics"), 4, "topics", text),
+        "followups": _as_list(data.get("followups"), 4, "followups", text),
     }
     try:
         out["importance"] = max(0.0, min(1.0, float(data.get("importance", 0.5))))
@@ -86,6 +116,10 @@ def parse(text: str) -> dict:
         out["importance"] = 0.5
     prog = str(data.get("progress") or "").strip().lower()
     out["progress"] = prog if prog in ("advance", "repeat", "switch") else ""
-    one_line = " ".join(str(data.get("digest") or "").split())
+    _digest = data.get("digest")
+    if _digest is not None and not isinstance(_digest, str):
+        parse_log.note("summary", text, "digest=non-str")
+        _digest = ""
+    one_line = " ".join(str(_digest or "").split())
     out["digest"] = one_line[:600]
     return out

@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import json
 import time
+
+from app_core import parse_log
 from pathlib import Path
 
 # 固定字段与顺序。顺序就是注入时的顺序——稳定的放在前面，
@@ -60,8 +62,10 @@ def parse(raw) -> dict[str, str]:
         try:
             data = json.loads(s)
         except Exception:
+            parse_log.note("profile", raw, "json")
             return {}
     if not isinstance(data, dict):
+        parse_log.note("profile", raw, "type=" + type(data).__name__)
         return {}
     out: dict[str, str] = {}
     for k in FIELDS:

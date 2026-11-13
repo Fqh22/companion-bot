@@ -858,6 +858,15 @@ async def main() -> None:
     check("流式首个分片「[」也认作标签开头", self_check_mod.looks_like_tag("["))
     check("流式分片「[自」也认作标签开头", self_check_mod.looks_like_tag("[自"))
     check("普通方括号不误判", not self_check_mod.looks_like_tag("[链接](x)"))
+    _t4, _b4 = self_check_mod.parse(
+        "【自检】主=轻接 次=轻接 置信=高 依据=有 来源=无\n正文在这里")
+    check("中文括号标签也能剥", _b4.startswith("正文"), repr(_b4[:30]))
+    _t5, _b5 = self_check_mod.parse(
+        "[ 自检 ] 主=轻接 次=轻接 置信=高 依据=有 来源=无\n正文在这里")
+    check("括号内空格也能剥", _b5.startswith("正文"), repr(_b5[:30]))
+    _t6, _b6 = self_check_mod.parse("[自检] 主=轻接 次=轻接 置信=高 依据=有")
+    check("只有标签没有正文时判空", bool(_t6) and _b6 == "", repr(_b6))
+    check("中文括号首片也认", self_check_mod.looks_like_tag("【"))
 
     _mt = {"n": 0}
 
@@ -3244,6 +3253,12 @@ async def main() -> None:
     check("精力有下限", flo["energy"] >= mood_mod.ENERGY_FLOOR - 1e-9, str(flo["energy"]))
 
     # 总结判定的 progress
+    _d = summarize_mod.parse('{"summary":"s","key_facts":"他讨厌空话",'
+                         '"topics":["求职"],"followups":"提醒他改简历","importance":0.5}')
+    check("字符串 key_facts 不逐字拆", _d["key_facts"] == ["他讨厌空话"], str(_d["key_facts"]))
+    check("字符串 followups 不逐字拆", _d["followups"] == ["提醒他改简历"], str(_d["followups"]))
+    check("数组 topics 正常", _d["topics"] == ["求职"], str(_d["topics"]))
+
     check("总结能解析 progress",
           summarize_mod.parse('{"summary":"x","progress":"repeat"}')["progress"] == "repeat")
     check("非法 progress 被忽略",

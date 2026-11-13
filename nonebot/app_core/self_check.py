@@ -22,6 +22,8 @@ _RE_LINE = re.compile(r"^\s*\[自检\]\s*(.+?)\s*\n", re.S)
 # 但 _RE_FULL 只剥到「来源=记忆」就停了，于是整条回复以「|无」开头
 # （2026-11-13 第 3034/3042 条）。这里只清理正文最前面的这类标记。
 _RE_DRAFT = re.compile(r"^(?:\|[^\n]{0,4}\n+|[+＋][^\n]{0,6}\n+|\|(?:无|有|记忆|搜索)|[+＋](?:推理|思考))\s*")
+# 括号也可能写成「【自检】」或在括号里加空格：「[ 自检 ]」。
+_RE_OPEN = re.compile(r"^\s*[\[【]\s*自\s*检\s*[\]】]")
 
 
 def _clean(body: str) -> str:
@@ -31,10 +33,18 @@ def _clean(body: str) -> str:
 def parse(text: str) -> tuple[str, str]:
     """返回 (标签, 正文)。没有标签时标签为空串、正文原样。"""
     t = text or ""
+    m = _RE_OPEN.match(t)
+    if m:
+        t = "[自检]" + t[m.end():]
     for rx in (_RE_FULL, _RE_LINE):
         m = rx.match(t)
         if m:
             return m.group(1).strip(), _clean(t[m.end():])
+    # 整条回复只有自检行、没有正文：模型偶尔这么写。当正文发出去，
+    # 用户会看到一行 [自检]；这里判空，让上层走兜底。
+    if _RE_OPEN.match(t) and len(t.strip()) <= 140 \
+            and not re.search(r"[。！？!?]", t):
+        return t.strip()[4:].strip(), ""
     return "", t
 
 
@@ -47,7 +57,10 @@ def looks_like_tag(text: str) -> bool:
     t = (text or "").lstrip()
     if not t:
         return False
-    return t.startswith("[自检]") or "[自检]".startswith(t)
+    for tag in ("[自检]", "【自检】"):
+        if t.startswith(tag) or tag.startswith(t):
+            return True
+    return False
 
 
 # 模型偶尔把「怎么组织这条回复」的内心独白当正文发出来。2026-11-12 实测：
