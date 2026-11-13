@@ -607,6 +607,15 @@ async def main() -> None:
         from app_core import tool_loop as tl_mod
         from app_core import llm as llm_mod
         from app_core import config as config_mod
+        from app_core import share_tier as tier_mod
+
+        # 分享轮档位：判的是「他给了多少授权」，不是内容类型
+        _t_emo = tier_mod.judge("", "Q版卡通人物鼓脸生气")[0]
+        _t_work = tier_mod.judge("", "深色背景上的架构列表")[0]
+        check("share_tier：无字情绪物=0 / 无字作品=1",
+              _t_emo == 0 and _t_work == 1, f"{_t_emo}/{_t_work}")
+        check("share_tier：每档都要有指认下限",
+              all("必须" in tier_mod.block(t) for t in (0, 1, 2)))
 
         check("prompt.clip", prompt_mod.clip("abcdef", 3).endswith("…"))
         check("prompt.age_label", prompt_mod.age_label(3).startswith("3"))
