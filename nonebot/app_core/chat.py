@@ -763,7 +763,9 @@ class ChatCore(ChatTurnMixin):
             max_rounds=self.max_tool_rounds,
             tool_timeout=self.tool_timeout,
             total_timeout=self.tool_total,
-            images=images or [],
+            # 必须传原列表：meme_send 往它里面 append，用 `images or []` 会复制一份，
+            # 图就永远到不了 turn.ai_images（2026-11-13 线上：调用 3 次都没发出去）。
+            images=images if images is not None else [],
             on_text=on_text,
             stats=stats,
         )
@@ -794,8 +796,12 @@ class ChatCore(ChatTurnMixin):
             return plan_delivery(text, policy, caps)
 
         if on_sentence and turn.streamed:
-            # 流式已经发出去的不再返回，只把没说完的尾巴交回去
+            # 流式已经发出去的不再返回，只把没说完的尾巴交回去。
+            # 工具轮可能第一轮没成句、第二轮正文是非流式：这时 sent_parts 和
+            # buffer 都是空的，正文在 turn.text 里，别把它吞了。
             tail = _plan(turn.buffer) if turn.buffer.strip() else []
+            if not tail and not turn.sent_parts and (turn.text or "").strip():
+                tail = _plan(turn.text)
             return tail, turn.ai_images
         return _plan(turn.text), turn.ai_images
 

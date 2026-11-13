@@ -706,6 +706,8 @@ async def main() -> None:
         return {"content": "", "tool_calls": []}
 
     async def fake_execute(_core, name, _args, images=None):
+        if images is not None:
+            images.append("/tmp/meme.png")
         return f"ok:{name}"
 
     chat_mod.tools.execute = fake_execute
@@ -725,6 +727,13 @@ async def main() -> None:
     check("retry 屏蔽 meme_send", "meme_send" not in names)
     check("retry 屏蔽 note_write", "note_write" not in names)
     check("retry 保留只读工具", "memory_search" in names, str(names))
+
+    # 工具往 images 里 append 的图片必须回到调用方列表——_run_tools 若用
+    # `images or []` 复制一份，meme_send 就会「说已发、实际没图」。
+    state["n"] = 0
+    _imgs = []
+    await core._run_tools(base, True, _imgs)
+    check("工具 append 的图片回到调用方列表", _imgs == ["/tmp/meme.png"], str(_imgs))
 
     # ---------- E. 记忆总结：水位推进、不重复 ----------
     con = sqlite3.connect(TMP / "chat.db")

@@ -688,6 +688,10 @@ class ChatTurnMixin:
             sent_text = "".join(turn.sent_parts) + (turn.buffer if turn.buffer.strip() else "")
         else:
             sent_text = turn.text or turn.buffer
+        # 工具轮：第一轮流式内容没成句、第二轮正文又是非流式时，上面会是空串。
+        # 历史里留空，下一轮它就不知道自己说过什么（2026-11-13 线上第 2998 条）。
+        if not sent_text.strip() and (turn.text or "").strip():
+            sent_text = turn.text
         # 入库前再剥一次：流式路径的 sent_parts 可能还带着标签（发送侧已兜底，
         # 这里保证历史里不会出现 [自检]）。
         _h_tag, sent_text = self_check_mod.parse(sent_text)
