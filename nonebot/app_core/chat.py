@@ -435,6 +435,14 @@ class ChatCore(ChatTurnMixin):
             return False
         try:
             async with aiosqlite.connect(DB, timeout=15) as db:
+                cur = await db.execute(
+                    "SELECT content FROM messages WHERE id=?", (int(row_id),))
+                row = await cur.fetchone()
+                if row is None:
+                    return False
+                # 幂等：图片轮已经同步补过，后台任务再补一次不该出现两个「｜图注」
+                if suffix in (row[0] or ""):
+                    return False
                 await db.execute(
                     "UPDATE messages SET content = content || ? WHERE id = ?",
                     (suffix, int(row_id)))

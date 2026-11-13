@@ -406,6 +406,13 @@ class ChatTurnMixin:
                 if _cap:
                     turn.extra_system.append(
                         "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
+                    # 同步写进历史：他常常「先发图、再补一句问」，下一轮读历史时
+                    # 后台图注可能还没写完，模型就会说「我看不着细节」（2026-11-13
+                    # 线上第 3064 条）。这里先落库，后台任务靠幂等跳过。
+                    if turn.user_msg_id:
+                        _suffix = "｜图注：" + _cap
+                        if await self.append_to_message(turn.user_msg_id, _suffix):
+                            turn.stored = (turn.stored or "") + _suffix
             except Exception as e:  # noqa: BLE001
                 log.debug("当前轮图注失败：%s", e)
 

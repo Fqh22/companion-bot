@@ -3024,6 +3024,12 @@ async def main() -> None:
     _con.close()
     check("图注能追加到原消息",
           _ok and _row and "图注：猫趴在键盘上" in _row[0], str(_row))
+    _ok2 = await core.append_to_message(_rid, "｜图注：猫趴在键盘上")
+    _con = sqlite3.connect(TMP / "chat.db")
+    _txt = _con.execute("SELECT content FROM messages WHERE id=?", (_rid,)).fetchone()[0]
+    _con.close()
+    check("重复图注不会追加两次",
+          (not _ok2) and _txt.count("图注：") == 1, _txt)
 
     # 图注生成本身（只验接线：图进得去、话回得来，不验质量）
     import app_core.files as files_probe
