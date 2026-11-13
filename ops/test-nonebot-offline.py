@@ -3309,8 +3309,12 @@ async def main() -> None:
 
     # 姿态（docs/17 §3）：用他的动作回应他，别当评论员
     from app_core import prompt as _p_mod
-    check("自检规则含「接梗 / 读懂」两类",
-          "接梗" in _p_mod.SELF_CHECK_RULE and "读懂" in _p_mod.SELF_CHECK_RULE)
+    check("自检规则含「接梗 / 看」两类",
+          "接梗" in _p_mod.SELF_CHECK_RULE and "看（指认一个点" in _p_mod.SELF_CHECK_RULE)
+    check("「玩笑」只归接梗，不再同时归轻接",
+          _p_mod.SELF_CHECK_RULE.count("玩笑") == 1)
+    check("7 个主类，封顶不再加",
+          "接住|判断|事实|执行|轻接|接梗|看" in _p_mod.SELF_CHECK_RULE)
     check("雷区含「评写法」", "评写法" in _p_mod.LANDMINES)
     check("尾锚含「别当评论员」", "评论员" in _p_mod.MODEL_FIRST_TAIL)
 
