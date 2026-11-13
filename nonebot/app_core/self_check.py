@@ -13,11 +13,19 @@ import re
 # 标签可能以换行结尾，也可能直接跟正文（中间两个空格、甚至没有空格）。
 # 「来源=」的值只有几种，用白名单收尾——用 \S+ 会把正文一起吞掉
 # （实测：来源=记忆我这边收到的还是文字）。
-_SRC = r"(?:记忆|搜索|无|记忆\+搜索|两者)"
+_SRC = r"(?:记忆|搜索|无|文件|记忆\+搜索|两者)"
 _RE_FULL = re.compile(
     r"^\s*\[自检\]\s*(.+?来源\s*=\s*" + _SRC + r"(?:[（(][^）)]{0,30}[）)])?)\s*",
     re.S)
 _RE_LINE = re.compile(r"^\s*\[自检\]\s*(.+?)\s*\n", re.S)
+# 模型有时在标签后再写一行草稿：「|无」「+推理」。它不属于正文，
+# 但 _RE_FULL 只剥到「来源=记忆」就停了，于是整条回复以「|无」开头
+# （2026-11-13 第 3034/3042 条）。这里只清理正文最前面的这类标记。
+_RE_DRAFT = re.compile(r"^(?:\|[^\n]{0,4}\n+|[+＋][^\n]{0,6}\n+|\|(?:无|有|记忆|搜索)|[+＋](?:推理|思考))\s*")
+
+
+def _clean(body: str) -> str:
+    return _RE_DRAFT.sub("", (body or "").lstrip())
 
 
 def parse(text: str) -> tuple[str, str]:
@@ -26,14 +34,20 @@ def parse(text: str) -> tuple[str, str]:
     for rx in (_RE_FULL, _RE_LINE):
         m = rx.match(t)
         if m:
-            return m.group(1).strip(), t[m.end():]
+            return m.group(1).strip(), _clean(t[m.end():])
     return "", t
 
 
 def looks_like_tag(text: str) -> bool:
-    """流式判断用：开头像自检标签（可能还没写完）。"""
+    """流式判断用：开头像自检标签（可能还没写完）。
+
+    流式第一个分片可能只有「[」或「[自」，原来的 startswith("[自检]")
+    会判 False，于是把标签当正文切句发出去（2026-11-13 下午那次整行 [自检]）。
+    """
     t = (text or "").lstrip()
-    return t.startswith("[自检]")
+    if not t:
+        return False
+    return t.startswith("[自检]") or "[自检]".startswith(t)
 
 
 # 模型偶尔把「怎么组织这条回复」的内心独白当正文发出来。2026-11-12 实测：

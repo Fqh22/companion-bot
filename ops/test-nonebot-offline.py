@@ -846,6 +846,19 @@ async def main() -> None:
     check("长文里的「正文：」不误判",
           not self_check_mod.is_meta("正文：" + "这是一段正文。" * 80))
 
+    _t1, _b1 = self_check_mod.parse(
+        "[自检] 主=判断 次=事实 置信=高 依据=有 来源=记忆|无\nClaude 不做视频生成")
+    check("标签后的「|无」被剥掉", _b1.startswith("Claude"), repr(_b1[:40]))
+    _t2, _b2 = self_check_mod.parse(
+        "[自检] 主=判断 次=事实 置信=中 依据=有 来源=记忆+推理\n\n那这就说得通了")
+    check("标签后的「+推理」被剥掉", _b2.startswith("那这就"), repr(_b2[:40]))
+    _t3, _b3 = self_check_mod.parse(
+        "[自检] 主=执行 次=判断 置信=高 依据=有 来源=文件文件只到这儿了")
+    check("来源=文件也能剥", _b3.startswith("文件只到"), repr(_b3[:40]))
+    check("流式首个分片「[」也认作标签开头", self_check_mod.looks_like_tag("["))
+    check("流式分片「[自」也认作标签开头", self_check_mod.looks_like_tag("[自"))
+    check("普通方括号不误判", not self_check_mod.looks_like_tag("[链接](x)"))
+
     _mt = {"n": 0}
 
     async def _fake_run_tools(*a, **k):
