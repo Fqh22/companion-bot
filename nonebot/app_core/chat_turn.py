@@ -704,7 +704,14 @@ class ChatTurnMixin:
         _h_tag, sent_text = self_check_mod.parse(sent_text)
         if _h_tag and not turn.self_check:
             turn.self_check = _h_tag
-        if not await self.remember_safe(turn.session, "assistant", sent_text):
+        if not sent_text.strip():
+            # 2026-11-13 第 3062 条：日志有 out=20 字、也发送了 1 段，历史却是空。
+            # 这里把当时的流式状态打出来，下次复现就能定位是哪条分支把文本丢了。
+            log.warning("[chat] 回复文本为空，跳过写历史：streamed=%s parts=%d "
+                        "buffer=%d text=%d meta=%s", turn.streamed,
+                        len(turn.sent_parts), len(turn.buffer or ""),
+                        len(turn.text or ""), turn.meta_leak)
+        elif not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
         if self.admin_uid and turn.session == f"private:{self.admin_uid}":
             self._schedule_summary(turn.session)
