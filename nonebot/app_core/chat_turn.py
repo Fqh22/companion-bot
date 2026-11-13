@@ -14,8 +14,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from app_core import (attention, config, followup, intent, kb, learn, mood,
-                      perception, relational, shadow, wiki)
+from app_core import (attention, config, correction, followup, intent, kb,
+                      learn, mood, perception, relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
 from app_core import self_check as self_check_mod
@@ -743,5 +743,16 @@ class ChatTurnMixin:
                         len(turn.text or ""), turn.meta_leak)
         elif not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
+        # 当场纠正：命中信号 + 上一轮有回复，后台判断（不阻塞本轮）。
+        # 判断「是不是纠正、纠正什么、事实还是行为」需要一次小模型调用，
+        # 放同步会吃掉 45 秒预算——照图注模式异步跑。
+        try:
+            _prev = next((m.get("content") or "" for m in reversed(turn.history)
+                          if m.get("role") == "assistant"), "")
+            if _prev and correction.looks_like_correction(turn.user_text):
+                asyncio.create_task(correction.adjudicate(
+                    self, turn.user_text, _prev, turn.rid, turn.session))
+        except Exception:  # noqa: BLE001
+            pass
         if self.admin_uid and turn.session == f"private:{self.admin_uid}":
             self._schedule_summary(turn.session)

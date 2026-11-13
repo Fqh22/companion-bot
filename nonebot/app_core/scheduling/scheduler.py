@@ -451,6 +451,14 @@ class Scheduler:
         elif name == "review":
             # 复盘失败/跳过以前被直接丢掉：纠正清单和画像可以连续几周不更新，
             # 聊天里还在犯同样的错，而日志里一条异常都没有。
+            # 先在复盘前处理「当场提不出来」的纠正；放这里是为了不把
+            # correction 拉进 review↔learn 的 import 环（link-check 会拦）。
+            try:
+                from app_core import correction
+
+                await correction.process_pending(self.core)
+            except Exception as e:  # noqa: BLE001
+                log.debug("纠正 pending 处理失败：%s", e)
             res = await learn.review(self.core)
             if "失败" in str(res):
                 log.error("复盘失败：%s", res)

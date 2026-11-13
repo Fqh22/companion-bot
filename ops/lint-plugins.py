@@ -301,6 +301,8 @@ _MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
         "wiki": {"resolve", "set_verified"},
     },
     "plugins/schedule/__init__.py": {"kb": {"index"}, "wiki": {"refresh"}},
+    # 纠正分诊：行为纠正写 corrections.md（这是它的目的地，不是记忆读穿）
+    "app_core/correction.py": {"learn": {"CORRECTIONS", "merge_list"}},
 }
 
 

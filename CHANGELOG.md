@@ -2,6 +2,18 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-14 · 纠正分诊：当场识别，后台判断，三类去处
+
+- 新增 `correction.py`：`CORRECTION_HINTS` + 上一轮 assistant 存在 → 候选；
+  后台一次小模型判断 `is_correction / kind / claim / confidence`。
+- 分流：fact → `MemoryPort`（`range_key=corr:<claim 哈希>`，同日多条不互吞）；
+  behavior → `corrections.md`；提不出来 → `corrections_pending.jsonl`（**永不注入**）。
+- 复盘前在 scheduler 处理 pending（失败 3 次移 `corrections_unverified.jsonl`），
+  独立文件，不污染每轮的行动规则。
+- 断开了 review↔correction 的 import 环（link-check 会拦）。
+- 测试 +6：信号/哈希/事实落库/行为清单/pending 不注入/range_key 幂等。
+- 700/700、255/255、46/46；云端 verify 5/5。
+
 ## 2026-11-14 · 天气突变提醒 + 周报现实痕迹
 
 - `perception`：`change()` 跨天比较温度（降 5℃ 以上）、`mentioned_today()`

@@ -1726,6 +1726,83 @@ async def main() -> None:
           perception_mod.alert_allowed(datetime(2026, 11, 14, 10)))
     check("天气突变：夜里不允许",
           not perception_mod.alert_allowed(datetime(2026, 11, 14, 2)))
+    from app_core import correction as correction_mod
+    check("纠正信号", correction_mod.looks_like_correction("不是这样，你记错了"))
+    check("普通讨论不算纠正", not correction_mod.looks_like_correction("今天天气不错"))
+    check("纠正哈希稳定",
+          correction_mod._hash("他生日是3月") == correction_mod._hash(" 他生日是3月 "))
+
+    async def _fake_fact(msgs, tools_arg=None, **kw):
+        return {"content": json.dumps({"is_correction": True, "kind": "fact",
+                                       "claim": "他生日是3月", "confidence": 0.9})}
+
+    _old_raw = core.complete_raw
+    core.complete_raw = _fake_fact
+    try:
+        _cr = await correction_mod.adjudicate(core, "不是2月，是3月", "你生日是2月吧")
+    finally:
+        core.complete_raw = _old_raw
+    check("纠正事实写进记忆", _cr == "fact", _cr)
+
+    async def _fake_beh(msgs, tools_arg=None, **kw):
+        return {"content": json.dumps({"is_correction": True, "kind": "behavior",
+                                       "claim": "[文字] 别只顺着说", "confidence": 0.9})}
+
+    core.complete_raw = _fake_beh
+    try:
+        _cb = await correction_mod.adjudicate(core, "你别只顺着我说", "嗯")
+    finally:
+        core.complete_raw = _old_raw
+    check("纠正行为写进清单", _cb == "behavior", _cb)
+
+    async def _fake_low(msgs, tools_arg=None, **kw):
+        return {"content": json.dumps({"is_correction": True, "kind": "fact",
+                                       "claim": "", "confidence": 0.3})}
+
+    core.complete_raw = _fake_low
+    try:
+        _cp = await correction_mod.adjudicate(core, "我都说了我在深圳", "你在广州吧")
+    finally:
+        core.complete_raw = _old_raw
+    check("提不出的事实进 pending", _cp == "pending", _cp)
+    _corr_txt = (learn_mod.CORRECTIONS.read_text(encoding="utf-8")
+                 if learn_mod.CORRECTIONS.exists() else "")
+    check("pending 不进行为清单", "我在深圳" not in _corr_txt)
+    async def _fake_fact2(msgs, tools_arg=None, **kw):
+        return {"content": json.dumps({"is_correction": True, "kind": "fact",
+                                       "claim": "他生日是3月", "confidence": 0.9})}
+
+    core.complete_raw = _fake_fact2
+    try:
+        await correction_mod.adjudicate(core, "不是2月，是3月", "你生日是2月吧")
+        await correction_mod.adjudicate(core, "不是2月，是3月", "你生日是2月吧")
+    finally:
+        core.complete_raw = _old_raw
+    _mc = sqlite3.connect(TMP / "livingmemory.db")
+    _n3 = _mc.execute("select count(*) from documents where text like '%生日%'"
+                      ).fetchone()[0]
+    _mc.close()
+    check("同一条纠正只写一次", _n3 == 1, str(_n3))
+
+    # 复盘：pending 重试一次就分流
+    correction_mod.PENDING.write_text("", encoding="utf-8")
+    core.complete_raw = _fake_low
+    try:
+        await correction_mod.adjudicate(core, "我都说了我在深圳", "你在广州吧")
+    finally:
+        core.complete_raw = _old_raw
+
+    async def _fake_pending_ok(msgs, tools_arg=None, **kw):
+        return {"content": json.dumps({"is_correction": True, "kind": "fact",
+                                       "claim": "他在深圳", "confidence": 0.9})}
+
+    core.complete_raw = _fake_pending_ok
+    try:
+        _done = await correction_mod.process_pending(core, limit=5)
+    finally:
+        core.complete_raw = _old_raw
+    check("复盘点处理 pending", _done >= 1, str(_done))
+    check("pending 处理后被移除", correction_mod._read(correction_mod.PENDING) == [])
     check("时段：7 点是早上", decide.period(7) == "早上", decide.period(7))
     check("时段：2 点是深夜", decide.period(2) == "深夜", decide.period(2))
     check("时段：14 点是下午", decide.period(14) == "下午", decide.period(14))
