@@ -128,6 +128,9 @@ DEFAULTS = {
         "affect_port": True,
         # 分析类问题先搜一轮（给材料，防止拿印象编数据）；false 关掉。
         "force_search": True,
+        # 分享轮档位（docs/17）：算「他给了多少授权」，注入读深度上限。
+        # 默认关——先跑 ops/replay-share.py 对比「开/关」两组，再决定线上开。
+        "share_tier": False,
         # rules = 旧的长度/形式/反应规则；model = 只给人格和例子，让模型自己判断。
         # 回退时把它改成 rules 并重启，不需要回滚代码。
         "style_mode": "model",

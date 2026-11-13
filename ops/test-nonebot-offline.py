@@ -3283,6 +3283,17 @@ async def main() -> None:
     check("多个注入块的顺序与传入一致",
           _pos["块一"] < _pos["块二"] < _pos["块三"], str(_pos))
 
+    # 分享轮档位（docs/17）：判「他给了多少授权」，给一个读深度的上限
+    from app_core import share_tier as st_mod
+    check("无字 + 情绪物 → 第 0 档", st_mod.judge("", "Q版卡通人物鼓脸生气")[0] == 0)
+    check("无字 + 作品 → 第 1 档", st_mod.judge("", "深色背景上的架构列表")[0] == 1)
+    check("有字无指向 → 第 2 档", st_mod.judge("今天拍的这个", "")[0] == 2)
+    check("明确要求 → 第 3 档", st_mod.judge("你觉得这个设计怎么样", "")[0] == 3)
+    check("他说出意图 → 第 4 档", st_mod.judge("我这个方案想解决噪音", "")[0] == 4)
+    check("每档都有下限（必须指认）",
+          all("必须" in st_mod.block(t) for t in (0, 1, 2)))
+    check("档位块带理由", "无字" in st_mod.block(*st_mod.judge("", "表情包")))
+
     # ---------- Z11. 跨层：写完就能看见 / 删了要清 / 名字要对得上 ----------
     learn_mod.NOTES = wiki_mod.NOTES
     learn_mod.SKILLS = wiki_mod.SKILLS

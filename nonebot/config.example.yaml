@@ -72,6 +72,9 @@ chat:
   # 记忆契约（docs/10）：fact 召回、总结写入、画像读写走 MemoryPort。
   # false 一键退回旧路径（排障用），行为与迁移前一致。
   memory_port: true
+  # 分享轮档位（docs/17）：按「他配了几个字 + 东西是什么体裁」算一个读深度上限，
+  # 注入 prompt。默认 false——先用 ops/replay-share.py 跑「开/关」两组对比再开。
+  share_tier: false
   # 影子模式：只记日志、不发消息，用来在真改行为前先量收益。
   #   shadow-followup.jsonl  每轮生成一句「本来可以补的话」，看有多少真值得发
   #   shadow-positive.jsonl  他说「哈哈/笑死/懂了」时记一条正例（之前只有纠错闭环）

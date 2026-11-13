@@ -97,9 +97,18 @@ class Turn:
     task_stats: dict = field(default_factory=dict)
     think: bool = False
     memory_trace: list = field(default_factory=list)
+    share_tier: int = -1
     self_check: str = ""
     meta_leak: bool = False
     gap: float = 0.0
+
+
+def _share_tier_on() -> bool:
+    """分享轮档位是否开启。默认关：先跑 ops/replay-share.py 对比再开。"""
+    try:
+        return bool((config.load().get("chat") or {}).get("share_tier", False))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 class ChatTurnMixin:
@@ -421,6 +430,7 @@ class ChatTurnMixin:
 
         # 当前轮就能"看见"图：图注原本只在事后补进历史，等于这一轮模型只看到
         # 「附了 1 张图」，问「这是什么」时答不出来。这里先给一次图注，再进 prompt。
+        _cap = ""
         if turn.images:
             try:
                 _cap = await self.caption_images(turn.images)
@@ -436,6 +446,20 @@ class ChatTurnMixin:
                             turn.stored = (turn.stored or "") + _suffix
             except Exception as e:  # noqa: BLE001
                 log.debug("当前轮图注失败：%s", e)
+
+        # 分享轮档位：判「他给了多少授权」，给一个读深度的上限。
+        # 求助图不判档——那是「帮我看这个」，该分析就分析。
+        try:
+            if turn.owner and _share_tier_on():
+                from app_core import share_tier
+
+                _is_fix = bool(turn.images) and prompt_mod.image_mode(turn.user_text) == "fix"
+                if not _is_fix:
+                    _tier, _why = share_tier.judge(turn.user_text, _cap)
+                    turn.share_tier = _tier
+                    turn.extra_system.append(share_tier.block(_tier, _why))
+        except Exception as e:  # noqa: BLE001
+            log.debug("分享档位判定失败：%s", e)
 
         # 此刻：他最近在聊什么、还挂着什么、情绪如何——状态，不是事实。
         try:
