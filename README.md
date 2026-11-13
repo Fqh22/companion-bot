@@ -140,6 +140,7 @@ ops/drill-console.py   # 断线演练：没有 QQ 也能跑一轮真实对话
 | 部署、备份、排障 | [docs/02-运维.md](docs/02-运维.md) |
 | 哪条链路坏了会被哪个测试发现 | [docs/04-联动矩阵.md](docs/04-联动矩阵.md) |
 | 可视化改配置 | [docs/05-配置界面.md](docs/05-配置界面.md) |
+| 现实层：时间、感知、影子校验 | [docs/15-现实层.md](docs/15-现实层.md) |
 | 关系小抄示例 | [docs/relation.example.md](docs/relation.example.md) |
 
 ## License

@@ -99,6 +99,7 @@ class Turn:
     memory_trace: list = field(default_factory=list)
     self_check: str = ""
     meta_leak: bool = False
+    gap: float = 0.0
 
 
 class ChatTurnMixin:
@@ -141,6 +142,9 @@ class ChatTurnMixin:
         self.user_msg_id = turn.user_msg_id
         if not turn.user_msg_id:
             turn.degraded += 1
+        # 距上一条用户消息多久（排除本轮刚写的这条）。>6h 才会写进 prompt，
+        # 用来判断「他刚回来」还是「一直在」——不是每轮都提醒。
+        turn.gap = await self.gap_hours(session, turn.user_msg_id)
 
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
@@ -463,7 +467,8 @@ class ChatTurnMixin:
                                         profile=turn.profile_block,
                                         persona=self.persona_for(turn.session),
                                         style_mode=self._style_mode(),
-                                        context_format=self._context_format())
+                                        context_format=self._context_format(),
+                                        gap_hours=turn.gap)
         await self._log_prompt(turn.session, turn.msgs, digest=turn.digest,
                                images=turn.images)
         # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出
@@ -704,6 +709,17 @@ class ChatTurnMixin:
         _h_tag, sent_text = self_check_mod.parse(sent_text)
         if _h_tag and not turn.self_check:
             turn.self_check = _h_tag
+        # 现实校验：只记录，不改回复。影子跑一周，看误报率再决定要不要重写。
+        try:
+            from datetime import datetime as _dt
+
+            from app_core import reality as _reality
+
+            _reality.check(sent_text, _dt.now().hour,
+                           "无" if "来源=无" in (turn.self_check or "") else "",
+                           turn.rid, turn.session)
+        except Exception:  # noqa: BLE001
+            pass
         if not sent_text.strip():
             # 2026-11-13 第 3062 条：日志有 out=20 字、也发送了 1 段，历史却是空。
             # 这里把当时的流式状态打出来，下次复现就能定位是哪条分支把文本丢了。

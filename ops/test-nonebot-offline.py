@@ -1682,6 +1682,19 @@ async def main() -> None:
     # ---------- AB. 主动消息判断层（纯函数，可离线测） ----------
     from app_core import proactive as decide
     check("时段：22 点是晚上", decide.period(22) == "晚上", decide.period(22))
+    from app_core import prompt as prompt_mod
+    check("now_line 带时段",
+          "深夜" in prompt_mod.now_line(datetime(2026, 11, 14, 1, 28)))
+    check("now_line 带间隔",
+          "8 小时" in prompt_mod.now_line(datetime(2026, 11, 14, 1, 28), gap_hours=8))
+    check("间隔短不写", "小时" not in prompt_mod.now_line(
+        datetime(2026, 11, 14, 1, 28), gap_hours=2))
+    from app_core import reality as reality_mod
+    check("夜里说早安被记",
+          "morning_word_at_night" in reality_mod.check("早上好", 23, "记忆"))
+    check("没有来源的现势断言被记",
+          "live_claim_no_source" in reality_mod.check("现在多少钱", 15, "无"))
+    check("正常回复不记", reality_mod.check("嗯，那省事。", 15, "记忆") == [])
     check("时段：7 点是早上", decide.period(7) == "早上", decide.period(7))
     check("时段：2 点是深夜", decide.period(2) == "深夜", decide.period(2))
     check("时段：14 点是下午", decide.period(14) == "下午", decide.period(14))

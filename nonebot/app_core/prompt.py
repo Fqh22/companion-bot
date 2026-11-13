@@ -38,7 +38,7 @@ def age_label(age) -> str:
 _WEEK = "一二三四五六日"
 
 
-def now_line(now=None) -> str:
+def now_line(now=None, gap_hours: float | None = None) -> str:
     """当前时间。必须每轮注入——否则模型不知道今天是几号。
 
     为什么这件事是硬需求而不是锦上添花：`remind_me` 的入参是**绝对时间**
@@ -46,13 +46,30 @@ def now_line(now=None) -> str:
     这个锚点，它只能猜：猜早了被 `remind.add` 拒掉（「这个时间已经过去了」），
     猜晚了就静默在错误的那天响。这两种失败都不会报错，也都很难查。
 
+    时段词和「距上次对话」是后加的：模型对「22:56 该不该问睡醒」没有直觉，
+    而间隔超过 6 小时才值得说「你上次说话是 X 小时前」，否则每轮都在提醒它。
     放在历史之后（易变区），不会破坏上下文缓存的前缀。
     """
     from datetime import datetime
 
     t = now or datetime.now()
-    return (f"[现在] {t:%Y-%m-%d} {t:%H:%M} 周{_WEEK[t.weekday()]}"
-            "（算「明天/后天/下周几」以这个为准）")
+    h = t.hour
+    if 5 <= h < 9:
+        p = "早上"
+    elif 9 <= h < 12:
+        p = "上午"
+    elif 12 <= h < 14:
+        p = "中午"
+    elif 14 <= h < 18:
+        p = "下午"
+    elif 18 <= h < 23:
+        p = "晚上"
+    else:
+        p = "深夜"
+    s = f"[现在] {t:%Y-%m-%d} {t:%H:%M} 周{_WEEK[t.weekday()]}（{p}）"
+    if gap_hours and gap_hours >= 6:
+        s += f"，距你上次说话 {gap_hours:.0f} 小时"
+    return s + "（算「明天/后天/下周几」以这个为准）"
 
 
 def freshness_hint() -> str:
@@ -555,7 +572,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
                    open_items: str = "",
                    profile: str = "",
                    style_mode: str = "rules",
-                   context_format: str = "legacy") -> list[dict]:
+                   context_format: str = "legacy",
+                   gap_hours: float | None = None) -> list[dict]:
     """拼 prompt。两条原则：**约束放两端、参考材料贴提问** + **稳定前缀往前放**。
 
     顺序：人格 → few-shot → 纪要 → 历史 → 情绪 → 记忆/知识索引/技能 → 当前提问。
@@ -649,7 +667,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
             msgs.append({"role": "system", "content": MEME_HINT})
     # 时间放在最后一段：每轮都变，只能放易变区；但 model / rules 都必须拿到，
     # 否则「明天几点」这类话只能靠猜（以前只有 rules 模式的 style_block 带时间）。
-    msgs.append({"role": "system", "content": now_line().replace("[现在] ", "现在：")})
+    msgs.append({"role": "system",
+                 "content": now_line(gap_hours=gap_hours).replace("[现在] ", "现在：")})
     if images:
         # 图不是"要我分析的东西"，是"他想让我知道的事"。旧提示写死了「多半是截图，
         # 帮我转录」，结果任何一张图它都一本正经地分析构图和参数。
