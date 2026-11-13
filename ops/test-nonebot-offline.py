@@ -3294,6 +3294,13 @@ async def main() -> None:
           all("必须" in st_mod.block(t) for t in (0, 1, 2)))
     check("档位块带理由", "无字" in st_mod.block(*st_mod.judge("", "表情包")))
 
+    # 姿态（docs/17 §3）：用他的动作回应他，别当评论员
+    from app_core import prompt as _p_mod
+    check("自检规则含「接梗 / 读懂」两类",
+          "接梗" in _p_mod.SELF_CHECK_RULE and "读懂" in _p_mod.SELF_CHECK_RULE)
+    check("雷区含「评写法」", "评写法" in _p_mod.LANDMINES)
+    check("尾锚含「别当评论员」", "评论员" in _p_mod.MODEL_FIRST_TAIL)
+
     # ---------- Z11. 跨层：写完就能看见 / 删了要清 / 名字要对得上 ----------
     learn_mod.NOTES = wiki_mod.NOTES
     learn_mod.SKILLS = wiki_mod.SKILLS
