@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import tempfile
@@ -103,16 +104,23 @@ async def transcribe(wav: Path) -> dict:
     try:
         if wav.stat().st_size > MAX_BYTES:
             return {"text": "", "error": "文件太大"}
-        with wav.open("rb") as f:
-            async with httpx.AsyncClient(timeout=30) as c:
-                r = await c.post(
-                    ASR_API,
-                    headers={"Authorization": "Bearer " + key},
-                    data={"model": ASR_MODEL},
-                    files={"file": (wav.name, f, "audio/wav")},
-                )
-        r.raise_for_status()
-        data = r.json()
-        return {"text": str(data.get("text") or "").strip(), "error": ""}
+        # 429 是限流不是故障：智谱高峰时段会连续返回，退避重试能救回大部分
+        data = None
+        for attempt in range(3):
+            with wav.open("rb") as f:
+                async with httpx.AsyncClient(timeout=30) as c:
+                    r = await c.post(
+                        ASR_API,
+                        headers={"Authorization": "Bearer " + key},
+                        data={"model": ASR_MODEL},
+                        files={"file": (wav.name, f, "audio/wav")},
+                    )
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            data = r.json()
+            break
+        return {"text": str((data or {}).get("text") or "").strip(), "error": ""}
     except Exception as e:  # noqa: BLE001
         return {"text": "", "error": f"{type(e).__name__}: {e}"}
