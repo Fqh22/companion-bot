@@ -16,6 +16,7 @@ import numpy as np
 
 from app_core import config
 from app_core.memory_common import PERSONA_ID, SHADOW_DEDUP_COS
+from app_core import timenorm
 from app_core.vec import cos as _cos
 from app_core.vec import pack as _pack
 from app_core.vec import unpack as _unpack
@@ -125,6 +126,8 @@ class StoreMixin:
         if dup:
             log.info("窗口内已有同样内容，跳过重复写入：%s", dup[:8])
             return dup
+        # 相对时间在写入侧就归一化成绝对日期：模型会算错一天，Python 不会。
+        text = timenorm.normalize(text)
         self._shadow_dedup(text, vec)
         doc_id = str(uuid.uuid4())
         now = time.time()
