@@ -109,6 +109,7 @@ class Turn:
     slots: dict = field(default_factory=dict)
     prefetch: dict = field(default_factory=dict)
     calls: dict = field(default_factory=dict)   # 每个 fetch 被调用几次（判 no_call / degraded）
+    caption_text: str = ""                      # RENDER_SLOTS 生成、POST_WRITE 写回
     stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
@@ -522,13 +523,9 @@ class ChatTurnMixin:
                 if _cap:
                     turn.set_slot("caption",
                                   "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
-                    # 同步写进历史：他常常「先发图、再补一句问」，下一轮读历史时
-                    # 后台图注可能还没写完，模型就会说「我看不着细节」（2026-11-13
-                    # 线上第 3064 条）。这里先落库，后台任务靠幂等跳过。
-                    if turn.user_msg_id:
-                        _suffix = "｜图注：" + _cap
-                        if await self.append_to_message(turn.user_msg_id, _suffix):
-                            turn.stored = (turn.stored or "") + _suffix
+                    # 只生成文本。**写回历史留到 POST_WRITE**：RENDER_SLOTS 不许写库，
+                    # 否则「POST_WRITE 唯一写库」这条不变量在 S1a 之后一直是被违反的。
+                    turn.caption_text = _cap
             except Exception as e:  # noqa: BLE001
                 log.debug("当前轮图注失败：%s", e)
 
@@ -723,6 +720,16 @@ class ChatTurnMixin:
     async def _turn_commit(self, turn: Turn, on_sentence) -> None:
         """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
         turn.stage = POST_WRITE
+        # 图注写回：本轮唯一的「渲染时生成、写库时落盘」的块。
+        # shield 是给取消/超时路径用的——45 秒硬线会补发已生成部分并结束本轮，
+        # 若写回被 cancel，用户翻聊天记录会缺图注，而 36/36 依旧全绿。
+        if turn.caption_text and turn.user_msg_id:
+            try:
+                _suffix = "｜图注：" + turn.caption_text
+                await asyncio.shield(self.append_to_message(turn.user_msg_id, _suffix))
+                turn.stored = (turn.stored or "") + _suffix
+            except Exception as e:  # noqa: BLE001
+                log.debug("图注写回失败：%s", e)
         # 自检标签：剥掉、记一条。P1 只观测，不改回复。
         try:
             _tag, _body = self_check_mod.parse(turn.text or "")

@@ -1885,9 +1885,9 @@
     ]
   },
   "c16-caption": {
-    "sha": "90210a8dc7b135f16fbf0bb4e076c45c495e57ffaecfc9a7ca72473af0d72489",
+    "sha": "a86ac31be140ab66a28d94ecb31b0c2494319597a95850abed2b7f1c4518bd67",
     "n": 10,
-    "chars": 426,
+    "chars": 421,
     "blocks": [
       {
         "role": "system",
@@ -1926,7 +1926,7 @@
       },
       {
         "role": "system",
-        "chars": 88,
+        "chars": 83,
         "label": "[此刻] 最近在聊：（附了 1 "
       },
       {
@@ -1994,9 +1994,9 @@
     ]
   },
   "c18-share-tier0": {
-    "sha": "f4226b0e864c4650bfbac9b20450d2ac14c9f8f0311ca2a8d8b46dac63b2ddad",
+    "sha": "b740ff251f2d453b0827576bab1aa8176af4eb230d2a2e95285cbd870e215d0b",
     "n": 11,
-    "chars": 542,
+    "chars": 537,
     "blocks": [
       {
         "role": "system",
@@ -2040,7 +2040,7 @@
       },
       {
         "role": "system",
-        "chars": 88,
+        "chars": 83,
         "label": "[此刻] 最近在聊：（附了 1 "
       },
       {
@@ -2056,9 +2056,9 @@
     ]
   },
   "c19-share-tier1": {
-    "sha": "1010548e9e58920deab5644c73fa5537639bb3dcadb067a25b761d04a6c116fc",
+    "sha": "a8e83717cf62620b81d8ba652180765199a5941f319e6153ae10d03e9dc119a6",
     "n": 11,
-    "chars": 527,
+    "chars": 522,
     "blocks": [
       {
         "role": "system",
@@ -2102,7 +2102,7 @@
       },
       {
         "role": "system",
-        "chars": 88,
+        "chars": 83,
         "label": "[此刻] 最近在聊：（附了 1 "
       },
       {
@@ -2299,9 +2299,9 @@
     ]
   },
   "c23-share-off": {
-    "sha": "616fc2b839de02957c9e8c18ac21ac25310f6d8ff6da3eec27a4e3e1e86d29fd",
+    "sha": "2aa972bb7706f3b754a0835183b3ccadb0d85e47598554eca755c60557aa2dfe",
     "n": 10,
-    "chars": 421,
+    "chars": 416,
     "blocks": [
       {
         "role": "system",
@@ -2340,7 +2340,7 @@
       },
       {
         "role": "system",
-        "chars": 88,
+        "chars": 83,
         "label": "[此刻] 最近在聊：（附了 1 "
       },
       {
