@@ -207,6 +207,11 @@ def _manifest(baseline_path: Path, prev: dict | None = None) -> dict:
 
     记两条血统：origin_code = 渲染字节来自哪版生产代码；tool_commit = 哪版工具生成。
     基线字节没变但工具变了时，只有后者会变——别让将来的人以为 origin_code 的 freeze 就这么写的。
+
+    **tool_commit / origin_code / git_head 都是 metadata，不参与 _check_manifest 的硬校验**：
+    内容自指当前 commit hash 在 git 里做不到（写入时 hash 还不存在），
+    硬校验它会让「每次提交都要重签 manifest」，把 fixtures 只读的纪律反复打破。
+    真正防篡改的是 files 里的文件 hash 与 python major.minor。
     """
     import platform
     import subprocess
@@ -616,13 +621,12 @@ async def main() -> int:
         pr3 = _sp.run([sys.executable, "-c", probe], capture_output=True,
                       text=True, timeout=30, env=env3)
         got = (pr3.stdout or "").split()
-        if pr3.returncode == 0 and got and got[0] == "12":
-            _ck("TZ=UTC 探针确认时区真的切了", True, "hour=12")
-        elif _os.name == "nt":
-            print("SKIP TZ=UTC 探针：Windows CRT 不响应 TZ（这项只在 Linux/CI 有判别力）")
-        else:
-            _ck("TZ=UTC 探针确认时区真的切了", False,
-                (pr3.stdout or pr3.stderr or "")[-100:])
+        # 不留 SKIP 口子：这台 Windows 实测也响应 TZ（hour=12），切不动就是真问题。
+        # 若将来某平台确实不响应，要么在报表里显式标 DEGRADED，要么换一种冻结方式——
+        # 不能让「没验证到」混进 9/9 PASS。
+        _ck("TZ=UTC 探针确认时区真的切了",
+            pr3.returncode == 0 and got and got[0] == "12",
+            (pr3.stdout or pr3.stderr or "")[-100:])
 
         print(f"\n=== selftest {ok}/{ok + fail} 通过 ===")
         return 0 if fail == 0 else 1
@@ -701,7 +705,9 @@ async def main() -> int:
         base = json.loads(baseline_path.read_text(encoding="utf-8")) if baseline_path.exists() else {}
         want = (base.get(case["id"]) or {}).get("sha")
         if want is None:
-            print("SKIP", case["id"], "基线里没有")
+            # 基线缺这条 = 语料加了但没重签基线，静默 SKIP 会让新 case 白跑
+            fail += 1
+            print("FAIL", case["id"], "基线里没有（语料变了要重签基线）")
             continue
         if want == first["sha"]:
             ok += 1
