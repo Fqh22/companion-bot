@@ -1,0 +1,36 @@
+{"id": "c01-weather-hit", "user": "今天北京天气怎么样", "weather": "北京 晴 18℃", "covers": [["weather", "hit", "nonempty"]]}
+{"id": "c02-weather-cold", "user": "上海今天冷不冷", "weather": "上海 阴 9℃", "covers": [["weather", "hit", "nonempty"]]}
+{"id": "c03-weather-missing", "user": "杭州今天天气怎样", "weather": "missing", "covers": [["weather", "fail", "nonempty"]]}
+{"id": "c04-weather-none", "user": "今天好累", "weather": null, "covers": [["weather", "none", "empty"]]}
+{"id": "c05-search-hit", "user": "这个方案该不该做，帮我分析一下", "search": "1. 方案评估要点\n2. 成本收益对比", "covers": [["search", "hit", "nonempty"]]}
+{"id": "c06-search-trend", "user": "这个趋势值不值，对比一下", "search": "1. 趋势向上\n2. 成本可接受", "covers": [["search", "hit", "nonempty"]]}
+{"id": "c07-search-miss", "user": "该不该换工作", "search": "", "covers": [["search", "empty", "empty"]]}
+{"id": "c08-search-error", "user": "这个方案该不该做，帮我分析一下", "search_error": true, "covers": [["search", "error", "empty"]]}
+{"id": "c09-followup-done", "user": "下周三面试我搞定了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "done", "nonempty"]]}
+{"id": "c10-followup-confirm", "user": "下周三面试好像结束了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "confirm", "nonempty"]]}
+{"id": "c11-followup-drop", "user": "下周三面试算了不弄了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "drop", "nonempty"]]}
+{"id": "c12-followup-none", "user": "在吗", "covers": [["followup", "none", "empty"], ["style", "model", "empty"], ["search", "none", "empty"], ["reaction", "none", "empty"], ["relation", "none", "empty"], ["share", "off", "empty"], ["caption", "none", "empty"]]}
+{"id": "c13-style-rules", "user": "在吗", "config": {"style_mode": "rules"}, "covers": [["style", "rules", "nonempty"]]}
+{"id": "c14-style-rules-tired", "user": "今天累死了", "config": {"style_mode": "rules"}, "covers": [["style", "rules", "nonempty"]]}
+{"id": "c15-reaction-emoji", "user": "哈哈哈哈哈", "covers": [["reaction", "hit", "nonempty"]]}
+{"id": "c16-caption", "user": "", "images": 1, "fake_llm": "一只猫趴在键盘上", "config": {"style_mode": "rules"}, "covers": [["caption", "note", "nonempty"], ["share", "off", "empty"]]}
+{"id": "c17-caption-empty", "user": "", "images": 1, "fake_llm": "", "config": {"style_mode": "rules"}, "covers": [["caption", "empty-note", "empty"]]}
+{"id": "c18-share-tier0", "user": "", "images": 1, "fake_llm": "Q版卡通人物鼓脸生气", "config": {"share_tier": true, "style_mode": "rules"}, "covers": [["share", "t0", "nonempty"], ["caption", "note", "nonempty"]]}
+{"id": "c19-share-tier1", "user": "", "images": 1, "fake_llm": "深色背景上的架构列表", "config": {"share_tier": true, "style_mode": "rules"}, "covers": [["share", "t1", "nonempty"]]}
+{"id": "c20-share-tier2", "user": "今天拍的这个", "images": 1, "fake_llm": "街景", "config": {"share_tier": true, "style_mode": "rules"}, "covers": [["share", "t2", "nonempty"]]}
+{"id": "c21-share-tier3", "user": "你觉得这个设计怎么样", "images": 1, "fake_llm": "界面截图", "config": {"share_tier": true, "style_mode": "rules"}, "covers": [["share", "t3", "nonempty"]]}
+{"id": "c22-share-tier4", "user": "我这个方案想解决噪音问题", "images": 1, "fake_llm": "流程图", "config": {"share_tier": true, "style_mode": "rules"}, "covers": [["share", "t4", "nonempty"]]}
+{"id": "c23-share-off", "user": "", "images": 1, "fake_llm": "一只猫", "config": {"share_tier": false, "style_mode": "rules"}, "covers": [["share", "off", "empty"], ["caption", "note", "nonempty"]]}
+{"id": "c24-relation", "user": "在吗", "relation": "- 称他张老师\n- 雷区：别提加班", "covers": [["relation", "hit", "nonempty"]]}
+{"id": "c25-owner-false", "user": "你是谁", "owner": false, "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c26-memory-hit", "user": "面试准备得怎么样", "memory": [{"text": "他下周三要去面试", "topics": ["面试"], "facts": ["下周三面试"], "importance": 0.8}], "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c27-knowledge", "user": "面试该注意什么", "notes": ["# 面试要点\n\n- 提前十分钟到\n- 带纸质简历"], "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c28-knowledge-multi", "user": "面试要注意啥", "notes": ["# 面试要点\n\n- 提前十分钟到", "# 复盘\n\n- 每次面试后写三条"], "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c29-profile", "user": "你觉得我适合干什么", "profile": {"职业与求职": "在找后端工作"}, "config": {"profile_inject": "on"}, "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c30-mood-low", "user": "在吗", "mood": {"valence": -0.6, "valence_base": -0.4, "energy": 0.2, "social": 0.4}, "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c31-mood-high", "user": "在吗", "mood": {"valence": 0.7, "valence_base": 0.5, "energy": 0.9, "social": 0.8}, "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c32-empty", "user": "", "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c33-long", "user": "我今天在公司把这个季度的方案改了三遍，第一遍被说太保守，第二遍被说太激进，第三遍干脆把两部分拆开，结果领导说方向可以但预算要砍一半，我现在有点不知道该怎么继续了", "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c34-group", "user": "大家好", "session": "group:123456", "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c35-chat-none", "user": "随便聊聊", "covers": [["situation", "hit", "nonempty"]]}
+{"id": "c36-caption-noimg", "user": "看看这个", "config": {"style_mode": "rules"}, "covers": [["caption", "none", "empty"], ["situation", "hit", "nonempty"]]}

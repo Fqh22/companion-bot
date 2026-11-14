@@ -90,3 +90,13 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/smoke-clock.py
+      # prompt 快照基线：改造前后必须逐字节相同（S1a 的保护网）
+      # QQBOT_ROOT 必须在临时目录下——工具会拒绝在非临时根上运行（防止写生产数据）
+      - name: prompt 快照基线
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: |
+          export QQBOT_ROOT="$(mktemp -d)"
+          python ops/test-prompt-golden.py
+          python ops/test-prompt-golden.py --offline
+          python ops/test-prompt-golden.py --selftest
