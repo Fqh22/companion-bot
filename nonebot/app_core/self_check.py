@@ -33,8 +33,23 @@ _RE_OPEN = re.compile(r"^\s*[\[【]\s*自\s*检\s*[\]】]")
 # 这里兜底：允许没有前缀，只认「=主 / 主=」+ 枚举值 + 来源=。
 _RE_FRAG = re.compile(
     r"^\s*((?:[\[【]\s*自\s*检\s*[\]】]\s*)?(?:主\s*)?[=＝]\s*"
-    r"(?:接住|判断|事实|执行|轻接|接梗|看)"
+    r"[\u4e00-\u9fa5]{1,4}"          # 主类不再限定 7 类：写「解释/安抚/调侃」也要能剥
     r"[^\n]{0,80}?来源\s*=\s*" + _SRC + r")\s*", re.S)
+
+
+# 兜底 1：白名单扩充后仍可能漏（模型写「来源=视觉」「来源=截图」）。
+# 只认已知值，值后面**只吃空白不吃正文**——「来源=图片行吧」剥成
+# tag「…来源=图片」、正文「行吧，…」，不吞字。
+_SRC_KNOWN = r"(?:图片|图像|照片|截图|视觉|记忆|搜索|文件|网络|音频|视频|无|两者|实际)"
+_RE_FULL_LOOSE = re.compile(
+    r"^\s*\[自检\]\s*(.+?来源\s*=\s*" + _SRC_KNOWN + r")\s*", re.S)
+
+# 兜底 2：连已知值都不匹配（模型写了个谁也没想到的词）。
+# 这里会吞掉值后面的 1-4 个字，但**保证标签不泄漏给用户**——
+# tag 只是观测数据，正文干净才是用户看到的。这个取舍是有意的。
+_RE_ANY_SRC = re.compile(
+    r"^\s*(?:\[自检\]\s*)?((?:主\s*)?[=＝]?\s*[\u4e00-\u9fa5]{1,4}"
+    r"[^\n]{0,80}?来源\s*=\s*[^\s｜|，。；]{1,6})\s*", re.S)
 
 
 def _clean(body: str) -> str:
@@ -47,7 +62,7 @@ def parse(text: str) -> tuple[str, str]:
     m = _RE_OPEN.match(t)
     if m:
         t = "[自检]" + t[m.end():]
-    for rx in (_RE_FULL, _RE_LINE, _RE_FRAG):
+    for rx in (_RE_FULL, _RE_LINE, _RE_FRAG, _RE_FULL_LOOSE, _RE_ANY_SRC):
         m = rx.match(t)
         if m:
             return m.group(1).strip(), _clean(t[m.end():])
