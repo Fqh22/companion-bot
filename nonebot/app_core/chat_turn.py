@@ -53,6 +53,41 @@ def _topic_overlap(a: str, b: str) -> bool:
     return bool(grams(a) & grams(b))
 
 
+# ---- 注入块的静态槽位表：顺序的唯一真源 ----
+# 改造前是 12 处 extra_system.append，顺序 = 追加时序；现在顺序 = 这张表。
+# source_stage 说明「数据从哪个阶段来」，不是运行时的 turn.stage。
+PREFETCH = "prefetch"
+READ_HISTORY = "read_history"
+RENDER_SLOTS = "render_slots"
+GENERATE = "generate"
+POST_WRITE = "post_write"
+
+
+class StageError(RuntimeError):
+    """在错的阶段写槽位：结构上不允许，不是风格问题。"""
+
+
+@dataclass(frozen=True)
+class Slot:
+    sid: int
+    key: str
+    nullable: bool
+    source_stage: str
+
+
+SLOTS: tuple[Slot, ...] = (
+    Slot(10, "weather", True, PREFETCH),
+    Slot(20, "search", True, PREFETCH),
+    Slot(30, "followup", True, READ_HISTORY),
+    Slot(40, "style", True, RENDER_SLOTS),
+    Slot(50, "reaction", True, RENDER_SLOTS),
+    Slot(60, "caption", True, RENDER_SLOTS),
+    Slot(70, "share", True, RENDER_SLOTS),
+    Slot(80, "situation", True, RENDER_SLOTS),
+    Slot(90, "relation", True, RENDER_SLOTS),
+)
+
+
 @dataclass
 class Turn:
     """一轮回复的状态。
@@ -71,7 +106,9 @@ class Turn:
     degraded: int = 0
     m: dict = field(default_factory=dict)
     stored: str = ""
-    extra_system: list = field(default_factory=list)
+    slots: dict = field(default_factory=dict)
+    prefetch: dict = field(default_factory=dict)
+    stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
     query: str = ""
@@ -101,6 +138,27 @@ class Turn:
     self_check: str = ""
     meta_leak: bool = False
     gap: float = 0.0
+
+    def set_slot(self, key: str, text: str | None) -> None:
+        """追加一个注入块。只允许在 RENDER_SLOTS 阶段——这是结构约束，不是注释。
+
+        同一槽可以有多块（followup 的 done/confirm/drop 理论上能同时命中），
+        槽内保持追加序；槽与槽之间由 SLOTS 决定。
+        """
+        if self.stage != RENDER_SLOTS:
+            raise StageError(f"槽位 {key} 只能在 {RENDER_SLOTS} 写，当前 {self.stage}")
+        if text is None:
+            return
+        self.slots.setdefault(key, []).append(text)
+
+    @property
+    def extra_system(self) -> tuple[str, ...]:
+        """按 SLOTS 顺序渲染，与赋值时序无关。"""
+        out: list[str] = []
+        # 按 sid 排序：sid 才是顺序真源，元组顺序只是书写顺序
+        for s in sorted(SLOTS, key=lambda x: x.sid):
+            out.extend(self.slots.get(s.key) or ())
+        return tuple(out)
 
 
 def _share_tier_on() -> bool:
@@ -142,12 +200,13 @@ class ChatTurnMixin:
             except Exception:  # noqa: BLE001
                 _w = None
             if _w:
-                turn.extra_system.append(
+                turn.prefetch.setdefault("weather", []).append(
                     "【天气】" + str(_w.get("text") or "")[:200]
                     + "（" + time.strftime("%H:%M", time.localtime(_w.get("as_of") or time.time()))
                     + " 查的；只作依据，别把没说的天气硬塞进去）")
             else:
-                turn.extra_system.append("【天气】这次没查到，不知道就直说，别编。")
+                turn.prefetch.setdefault("weather", []).append(
+                    "【天气】这次没查到，不知道就直说，别编。")
 
         try:
             turn.digest = await self.get_digest(session)
@@ -155,6 +214,7 @@ class ChatTurnMixin:
             turn.digest = ""
         # 还没有纪要时放宽历史预算：一上线就砍到 2500 会把老上下文丢了
         hist_budget = self.history_max_chars if turn.digest else max(self.history_max_chars, 4000)
+        turn.stage = READ_HISTORY
         # 先读历史、后写本轮：否则刚写进去的这句会被 history() 读回来，
         # 再在 build_messages 末尾追加一次 —— 同一句话在 prompt 里出现两遍。
         turn.history = await self.history(session, max_chars=hist_budget)
@@ -209,7 +269,7 @@ class ChatTurnMixin:
             return
         if not res or res.startswith("没搜到") or res.startswith("搜索失败"):
             return
-        turn.extra_system.append(
+        turn.prefetch.setdefault("search", []).append(
             "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200])
 
     def _prepare_followup(self, turn: Turn, user_text: str) -> None:
@@ -227,17 +287,17 @@ class ChatTurnMixin:
                 followup.apply(res)
                 log.info("[chat] followup %s", res)
             if res.get("done"):
-                turn.extra_system.append(
+                turn.prefetch.setdefault("followup", []).append(
                     "他刚说这件事办完了，你已经记成完成——"
                     "这轮别再问进展，也别再说「记得跟我说」。")
             if res.get("confirm"):
                 names = followup.texts_for(res["confirm"])
                 if names:
-                    turn.extra_system.append(
+                    turn.prefetch.setdefault("followup", []).append(
                         "他像是在说「%s」已经办完了，但你没把握："
                         "在回复里顺口确认一句，别直接当成已完成。" % names[0])
             if res.get("drop"):
-                turn.extra_system.append(
+                turn.prefetch.setdefault("followup", []).append(
                     "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
                     "这轮别提它，也别追问进展。")
         except Exception:
@@ -398,6 +458,12 @@ class ChatTurnMixin:
 
     async def _turn_compose(self, turn: Turn) -> None:
         """拼 prompt：风格块、待办、相处状态、画像、知识合成一条 system 消息。"""
+        turn.stage = RENDER_SLOTS
+        # 取数与渲染分离：PREFETCH/READ_HISTORY 只写 turn.prefetch，
+        # 到这里按 SLOTS 的固定顺序落槽位。
+        for _k in ("weather", "search", "followup"):
+            for _v in turn.prefetch.get(_k) or ():
+                turn.set_slot(_k, _v)
         # 这一轮怎么说：长度 / 形式 / 图片 / 时效 / 纠正 合成**一条**消息。
         # 合并的原因：原来五条 system 消息会互相打架（allow_short 就是打过的补丁），
         # 现在冲突规则集中在一个函数里，可测、只需查一处。
@@ -413,7 +479,7 @@ class ChatTurnMixin:
                     images=len(turn.images) if turn.images else 0,
                     recent_user_lens=_user_lens)
                 if block:
-                    turn.extra_system = list(turn.extra_system) + [block]
+                    turn.set_slot("style", block)
             except Exception as e:  # noqa: BLE001
                 log.debug("风格块生成失败：%s", e)
 
@@ -422,9 +488,9 @@ class ChatTurnMixin:
         try:
             _fix = bool(turn.images) and prompt_mod.image_mode(turn.user_text) == "fix"
             if prompt_mod.is_reaction_turn(turn.user_text, len(turn.images or []), _fix):
-                turn.extra_system = list(turn.extra_system) + [
-                    "（他发的是表情/贴图，不是题目：可以先用 meme_send 回一个，"
-                    "再配一句很短的话；别分析画面。）"]
+                turn.set_slot("reaction",
+                              "（他发的是表情/贴图，不是题目：可以先用 meme_send 回一个，"
+                              "再配一句很短的话；别分析画面。）")
         except Exception as e:  # noqa: BLE001
             log.debug("表情回应提示失败：%s", e)
 
@@ -435,8 +501,8 @@ class ChatTurnMixin:
             try:
                 _cap = await self.caption_images(turn.images)
                 if _cap:
-                    turn.extra_system.append(
-                        "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
+                    turn.set_slot("caption",
+                                  "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
                     # 同步写进历史：他常常「先发图、再补一句问」，下一轮读历史时
                     # 后台图注可能还没写完，模型就会说「我看不着细节」（2026-11-13
                     # 线上第 3064 条）。这里先落库，后台任务靠幂等跳过。
@@ -457,7 +523,7 @@ class ChatTurnMixin:
                 if not _is_fix:
                     _tier, _why = share_tier.judge(turn.user_text, _cap)
                     turn.share_tier = _tier
-                    turn.extra_system.append(share_tier.block(_tier, _why))
+                    turn.set_slot("share", share_tier.block(_tier, _why))
         except Exception as e:  # noqa: BLE001
             log.debug("分享档位判定失败：%s", e)
 
@@ -467,7 +533,7 @@ class ChatTurnMixin:
 
             _sit = situation.describe(turn.session, turn.m)
             if _sit:
-                turn.extra_system.append("[此刻]\n" + _sit)
+                turn.set_slot("situation", "[此刻]\n" + _sit)
         except Exception:  # noqa: BLE001
             pass
 
@@ -477,7 +543,7 @@ class ChatTurnMixin:
 
             _rel = relation_notes.load()
             if _rel:
-                turn.extra_system.append("[我们之间]\n" + _rel)
+                turn.set_slot("relation", "[我们之间]\n" + _rel)
         except Exception:  # noqa: BLE001
             pass
 
@@ -518,6 +584,7 @@ class ChatTurnMixin:
 
     async def _turn_generate(self, turn: Turn, on_sentence) -> None:
         """调模型（含流式、重试、降级），产出 turn.text / buffer / sent_parts。"""
+        turn.stage = GENERATE
         _model_first = self._style_mode() == "model"
 
         async def sink(delta: str) -> None:
@@ -636,6 +703,7 @@ class ChatTurnMixin:
 
     async def _turn_commit(self, turn: Turn, on_sentence) -> None:
         """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
+        turn.stage = POST_WRITE
         # 自检标签：剥掉、记一条。P1 只观测，不改回复。
         try:
             _tag, _body = self_check_mod.parse(turn.text or "")
