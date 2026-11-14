@@ -96,6 +96,7 @@ async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--out", default="/tmp/mem-eval.jsonl")
+    ap.add_argument("--cls", default="")   # 只跑某一类（time/update/abstain）
     args = ap.parse_args()
     if not CASES.exists():
         print("缺语料：", CASES)
@@ -106,9 +107,21 @@ async def main() -> int:
     await core.init_db()
     core.memory.init()
     for case in cases:
+        ids = {}
         for m in case.get("memories") or []:
             vec = (await core.memory.embed([m["text"]]))[0]
-            core.memory.add_document(m["text"], "private:console", 0.8, ["事实"], [m["text"]], vec=vec)
+            ids[m["text"]] = core.memory.add_document(
+                m["text"], "private:console", 0.8, ["事实"], [m["text"]], vec=vec)
+        # 知识更新类：旧事实要真的走软删，否则测的是「两条都进 prompt」而不是「矛盾检测」
+        news = [m for m in (case.get("memories") or [])
+                if m.get("status") != "superseded"]
+        for m in case.get("memories") or []:
+            if m.get("status") == "superseded" and news:
+                try:
+                    core.memory.supersede(ids[m["text"]], ids[news[0]["text"]],
+                                          "评测：知识更新")
+                except Exception as e:  # noqa: BLE001
+                    print("supersede 失败:", type(e).__name__, e)
     await core.memory.ensure_vectors()
     if not args.run:
         turn = await core._turn_prepare("private:console", cases[0]["user"], None, None)
@@ -119,6 +132,8 @@ async def main() -> int:
     rows = []
     for g in groups:
         for case in cases:
+            if args.cls and case["cls"] != args.cls:
+                continue
             if g == "D" and not case.get("inject_d"):
                 continue
             rows.append(await one(core, case, g))
