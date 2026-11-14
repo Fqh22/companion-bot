@@ -134,13 +134,24 @@ async def record_followup(llm, user_text: str, reply: str) -> str:
     return cand
 
 
+_LAST_PROFILE: dict = {}
+
+
 def record_profile(block: str, fields: dict, mode: str = "shadow") -> None:
     """记一次「如果注入了画像，会注入这些话」。只写文件，不改 messages。
 
     mode=on 时也记一条（带 mode 字段），这样切开数据能对比注入前后。
+
+    **只在变化时写**：画像一周才更新一次，之前每轮都写一遍相同的 197 字，
+    4.5 小时攒了 120 条 99% 重复的日志——既浪费 I/O，也让人看不出它到底什么时候变过。
+    现在同一进程内相同 block 只记一次，重启后第一条仍会记（记录当前状态）。
     """
     if not block:
         return
+    _key = (block[:240], mode)
+    if _LAST_PROFILE.get("key") == _key:
+        return
+    _LAST_PROFILE["key"] = _key
     _append(PROFILE_LOG, {
         "ts": time.time(),
         "mode": mode,
