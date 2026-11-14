@@ -599,6 +599,8 @@ async def main() -> None:
         # ---------- prompt / pacing / proactive / summarize / tool_loop / config / llm ----------
         # 这七个模块以前只被间接调用（经 chat），没有直接体检项——
         # link-check 现在会查「每个模块都进了 smoke-all」，所以补上。
+        from app_core import tts as tts_mod
+        check("tts: PCM 采样率与长度上限", tts_mod.PCM_RATE == 24000 and tts_mod.MAX_CHARS > 0)
         from app_core import embed_provider as ep_mod
         check("embed_provider: 内置 provider 带维度",
               ep_mod.PROVIDERS["zhipu"]["dim"] == 2048
