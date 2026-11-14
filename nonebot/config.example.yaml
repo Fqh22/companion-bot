@@ -21,6 +21,9 @@ llm:
   # 一次回复的总时限（秒）。超了就回一句「有点卡」，不让用户干等。
   # 工具最坏 6 轮 × 90s，没有这个上限能拖到 9 分钟。
   reply_deadline_seconds: 45
+  # 首字预算（秒）：取证阶段最多花这么久。用户感知的是首字，不是整轮——
+  # 超了就在 turn_stats 里标 over_budget，S2 据此决定跳过可选取数。
+  first_token_budget_seconds: 10
   # 思考模式。deepseek-flash 默认开着思考：更聪明、回复更有内容，但首字慢约 0.8s，
   # 输出 token 更多（每次约 +100），且思考模式下 temperature 完全不生效。
   # 2026-10-31 实测取舍后选择开启；想更快更省改成 false。

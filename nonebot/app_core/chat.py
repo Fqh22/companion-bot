@@ -228,6 +228,8 @@ class ChatCore(ChatTurnMixin):
         tool_cfg = cfg.get("tools") or {}
         # 一次回复的总时限：再慢也不能让用户干等（工具 6 轮 × 90s 最坏能拖到 9 分钟）
         self.reply_deadline = float(llm.get("reply_deadline_seconds", 45))
+        # 首字预算：取证阶段的上限。和总时限分开——45s 是兜底，10s 才是体感。
+        self.first_token_budget = float(llm.get("first_token_budget_seconds", 10))
         # 工具预算从总时限**派生**：配置里写 120s，但外层 45s 就把整轮掐断了，
         # 那个 120 永远到不了（线上 3 天日志「工具总预算用尽」0 次）。
         # 留 5 秒给收尾和发送；单个工具也不该比一轮的三分之一还长。

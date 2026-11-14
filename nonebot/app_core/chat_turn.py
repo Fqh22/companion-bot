@@ -111,6 +111,9 @@ class Turn:
     calls: dict = field(default_factory=dict)   # 每个 fetch 被调用几次（判 no_call / degraded）
     caption_text: str = ""                      # RENDER_SLOTS 生成、POST_WRITE 写回
     gap_basis: float = 0.0                      # 上一条用户消息时间（READ_HISTORY 冻结）
+    prepare_ms: float = 0.0                     # 取证+组装耗时（首字预算的实际占用）
+    first_token_at: float = 0.0                 # 首字时间戳（perf_counter）
+    prepare_over_budget: bool = False
     stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
@@ -593,6 +596,11 @@ class ChatTurnMixin:
                                         style_mode=self._style_mode(),
                                         context_format=self._context_format(),
                                         gap_hours=turn.gap)
+        turn.prepare_ms = (time.perf_counter() - turn.t0) * 1000.0
+        try:
+            turn.prepare_over_budget = turn.prepare_ms > self.first_token_budget * 1000.0
+        except Exception:  # noqa: BLE001
+            turn.prepare_over_budget = False
         await self._log_prompt(turn.session, turn.msgs, digest=turn.digest,
                                images=turn.images)
         # 表情包工具常驻：以前按情绪强度条件注入，工具表时有时无，模型学不出
@@ -611,6 +619,8 @@ class ChatTurnMixin:
             一直没下一句，就说明它真是结尾 —— 丢掉（这条实测模型改不掉，只能事后剪）。
             """
             turn.streamed = True
+            if not turn.first_token_at:
+                turn.first_token_at = time.perf_counter()
             turn.buffer += delta
             # 自检标签在正文前一行：等它写完（换行）再剥，别把半截标签当正文发。
             if not getattr(turn, "_sc_done", False):
@@ -734,6 +744,24 @@ class ChatTurnMixin:
         # 图注写回：本轮唯一的「渲染时生成、写库时落盘」的块。
         # shield 是给取消/超时路径用的——45 秒硬线会补发已生成部分并结束本轮，
         # 若写回被 cancel，用户翻聊天记录会缺图注，而 36/36 依旧全绿。
+        # 每轮一个统计行：prepare_ms（取证占用）、first_ms（首字）、total_ms、是否超预算。
+        # 没有这个，S2 只能看到「整轮从 15.4 降到 12」，看不到首字。
+        try:
+            from app_core import paths as _p2
+
+            _first = (int((turn.first_token_at - turn.t0) * 1000)
+                      if turn.first_token_at else -1)
+            with (_p2.DATA / "turn_stats.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "ts": time.time(), "ses": (turn.session or "")[:24], "rid": turn.rid,
+                    "prepare_ms": int(turn.prepare_ms), "first_ms": _first,
+                    "total_ms": int((time.perf_counter() - turn.t0) * 1000),
+                    "over_budget": bool(turn.prepare_over_budget),
+                    "degraded": int(turn.degraded), "streamed": bool(turn.streamed),
+                }, ensure_ascii=False) + "\n")
+        except Exception as e:  # noqa: BLE001
+            log.debug("轮次统计写入失败：%s", e)
+
         if turn.caption_text and turn.user_msg_id:
             try:
                 _suffix = "｜图注：" + turn.caption_text
