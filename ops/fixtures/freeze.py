@@ -38,7 +38,7 @@ def _frozen_struct(ts: float | None = None):
 
 
 class _FrozenDatetime(_real_datetime):
-    """只替换 now / utcnow。prompt.py:53 是函数内 import，patch 类才生效。"""
+    """替换 now / utcnow / fromtimestamp。prompt.py:53 是函数内 import，patch 类才生效。"""
 
     @classmethod
     def now(cls, tz=None):
@@ -49,6 +49,14 @@ class _FrozenDatetime(_real_datetime):
     @classmethod
     def utcnow(cls):
         return _real_datetime.fromtimestamp(FIXED_TS, tz=_dtmod.timezone.utc).replace(tzinfo=None)
+
+    @classmethod
+    def fromtimestamp(cls, ts, tz=None):
+        # 源码里任何 fromtimestamp(ts) 不带 tz 的调用都会落到宿主时区——
+        # 这是和 localtime 同一个坑，只是入口不同。统一按 +08 解释。
+        if tz is None:
+            return _real_datetime.fromtimestamp(ts, tz=_CST).replace(tzinfo=None)
+        return _real_datetime.fromtimestamp(ts, tz=tz)
 
 
 class _FrozenDate(_real_date):
@@ -78,6 +86,13 @@ def set_ts(ts: float) -> None:
     FIXED_TS = ts
 
 
+# 有意不打桩的源 + 理由。不写下来，下一个人会以为「全表」覆盖完了。
+UNFROZEN = {
+    "time.monotonic": "asyncio 的超时依赖它，冻死会把 asyncio.wait 卡住；只允许出现在调度层",
+    "time.perf_counter": "Turn.t0 的耗时基线，S2 的 prepare_ms 也要用它；不进 prompt 渲染",
+}
+
+
 def snapshot() -> dict:
     """当前所有时钟源的返回值——selftest 逐项断言用。"""
     import datetime as d
@@ -88,6 +103,7 @@ def snapshot() -> dict:
         "datetime.now": d.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "datetime.utcnow": d.datetime.utcnow().strftime("%Y-%m-%d %H:%M"),
         "date.today": d.date.today().isoformat(),
+        "fromtimestamp": d.datetime.fromtimestamp(0).strftime("%Y-%m-%d %H:%M"),
         "tzname": list(_time.tzname),
         "timezone": _time.timezone,
         "daylight": _time.daylight,

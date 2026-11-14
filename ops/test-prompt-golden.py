@@ -589,6 +589,7 @@ async def main() -> int:
             "datetime.now": "2026-11-15 20:00",
             "datetime.utcnow": "2026-11-15 12:00",
             "date.today": "2026-11-15",
+            "fromtimestamp": "1970-01-01 08:00",
             "tzname": ["CST", "CST"],
             "timezone": -8 * 3600,
             "daylight": 0,
@@ -605,6 +606,23 @@ async def main() -> int:
                       timeout=900, env=env2)
         _ck("TZ=UTC 子进程 36/36", pr2.returncode == 0,
             f"rc={pr2.returncode} " + (pr2.stdout or "")[-120:])
+
+        # 7b) 自证：TZ=UTC 到底有没有切换宿主时区。
+        # 第 6 条在「freeze 已把 localtime 打桩」的前提下无论 TZ 有没有生效都会绿——
+        # 这里用不加载 freeze 的裸探针，切不动就必须 SKIP/FAIL，不能静默 PASS。
+        probe = "import time;print(time.localtime(%r).tm_hour, time.timezone)" % freeze.FIXED_TS
+        env3 = dict(_os.environ)
+        env3["TZ"] = "UTC"
+        pr3 = _sp.run([sys.executable, "-c", probe], capture_output=True,
+                      text=True, timeout=30, env=env3)
+        got = (pr3.stdout or "").split()
+        if pr3.returncode == 0 and got and got[0] == "12":
+            _ck("TZ=UTC 探针确认时区真的切了", True, "hour=12")
+        elif _os.name == "nt":
+            print("SKIP TZ=UTC 探针：Windows CRT 不响应 TZ（这项只在 Linux/CI 有判别力）")
+        else:
+            _ck("TZ=UTC 探针确认时区真的切了", False,
+                (pr3.stdout or pr3.stderr or "")[-100:])
 
         print(f"\n=== selftest {ok}/{ok + fail} 通过 ===")
         return 0 if fail == 0 else 1
