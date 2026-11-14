@@ -260,30 +260,18 @@ async def search_meta(query: str, top_k: int = 4, qv: list[float] | None = None)
     先只在笔记/技能里找：复盘是对话流水，量又大，直接混在一起搜会把
     真正整理过的那几页挤掉（实测「agent skill 怎么缓存」top5 全是复盘）。
     """
-    texts = await recall(query, top_k, qv=qv, curated=True)
-    if not texts:
-        texts = await recall(query, top_k, qv=qv)
-    if not texts:
-        return []
-    c = _conn()
-    rows = c.execute("SELECT path, text FROM kb_chunks").fetchall()
-    c.close()
-    out = []
-    for t in texts:
-        path = label = ""
-        for p, full in rows:
-            if (full or "").startswith(t[:40]):
-                path = Path(p).stem
-                label = learn_mod.page_label(p)
-                break
-        out.append({"path": path, "text": t, "label": label})
-    return out
+    pairs = await recall(query, top_k, qv=qv, curated=True, with_path=True)
+    if not pairs:
+        pairs = await recall(query, top_k, qv=qv, with_path=True)
+    return [{"path": Path(p).stem, "text": t, "label": learn_mod.page_label(p)}
+            for t, p in pairs]
 
 
 async def recall(query: str, top_k: int = TOP_CHUNKS,
                  min_score: float = MIN_SCORE,
                  qv: list[float] | None = None,
-                 curated: bool | None = None) -> list[str]:
+                 curated: bool | None = None,
+                 with_path: bool = False) -> list:
     """返回若干段笔记正文。qv 可由调用方预先算好传入，与记忆召回共用一次 embedding。"""
     init()
     mat, meta = _matrix()
@@ -325,7 +313,7 @@ async def recall(query: str, top_k: int = TOP_CHUNKS,
         cands.append((s * (1.0 - KB_TIME_WEIGHT + KB_TIME_WEIGHT * rec), path, text))
     cands.sort(key=lambda x: -x[0])
 
-    out, per_file, seen = [], {}, set()
+    out, paths, per_file, seen = [], [], {}, set()
     for _, path, text in cands:
         if len(out) >= top_k:
             break
@@ -337,4 +325,7 @@ async def recall(query: str, top_k: int = TOP_CHUNKS,
         seen.add(head)
         per_file[path] = per_file.get(path, 0) + 1
         out.append((text or "")[:CHUNK_INJECT])
-    return out
+        paths.append(path)
+    # with_path 给 search_meta 用：召回时 meta 里本来就有 path，
+    # 不必再全表拉 822 行 + 前缀反查（那个反查在「两块同前 40 字」时还会标错出处）
+    return list(zip(out, paths)) if with_path else out
