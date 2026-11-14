@@ -76,7 +76,9 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         self.keep_important = float(mem_cfg.get("recall_keep_important", 0.8))
         # 关键词通道（BM25+RRF）目前只跑影子：算完 dense 结果再算一遍，
         # 落盘对比，**不改召回结果**。攒够样本再决定要不要真的切过去。
-        self.shadow_recall = bool(mem_cfg.get("shadow_retrieval", True))
+        # 2026-11-14：影子实验判据被证伪（333 次/2.97 低于转正阈值但人工抽检否决），
+        # 按「到期即关」关闭。要重开请先重写判据，别再拿重合度当代理指标。
+        self.shadow_recall = bool(mem_cfg.get("shadow_retrieval", False))
         self._bm25 = None
         self._bm25_ids: list[str] = []
         self._bm25_n = -1

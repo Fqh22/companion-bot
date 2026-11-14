@@ -450,9 +450,16 @@ class ChatTurnMixin:
                 with (_paths.DATA / "memory_trace.jsonl").open("a", encoding="utf-8") as f:
                     f.write(_json.dumps({
                         "ts": time.time(),
+                        "turn_id": turn.rid,
                         "session": turn.session,
                         "query": (turn.query or "")[:80],
                         "ids": [m.get("doc_id") for m in turn.memories],
+                        # 注入明细：评测要回答「注入的是哪条、多旧、原文是什么」，
+                        # 只记 ids 不够——召回了错的看不出来。
+                        "injected": [{"id": m.get("doc_id"),
+                                      "age_days": m.get("age_days"),
+                                      "text": (m.get("text") or "")[:120]}
+                                     for m in turn.memories],
                         "trace": turn.memory_trace,
                     }, ensure_ascii=False) + "\n")
             except Exception:  # noqa: BLE001
