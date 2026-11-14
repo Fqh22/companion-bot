@@ -134,6 +134,14 @@ split_reply = prompt_mod.split_reply
 from app_core.chat_turn import ChatTurnMixin, Turn
 
 
+def _lock_owner() -> str:
+    """锁的持有者标识：pid@host。用于 release 时只删自己的锁。"""
+    import os
+    import socket
+
+    return f"{os.getpid()}@{socket.gethostname()}"
+
+
 def prompt_blocks(msgs: list[dict]) -> list[dict]:
     """把一份 messages 拆成「块账」：每块是什么、占多少字符。
 
@@ -353,6 +361,11 @@ class ChatCore(ChatTurnMixin):
             # 跨进程/跨重启的任务锁：抢到才执行，避免重启重跑、多实例重复
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS locks (name TEXT PRIMARY KEY, ts REAL NOT NULL)")
+            try:
+                # 持有者：过期锁被别的进程抢走后，原持有者 release 不能删别人的锁
+                await db.execute("ALTER TABLE locks ADD COLUMN owner TEXT")
+            except Exception:  # noqa: BLE001
+                pass
             # 滚动纪要：把「聊过什么」压成一段，替代无限增长的历史原文
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS session_digest ("
@@ -987,13 +1000,14 @@ class ChatCore(ChatTurnMixin):
             async with aiosqlite.connect(DB, timeout=15) as db:
                 now = time.time()
                 try:
-                    await db.execute("INSERT INTO locks(name, ts) VALUES (?,?)", (name, now))
+                    await db.execute("INSERT INTO locks(name, ts, owner) VALUES (?,?,?)",
+                                     (name, now, _lock_owner()))
                     await db.commit()
                     return True
                 except Exception:
                     cur = await db.execute(
-                        "UPDATE locks SET ts=? WHERE name=? AND ts < ?",
-                        (now, name, now - ttl))
+                        "UPDATE locks SET ts=?, owner=? WHERE name=? AND ts < ?",
+                        (now, _lock_owner(), name, now - ttl))
                     await db.commit()
                     return cur.rowcount > 0
         except Exception as e:  # noqa: BLE001
@@ -1001,9 +1015,16 @@ class ChatCore(ChatTurnMixin):
             return False
 
     async def _release(self, name: str) -> None:
+        """只删自己的锁。
+
+        原来无条件 DELETE：锁过期被别的进程抢走后，原持有者的 release
+        会把别人的锁删掉，两个实例同时跑同一任务。
+        """
         try:
             async with aiosqlite.connect(DB, timeout=15) as db:
-                await db.execute("DELETE FROM locks WHERE name=?", (name,))
+                await db.execute(
+                    "DELETE FROM locks WHERE name=? AND (owner IS NULL OR owner=?)",
+                    (name, _lock_owner()))
                 await db.commit()
         except Exception:
             pass

@@ -88,10 +88,17 @@ class TurnRunner:
             pass
         typing = asyncio.create_task(self._typing_loop(msg.session))
 
-        async def on_sentence(part: str) -> None:
+        async def on_sentence(part: str) -> bool:
+            """返回**是否真的发出去了**——调用方要用它决定记不记 sent_parts。
+
+            原来返回 None，chat_turn 无条件 append，发失败也当成了已发：
+            后续「一个字都没发才重试」的判断会失效。
+            """
             nonlocal sent
             if await self._pace_and_send(msg.session, part, sent, started):
                 sent += 1
+                return True
+            return False
 
         try:
             out = await asyncio.wait_for(

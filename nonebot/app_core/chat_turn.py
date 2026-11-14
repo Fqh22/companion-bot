@@ -146,6 +146,7 @@ class Turn:
     share_tier: int = -1
     self_check: str = ""
     meta_leak: bool = False
+    meta_leak_partial: bool = False   # 元叙述泄漏时已经发了一半（后半段丢了）
     gap: float = 0.0
 
     def set_slot(self, key: str, text: str | None, order: int | None = None) -> None:
@@ -337,6 +338,10 @@ class ChatTurnMixin:
         turn.calls["weather"] = turn.calls.get("weather", 0) + 1
         try:
             _w = await asyncio.wait_for(perception.read(), timeout=10)
+        except asyncio.TimeoutError:
+            log.info("天气超时（>10s），本轮不注入")
+            turn.fetch_metrics["weather"] = "timeout"
+            _w = None
         except Exception:  # noqa: BLE001
             _w = None
         if _w:
@@ -352,6 +357,8 @@ class ChatTurnMixin:
             return await asyncio.wait_for(web_mod.search(q, 3), timeout=5.0) or ""
         except asyncio.TimeoutError:
             log.info("分析类预搜索超时（>5s），本轮不注入")
+            # 记下来：metrics 里永远没有 timeout，就分不清「没走」和「走了但超时」
+            turn.fetch_metrics["search"] = "timeout"
             return ""
         except Exception as e:  # noqa: BLE001
             log.debug("分析类预搜索失败：%s", e)
@@ -727,16 +734,16 @@ class ChatTurnMixin:
                         turn.meta_leak = True
                         continue
                     if turn.held:
-                        await on_sentence(turn.held)
-                        turn.sent_parts.append(turn.held)
+                        if await on_sentence(turn.held):
+                            turn.sent_parts.append(turn.held)
                         turn.held = ""
                     # 规则模式才扣结尾建议；model 模式让模型自己决定
                     if not _model_first and not prompt_mod.wants_advice(turn.user_text) \
                             and prompt_mod.is_advice_sentence(part):
                         turn.held = part
                     else:
-                        await on_sentence(part)
-                        turn.sent_parts.append(part)
+                        if await on_sentence(part):
+                            turn.sent_parts.append(part)
 
         turn.img_budget = max(self.max_tokens, _chat().REPLY_MAX_TOKENS)
         turn.think = self._thinking_for(turn.user_text, turn.images)
@@ -775,6 +782,10 @@ class ChatTurnMixin:
                         (turn.text or turn.buffer)[:80])
             turn.meta_leak = True
             turn.text, turn.buffer = "", ""
+            if turn.sent_parts:
+                # 已经发了一半：不能重试（会整段重发），后半段只能丢。
+                # 记下来——这种轮次用户看到的是「说到一半停了」，比报错更难查。
+                turn.meta_leak_partial = True
             if not turn.sent_parts:
                 try:
                     turn.text = await self._run_tools(
@@ -834,6 +845,7 @@ class ChatTurnMixin:
                     "degraded": int(turn.degraded), "streamed": bool(turn.streamed),
                     "parallel": bool(turn.parallel), "budget_exhausted": bool(turn.budget_exhausted),
                     "fetches": turn.fetch_metrics,
+                    "meta_leak_partial": bool(turn.meta_leak_partial),
                 }, ensure_ascii=False) + "\n")
         except Exception as e:  # noqa: BLE001
             log.debug("轮次统计写入失败：%s", e)
