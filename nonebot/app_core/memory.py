@@ -64,6 +64,8 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         cfg = config.load()["embedding"]
         self.api = cfg.get("api") or EMBED_API
         self.model = cfg.get("model") or EMBED_MODEL
+        # 维度：换 embedding 家时旧向量不在同一空间，显式声明才能在写入时就报错
+        self.dim = int(cfg.get("dim") or 0)
         mem_cfg = config.load().get("memory") or {}
         self.recall_min_score = float(mem_cfg.get("recall_min_score", 0.35))
         # 时间 / 重要性调制参数（见 recall 里的公式）

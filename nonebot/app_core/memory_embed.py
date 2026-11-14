@@ -33,39 +33,16 @@ class EmbedMixin:
             else:
                 todo.append((i, key, t))
         if todo:
-            # 429 是限流不是故障：实测智谱在高峰时段连续返回 429，
-            # 一次失败就让「写记忆失败，水位不动」——退避重试能救回大部分。
-            data = []
-            last: Exception | None = None
-            for attempt in range(3):
-                try:
-                    async with httpx.AsyncClient(timeout=60) as client:
-                        r = await client.post(
-                            self.api,
-                            headers={"Authorization": f"Bearer {self.key}"},
-                            json={"model": self.model, "input": [t for _, _, t in todo]},
-                        )
-                    if r.status_code in (429, 500, 502, 503, 504) and attempt < 2:
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    r.raise_for_status()
-                    data = r.json().get("data", [])
-                    break
-                except Exception as e:  # noqa: BLE001
-                    last = e
-                    if attempt < 2:
-                        await asyncio.sleep(1.5 * (attempt + 1))
-                        continue
-                    raise
-            else:
-                if last:
-                    raise last
-            for item in data:
-                pos = item.get("index", 0)
-                if 0 <= pos < len(todo):
-                    i, key, _ = todo[pos]
-                    out[i] = item.get("embedding")
-                    if len(_EMBED_CACHE) >= EMBED_CACHE_MAX:
-                        _EMBED_CACHE.clear()
-                    _EMBED_CACHE[key] = out[i]
+            # 重试 / 429 / 维度校验都在 embed_provider 里：换一家只改配置，
+            # 不用在这里再写一套退避（2026-11-14 一夜之间三处各写了一遍）。
+            from app_core import embed_provider
+
+            vecs = await embed_provider.embed(
+                [t for _, _, t in todo], api=self.api, model=self.model,
+                key=self.key, dim=getattr(self, "dim", 0))
+            for (i, key, _), vec in zip(todo, vecs):
+                out[i] = vec
+                if len(_EMBED_CACHE) >= EMBED_CACHE_MAX:
+                    _EMBED_CACHE.clear()
+                _EMBED_CACHE[key] = vec
         return [v or [] for v in out]

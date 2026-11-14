@@ -599,6 +599,12 @@ async def main() -> None:
         # ---------- prompt / pacing / proactive / summarize / tool_loop / config / llm ----------
         # 这七个模块以前只被间接调用（经 chat），没有直接体检项——
         # link-check 现在会查「每个模块都进了 smoke-all」，所以补上。
+        from app_core import embed_provider as ep_mod
+        check("embed_provider: 内置 provider 带维度",
+              ep_mod.PROVIDERS["zhipu"]["dim"] == 2048
+              and ep_mod.PROVIDERS["siliconflow"]["dim"] == 1024)
+        check("embed_provider: 显式 dim 覆盖 provider 默认",
+              ep_mod.spec("zhipu", dim=1024)["dim"] == 1024)
         from app_core import timenorm as tn_mod
         from datetime import datetime as _dtm
         _tn = tn_mod.normalize("下周三面试，明天体检", _dtm(2026, 11, 14, 17, 0))

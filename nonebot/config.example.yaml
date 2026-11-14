@@ -49,8 +49,13 @@ summary:
   thinking: false
 
 embedding:
+  # provider 只用来取默认 api/model/dim；显式写 api/model 会覆盖它。
+  # 内置：zhipu（embedding-3, 2048） / siliconflow（BAAI/bge-m3, 1024）
+  provider: zhipu
   api: https://open.bigmodel.cn/api/paas/v4/embeddings
   model: embedding-3
+  # 维度。换家时必须一起改并重建向量（ops/rebuild-embed.py），否则旧向量静默失效
+  dim: 2048
 
 tools:
   # 单个工具调用超时；总预算是一轮回复里所有工具调用的上限。
