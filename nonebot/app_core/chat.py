@@ -517,8 +517,12 @@ class ChatCore(ChatTurnMixin):
         if len(content) == 1:
             return ""
         try:
-            msg = await self.complete_raw([{"role": "user", "content": content}],
-                                          None, max_tokens=140, thinking=False)
+            # 图注是附加信息，不能吃掉整轮的 45 秒预算：它在主生成之前被同步 await，
+            # 视觉模型一慢（或 429 重试）就把回复时间全占掉，用户只等到「有点卡」。
+            msg = await asyncio.wait_for(
+                self.complete_raw([{"role": "user", "content": content}],
+                                  None, max_tokens=140, thinking=False),
+                timeout=8)
             return (msg.get("content") or "").strip()[:200]
         except Exception as e:  # noqa: BLE001
             log.debug("生成图注失败：%s", e)
@@ -572,7 +576,10 @@ class ChatCore(ChatTurnMixin):
                     "INSERT INTO prompt_log(ts,session,sha,chars,flags,body,blocks) "
                     "VALUES(?,?,?,?,?,?,?)",
                     (time.time(), session, hashlib.sha256(blob).hexdigest()[:16],
-                     len(blob), tag, body, blocks))
+                     # chars 记**字符数**，与 prompt_blocks / `/prompt_last` 的展示同口径。
+                     # 原来存 len(blob)（UTF-8 字节数），中文下约为字符数的 3 倍，
+                     # 同一行「字符」与「分块合计」永远对不上。
+                     len(blob.decode("utf-8", errors="replace")), tag, body, blocks))
                 # 只留最近 100 条：正文占空间，排障也只看最近的
                 await db.execute(
                     "DELETE FROM prompt_log WHERE id < "
@@ -1048,7 +1055,21 @@ class ChatCore(ChatTurnMixin):
             await self._summarize_once(session, force=True)
         finally:
             await self._release(lock)
-        return {"ran": True, "reason": "caught-up", "pending": pending}
+        # 不能无条件报 ran=True：_summarize_once 在 rows<4 或异常时直接 return，
+        # 水位根本没动，插件却打印「补了 N 轮」。按水位是否真的前进决定。
+        after = last
+        try:
+            async with aiosqlite.connect(DB, timeout=15) as db:
+                cur = await db.execute(
+                    "SELECT last_count FROM summaries WHERE session=?", (session,))
+                row2 = await cur.fetchone()
+            after = int((row2 or [0])[0] or 0)
+        except Exception:  # noqa: BLE001
+            pass
+        advanced = after > last
+        return {"ran": advanced,
+                "reason": "caught-up" if advanced else "no-progress",
+                "pending": max(0, n - after)}
 
     async def _check_contradictions(self, doc_id: str, data: dict,
                                     vec: list[float]) -> None:
@@ -1170,13 +1191,15 @@ class ChatCore(ChatTurnMixin):
         if data.get("topics"):
             data["topics"] = vocab_mod.canonicalize(data["topics"], topic_vocab)
         if not data.get("summary"):
-            same = (fails + 1) if fail_id == target else 1
+            # 计数基准必须是**不移动的 last_id**：target 随每条新消息后移，
+            # 用它当代号会让 fail_id 永远对不上，熔断永远数不到 SUMMARY_MAX_FAILS。
+            same = (fails + 1) if fail_id == last_id else 1
             if same >= SUMMARY_MAX_FAILS:
                 log.error("总结连续失败 %d 次，跳过 %s 到 id=%s 这一段（会丢这段记忆）",
                           same, session, target)
                 await self._save_summary_state(session, n, target)
             else:
-                await self._save_fail(session, last, last_id, same, target)
+                await self._save_fail(session, last, last_id, same, last_id)
             return
         # 整段对话「解决了没有」：比逐条余弦更全局，折算进情绪
         if data.get("progress"):
@@ -1243,7 +1266,15 @@ class ChatCore(ChatTurnMixin):
                 log.warning("更新滚动纪要失败：%s", e)
         except Exception as e:  # noqa: BLE001
             log.warning("写记忆失败，水位不动：%s", e)
-            await self._save_fail(session, last, last_id, fails + 1, target)
+            # 熔断必须和「解析失败」走同一个出口：只记数不判定，
+            # 毒批次（例如 embedding 维度变了）会每轮重跑一次完整总结。
+            same = (fails + 1) if fail_id == last_id else 1
+            if same >= SUMMARY_MAX_FAILS:
+                log.error("写记忆连续失败 %d 次，跳过 %s 到 id=%s 这一段（会丢这段记忆）",
+                          same, session, target)
+                await self._save_summary_state(session, n, target)
+            else:
+                await self._save_fail(session, last, last_id, same, last_id)
             return
         await self._save_summary_state(session, n, target)
 
