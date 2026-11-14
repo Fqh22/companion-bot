@@ -1063,6 +1063,25 @@ class ChatCore(ChatTurnMixin):
                         log.info("知识库索引：新增/更新 %d 块", n)
                 except Exception as e:  # noqa: BLE001
                     log.debug("知识库索引失败：%s", e)
+                # 跟催做减法：expire() 原来没有调用点，60 天没结果的事不会再被
+                # 标记取消——主动消息会越问越旧，像催债。
+                try:
+                    from app_core import followup_store as _fu
+                    _r = _fu.expire()
+                    if _r.get("cancelled"):
+                        log.info("跟催清理：%s", _r)
+                except Exception as e:  # noqa: BLE001
+                    log.debug("跟催清理失败：%s", e)
+                # wiki 归档：archive_stale 自身限量 5 页/次，所以按周跑，
+                # 每天跑会把半个库在几天内下架。
+                try:
+                    if await self._claim("wiki:weekly", ttl=7 * 86400 * 0.9):
+                        from app_core import wiki as _wiki
+                        _w = _wiki.archive_stale()
+                        if _w:
+                            log.info("wiki 归档：%d 页", len(_w))
+                except Exception as e:  # noqa: BLE001
+                    log.debug("wiki 归档失败：%s", e)
         except Exception as e:  # noqa: BLE001
             log.debug("每日清理失败：%s", e)
 

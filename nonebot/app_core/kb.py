@@ -260,11 +260,23 @@ async def search_meta(query: str, top_k: int = 4, qv: list[float] | None = None)
     先只在笔记/技能里找：复盘是对话流水，量又大，直接混在一起搜会把
     真正整理过的那几页挤掉（实测「agent skill 怎么缓存」top5 全是复盘）。
     """
-    pairs = await recall(query, top_k, qv=qv, curated=True, with_path=True)
-    if not pairs:
-        pairs = await recall(query, top_k, qv=qv, with_path=True)
+    # 两路都查、合并去重：curated 排前面，非 curated 补位。
+    #
+    # 原来是「先只查 curated，非空就 return」——只要随便命中一条笔记，
+    # 放在 learn/ 根目录的 md 就永远查不到（2026-11-15 实测：新笔记相似度
+    # 0.566 却一块都不返回）。目录约定不该决定「能不能被看见」。
+    cur = await recall(query, top_k, qv=qv, curated=True, with_path=True)
+    every = await recall(query, top_k, qv=qv, with_path=True)
+    merged: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for t, p in list(cur) + list(every):
+        head = (t or "")[:60]
+        if not head or head in seen:
+            continue
+        seen.add(head)
+        merged.append((t, p))
     return [{"path": Path(p).stem, "text": t, "label": learn_mod.page_label(p)}
-            for t, p in pairs]
+            for t, p in merged[:top_k]]
 
 
 async def recall(query: str, top_k: int = TOP_CHUNKS,
