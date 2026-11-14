@@ -29,12 +29,17 @@ def classify(reply: str, names: list[str]) -> str:
         return "none"
     hit = [n for n in names if n and n in t]
     asks = any(h in t for h in ASK_HINTS)
+    says_unknown = any(h in t for h in ABSTAIN_HINTS)
+    # 先说「不知道」、再提到干扰项，是在**排除**它（「我只记着两只猫，狗的名字没印象」），
+    # 不是把它当答案。v1 把这种也算 assert，会误判成编造——v2 分开。
+    if says_unknown and hit:
+        return "abstain_mentioned"
+    if says_unknown:
+        return "abstain"
     if hit and asks:
         return "confirm"
     if hit:
         return "assert"
-    if any(h in t for h in ABSTAIN_HINTS):
-        return "abstain"
     return "none"
 
 
