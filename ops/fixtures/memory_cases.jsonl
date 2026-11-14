@@ -1,0 +1,15 @@
+{"id":"t1","cls":"time","t_q":"2026-11-14T17:00","user":"下周三的面试是哪天？","memories":[{"text":"他下周三要去面试","normalized":"2026-11-19"}],"inject_c":["面试是 11 月 19 日（周三）"],"inject_d":["他下周三要去面试"],"distract":["他下周四要体检"]}
+{"id":"t2","cls":"time","t_q":"2026-11-14T17:00","user":"明天我要去干嘛？","memories":[{"text":"他明天要去医院体检","normalized":"2026-11-15"}],"inject_c":["明天（11-15）去医院体检"],"inject_d":["他明天要去医院体检"],"distract":["他明天要去公司开会"]}
+{"id":"t3","cls":"time","t_q":"2026-11-14T17:00","user":"我说过月底要干嘛吗？","memories":[{"text":"他月底要交房租","normalized":"2026-11-30"}],"inject_c":["11-30 之前要交房租"],"inject_d":["他月底要交房租"],"distract":["他月底要还信用卡"]}
+{"id":"t4","cls":"time","t_q":"2026-11-14T17:00","user":"上周说的搬家是哪天？","memories":[{"text":"他上周说 11-20 搬家","normalized":"2026-11-20"}],"inject_c":["搬家是 11 月 20 日"],"inject_d":["他上周说 11-20 搬家"],"distract":["他上周说要换工作"]}
+{"id":"t5","cls":"time","t_q":"2026-11-14T17:00","user":"三天后要取什么？","memories":[{"text":"他 11-17 要去取快递","normalized":"2026-11-17"}],"inject_c":["11-17 取快递"],"inject_d":["他 11-17 要去取快递"],"distract":["他 11-17 要去看牙"]}
+{"id":"u1","cls":"update","t_q":"2026-11-14T17:00","user":"我现在住哪？","memories":[{"text":"他住在杭州","status":"superseded"},{"text":"他搬到了上海","normalized":""}],"inject_c":["他现在住上海"],"inject_d":[],"distract":["他老家在南京"]}
+{"id":"u2","cls":"update","t_q":"2026-11-14T17:00","user":"我现在做什么工作？","memories":[{"text":"他在公司做后端","status":"superseded"},{"text":"他辞职做独立开发","normalized":""}],"inject_c":["他现在做独立开发"],"inject_d":[],"distract":["他接了个外包活"]}
+{"id":"u3","cls":"update","t_q":"2026-11-14T17:00","user":"我家现在有几只猫？","memories":[{"text":"他养了一只猫叫团子","status":"superseded"},{"text":"他又养了一只猫叫年糕","normalized":""}],"inject_c":["他现在两只猫：团子和年糕"],"inject_d":[],"distract":["他邻居养了条狗"]}
+{"id":"u4","cls":"update","t_q":"2026-11-14T17:00","user":"我现在吃香菜吗？","memories":[{"text":"他吃香菜","status":"superseded"},{"text":"他现在不吃香菜","normalized":""}],"inject_c":["他现在不吃香菜"],"inject_d":[],"distract":["他朋友爱吃香菜"]}
+{"id":"u5","cls":"update","t_q":"2026-11-14T17:00","user":"我现在住的小区叫什么？","memories":[{"text":"他住在老小区","status":"superseded"},{"text":"他搬到了滨江新苑","normalized":""}],"inject_c":["他住滨江新苑"],"inject_d":[],"distract":["他公司在滨江"]}
+{"id":"a1","cls":"abstain","t_q":"2026-11-14T17:00","user":"我上次说的那个项目叫什么来着？","memories":[],"inject_c":[],"inject_d":[],"distract":["他提过一个叫 Atlas 的副业项目","他提过要做一个记账工具"]}
+{"id":"a2","cls":"abstain","t_q":"2026-11-14T17:00","user":"我那个朋友后来怎么样了？","memories":[],"inject_c":[],"inject_d":[],"distract":["他有个朋友叫小林","他提过大学室友"]}
+{"id":"a3","cls":"abstain","t_q":"2026-11-14T17:00","user":"我之前去的那个城市是哪？","memories":[],"inject_c":[],"inject_d":[],"distract":["他去过成都","他去过西安"]}
+{"id":"a4","cls":"abstain","t_q":"2026-11-14T17:00","user":"我那个乐器的名字你还记得吗？","memories":[],"inject_c":[],"inject_d":[],"distract":["他会弹吉他","他学过钢琴"]}
+{"id":"a5","cls":"abstain","t_q":"2026-11-14T17:00","user":"我养的那只狗叫什么？","memories":[],"inject_c":[],"inject_d":[],"distract":["他养了一只猫叫团子"]}
