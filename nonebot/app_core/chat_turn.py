@@ -139,19 +139,26 @@ class Turn:
     meta_leak: bool = False
     gap: float = 0.0
 
-    def set_slot(self, key: str, text: str | None, order: int = 0) -> None:
-        """追加一个注入块。只允许在 RENDER_SLOTS 阶段——这是结构约束，不是注释。
+    def set_slot(self, key: str, text: str | None, order: int | None = None) -> None:
+        """写一个注入块。只允许在 RENDER_SLOTS 阶段——这是结构约束，不是注释。
 
-        槽内顺序由 order 决定，不由调用序决定：followup 的 done(0)/confirm(1)/drop(2)
-        各自带固定优先级，所以把三段代码的顺序调换、甚至并发 append，渲染结果都不变。
-        同 order 的块按追加序排（order 相同才回落到调用序）。
+        同槽多块是**白名单能力**，不是默认能力：不传 order 时第二次写同一个槽直接报错，
+        逼调用方显式声明优先级。这样「谁先跑完谁排前面」这种调用序依赖无处滋生——
+        S2 把两块拆进不同 fetch 之后，顺序也不会漂。
+
+        followup：done=0 / confirm=1 / drop=2。
         """
         if self.stage != RENDER_SLOTS:
             raise StageError(f"槽位 {key} 只能在 {RENDER_SLOTS} 写，当前 {self.stage}")
         if text is None:
             return
         box = self.slots.setdefault(key, [])
-        box.append((int(order), len(box), text))
+        if order is None:
+            if box:
+                raise StageError(f"槽位 {key} 已写过；同槽多块必须显式传 order")
+            box.append((0, 0, text))
+        else:
+            box.append((int(order), len(box), text))
 
     @property
     def extra_system(self) -> tuple[str, ...]:

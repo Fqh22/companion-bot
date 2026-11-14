@@ -7,8 +7,8 @@
                   "ops/fixtures/prompt-baseline.json":  "c511f35893a5fdd44d24e614af8d188e5f5924fa1b9cdeccb9966b8af8eff137"
               },
     "origin_code":  "e6936e7",
-    "git_head":  "e0f938c",
-    "tool_commit":  "e0f938c",
+    "git_head":  "d1617ac",
+    "tool_commit":  "d1617ac",
     "python":  "3.12.14",
     "metadata":  {
                      "platform":  "Windows"

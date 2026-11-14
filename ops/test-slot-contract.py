@@ -94,6 +94,17 @@ def main() -> int:
         t.set_slot(k, "[" + k + "]")
     check("九槽全亮且顺序正确", list(t.extra_system) == ["[" + k + "]" for k in keys])
 
+    # 7b) 同槽多块是白名单：不传 order 的第二次写必须报错
+    t = mk()
+    t.stage = RENDER_SLOTS
+    t.set_slot("weather", "a")
+    raised2 = False
+    try:
+        t.set_slot("weather", "b")
+    except StageError:
+        raised2 = True
+    check("默认 order 重复写同槽 → StageError", raised2)
+
     # 8) sid 唯一（R2 的语义：唯一即可，不要求书写递增）
     sids = [s.sid for s in SLOTS]
     check("sid 唯一", len(sids) == len(set(sids)), sids)
