@@ -34,3 +34,6 @@
 {"id": "c34-group", "user": "大家好", "session": "group:123456", "covers": [["situation", "hit", "nonempty"]]}
 {"id": "c35-chat-none", "user": "随便聊聊", "covers": [["situation", "hit", "nonempty"]]}
 {"id": "c36-caption-noimg", "user": "看看这个", "config": {"style_mode": "rules"}, "covers": [["caption", "none", "empty", "no_call"], ["situation", "hit", "nonempty"]]}
+{"id":"c37-just-said","user":"我刚才说我今天干嘛去了？","history":[{"role":"user","content":"我今天去体检了"}],"covers":[["situation","hit","nonempty"]]}
+{"id":"c38-common-sense","user":"1+1 等于几","covers":[["situation","hit","nonempty"]]}
+{"id":"c39-profile-known","user":"我是做什么的？","profile":{"职业与求职":"在找后端工作"},"config":{"profile_inject":"on"},"covers":[["situation","hit","nonempty"]]}
