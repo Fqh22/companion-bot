@@ -493,6 +493,31 @@ def check_gather_local_sync() -> list[str]:
     return fails
 
 
+def check_remember_stage() -> list[str]:
+    """R4：remember_safe 只能在 _turn_commit（POST_WRITE）里调用。
+
+    S2 引入并发后，写库若散落在 prepare/取数阶段，取消/超时路径会写出幽灵行，
+    而 prompt 字节看不出来——所以这条必须是静态规则，不是注释约定。
+    """
+    f = CORE / "chat_turn.py"
+    try:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return [f"chat_turn.py 解析失败：{e}"]
+    fails = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if fn.name == "_turn_commit":
+            continue
+        for n in ast.walk(fn):
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "remember_safe"):
+                fails.append(f"{_rel(f)}:{n.lineno}: remember_safe 只能在 "
+                             f"_turn_commit（POST_WRITE）里调")
+    return fails
+
+
 def main() -> int:
     name = sys.argv[1].strip() if len(sys.argv) > 1 else None
     if not NB.is_dir():
@@ -512,6 +537,7 @@ def main() -> int:
         all_fails += api_fails
         all_warns += api_warns
         all_fails += check_slot_writes()
+        all_fails += check_remember_stage()
         all_fails += check_slot_table()
         all_fails += check_gather_local_sync()
         mp_fails, mp_warns = check_memory_port()

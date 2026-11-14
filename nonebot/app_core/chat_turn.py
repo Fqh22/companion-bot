@@ -110,6 +110,7 @@ class Turn:
     prefetch: dict = field(default_factory=dict)
     calls: dict = field(default_factory=dict)   # 每个 fetch 被调用几次（判 no_call / degraded）
     caption_text: str = ""                      # RENDER_SLOTS 生成、POST_WRITE 写回
+    gap_basis: float = 0.0                      # 上一条用户消息时间（READ_HISTORY 冻结）
     stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
@@ -222,12 +223,12 @@ class ChatTurnMixin:
         recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
-        turn.user_msg_id = await self.remember_safe(session, "user", turn.stored) or 0
-        if not turn.user_msg_id:
-            turn.degraded += 1
-        # 距上一条用户消息多久（排除本轮刚写的这条）。>6h 才会写进 prompt，
-        # 用来判断「他刚回来」还是「一直在」——不是每轮都提醒。
-        turn.gap = await self.gap_hours(session, turn.user_msg_id)
+        # 本轮 user 消息**不在这里写**：写库统一在 POST_WRITE（R4）。
+        # gap 用「上一条用户消息的时间」冻结成 gap_basis——它不依赖本轮 id，
+        # 也就不受并发、主动消息、定时写入的影响。
+        turn.gap_basis = await self.last_user_ts(session)
+        turn.gap = (max(0.0, (time.time() - turn.gap_basis) / 3600.0)
+                    if turn.gap_basis else 0.0)
 
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
@@ -547,7 +548,7 @@ class ChatTurnMixin:
         try:
             from app_core import situation
 
-            _sit = situation.describe(turn.session, turn.m)
+            _sit = situation.describe(turn.session, turn.m, latest=turn.stored)
             if _sit:
                 turn.set_slot("situation", "[此刻]\n" + _sit)
         except Exception:  # noqa: BLE001
@@ -575,7 +576,7 @@ class ChatTurnMixin:
 
         # 相处状态：说「他那边怎么样、这一轮该做什么」，不说「我心情如何」。
         try:
-            _gap = await self.gap_hours(turn.session, turn.user_msg_id) if turn.owner else 0.0
+            _gap = turn.gap if turn.owner else 0.0
             # 这里要的是**他**说要做还没做的事，不是「我答应过他、还没跟进的事」。
             # 两者都存在 followup 里，但方向相反：一个是他自己欠着，一个是我欠他。
             _his = followup.due_for_asking(3) if turn.owner else []
@@ -720,6 +721,16 @@ class ChatTurnMixin:
     async def _turn_commit(self, turn: Turn, on_sentence) -> None:
         """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
         turn.stage = POST_WRITE
+        # 本轮 user 消息在这里才落库：prepare 只取证，写库统一在 POST_WRITE。
+        # shield：45 秒硬线取消时也要把这条消息写完，否则历史和图注都会缺。
+        try:
+            turn.user_msg_id = await asyncio.shield(
+                self.remember_safe(turn.session, "user", turn.stored)) or 0
+        except Exception as e:  # noqa: BLE001
+            log.debug("写本轮用户消息失败：%s", e)
+            turn.user_msg_id = 0
+        if not turn.user_msg_id:
+            turn.degraded += 1
         # 图注写回：本轮唯一的「渲染时生成、写库时落盘」的块。
         # shield 是给取消/超时路径用的——45 秒硬线会补发已生成部分并结束本轮，
         # 若写回被 cancel，用户翻聊天记录会缺图注，而 36/36 依旧全绿。

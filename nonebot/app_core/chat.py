@@ -399,6 +399,22 @@ class ChatCore(ChatTurnMixin):
             used += c
         return list(reversed(picked))
 
+    async def last_user_ts(self, session: str) -> float:
+        """上一条用户消息的时间戳。本轮消息还没写，所以不用 before_id 排除。
+
+        reason：gap 原来依赖「本轮刚写入的 id」，导致写库必须发生在 prepare。
+        改成读「上一条的时间」之后，写库才能整体挪到 POST_WRITE。
+        """
+        try:
+            async with aiosqlite.connect(DB, timeout=15) as db:
+                cur = await db.execute(
+                    "SELECT MAX(ts) FROM messages WHERE session=? AND role='user'",
+                    (session,))
+                row = await cur.fetchone()
+        except Exception:  # noqa: BLE001
+            return 0.0
+        return float((row or [0])[0] or 0)
+
     async def gap_hours(self, session: str, before_id: int = 0) -> float:
         """距他上一条消息过去多久（小时）。before_id 用来排除本轮刚写进去的那条。"""
         sql = "SELECT MAX(ts) FROM messages WHERE session=? AND role='user'"

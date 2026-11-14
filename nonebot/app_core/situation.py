@@ -16,8 +16,16 @@ MAX_TOPICS = 3
 TOPIC_DAYS = 3.0
 
 
-def recent_topics(session: str, limit: int = MAX_TOPICS) -> list[str]:
-    """最近几天他说过的话（短句），去重、截短。只读。"""
+def _clean_topic(text: str) -> str:
+    return (text or "").strip().replace("[语音] ", "")
+
+
+def recent_topics(session: str, limit: int = MAX_TOPICS, latest: str = "") -> list[str]:
+    """最近几天他说过的话（短句），去重、截短。只读。
+
+    latest：本轮他刚说的那句。user 消息现在在 POST_WRITE 才落库，
+    读 DB 已经看不到它了——用它补上第一条，行为与「写库在 prepare」时一致。
+    """
     since = time.time() - TOPIC_DAYS * 86400
     try:
         c = sqlite3.connect(f"file:{paths.CHAT_DB}?mode=ro", uri=True, timeout=10)
@@ -28,13 +36,16 @@ def recent_topics(session: str, limit: int = MAX_TOPICS) -> list[str]:
     except Exception:  # noqa: BLE001
         return []
     out: list[str] = []
+    _lt = _clean_topic(latest)
+    if _lt and len(_lt) >= 4 and not _lt.startswith("/"):
+        out.append(_lt[:14])
     for text, ts in rows:
         try:
             if float(ts or 0) < since:
                 continue
         except Exception:  # noqa: BLE001
             continue
-        t = (text or "").strip().replace("[语音] ", "")
+        t = _clean_topic(text)
         if not t or len(t) < 4 or t.startswith("/"):
             continue
         if any(t[:8] in x for x in out):
@@ -45,10 +56,10 @@ def recent_topics(session: str, limit: int = MAX_TOPICS) -> list[str]:
     return out
 
 
-def describe(session: str, m: dict | None = None) -> str:
+def describe(session: str, m: dict | None = None, latest: str = "") -> str:
     """一段「此刻」；没有可说的就返回空串（不注入）。"""
     parts: list[str] = []
-    topics = recent_topics(session)
+    topics = recent_topics(session, latest=latest)
     if topics:
         parts.append("最近在聊：" + "、".join(topics))
     try:
