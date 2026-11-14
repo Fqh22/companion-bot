@@ -159,6 +159,10 @@ class Turn:
         """
         if self.stage != RENDER_SLOTS:
             raise StageError(f"槽位 {key} 只能在 {RENDER_SLOTS} 写，当前 {self.stage}")
+        # 只有 SLOTS 里的 key 会被 extra_system 渲染：拼错的槽位原先被静默丢弃，
+        # 而 lint / slot-contract 都只遍历 SLOTS 自身，CI 不会红。这里显式报错。
+        if key not in {s.key for s in SLOTS}:
+            raise StageError(f"未知槽位 {key}：只有 SLOTS 里的 key 会被渲染")
         if text is None:
             return
         box = self.slots.setdefault(key, [])
@@ -358,6 +362,10 @@ class ChatTurnMixin:
 
         上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
         """
+        # 全局 followup 表没有 session/owner 列：非本人轮次里的一句「对」「是」
+        # 会把本人的待办直接置 done。和 650 行 due_for_asking 的写法保持一致。
+        if not turn.owner:
+            return
         if turn.images or len(user_text) < 2:   # 「改完了」只有 3 个字，不能因此跳过
             return
         try:
@@ -626,7 +634,7 @@ class ChatTurnMixin:
         try:
             from app_core import relation_notes
 
-            _rel = relation_notes.load()
+            _rel = relation_notes.load() if turn.owner else ""
             if _rel:
                 turn.set_slot("relation", "[我们之间]\n" + _rel)
         except Exception:  # noqa: BLE001
@@ -636,8 +644,9 @@ class ChatTurnMixin:
         # 关键：**只注入本轮聊到相关词的**——否则它会在无关话题里翻旧账，
         # 把用户随口一提的事当成议程（2026-11-11 反馈：base_url 那句被反复追问）。
         try:
-            _open = [x["text"][:40] for x in followup.pending(3)
-                     if _topic_overlap(x.get("text") or "", user_text)]
+            _open = ([x["text"][:40] for x in followup.pending(3)
+                      if _topic_overlap(x.get("text") or "", user_text)]
+                     if turn.owner else [])
             turn.open_items = "\n".join(f"- {x}" for x in _open)
         except Exception:  # noqa: BLE001
             turn.open_items = ""
@@ -976,7 +985,9 @@ class ChatTurnMixin:
         try:
             _prev = next((m.get("content") or "" for m in reversed(turn.history)
                           if m.get("role") == "assistant"), "")
-            if _prev and correction.looks_like_correction(turn.user_text):
+            # 只认本人的纠正：写入的是全局 corrections 和本人的 fact 记忆，
+            # 让外人触发等于让别人替你改记忆（见 510 行「里面写满了他的私事」）。
+            if turn.owner and _prev and correction.looks_like_correction(turn.user_text):
                 asyncio.create_task(correction.adjudicate(
                     self, turn.user_text, _prev, turn.rid, turn.session))
         except Exception:  # noqa: BLE001
