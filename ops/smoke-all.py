@@ -599,6 +599,12 @@ async def main() -> None:
         # ---------- prompt / pacing / proactive / summarize / tool_loop / config / llm ----------
         # 这七个模块以前只被间接调用（经 chat），没有直接体检项——
         # link-check 现在会查「每个模块都进了 smoke-all」，所以补上。
+        from app_core import timenorm as tn_mod
+        from datetime import datetime as _dtm
+        _tn = tn_mod.normalize("下周三面试，明天体检", _dtm(2026, 11, 14, 17, 0))
+        check("timenorm: 下周三 → 11-18（周三）", "11-18" in _tn, _tn)
+        check("timenorm: 明天 → 11-15", "11-15" in _tn, _tn)
+        check("timenorm: 歧义表达不猜", tn_mod.normalize("周五见", _dtm(2026, 11, 14)) == "周五见")
         from app_core import prompt as prompt_mod
         from app_core import pacing as pacing_mod
         from app_core import proactive as pro_mod
