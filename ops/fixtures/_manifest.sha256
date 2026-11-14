@@ -1,14 +1,14 @@
 {
   "files": {
-    "ops/test-prompt-golden.py": "5894b38620f25f7602caa5bb23c285688676e9558e4d8685ecc0be8dfbddfa85",
+    "ops/test-prompt-golden.py": "22b63dfd438df414b9099cceb7f0ec343945f8b60d4dc658b32f58bda759330d",
     "ops/fixtures/freeze.py": "5cd32ba04eabae0dc5c137841730678e1f08101aa274b01950c23ef046db37ef",
-    "ops/fixtures/seed.py": "5cbf6ad8d4735769c1df9036b4200ce32ac6e775223834309379e8169e3bfae7",
+    "ops/fixtures/seed.py": "9cf214655c5017d5fb0b18f629e4fd50fe13d991b3c1310ecb80006968c92f49",
     "ops/fixtures/prompt-cases.jsonl": "438687518267cec63fde191d9587e28464d5671735493d401f3b20c51776a5d5",
     "ops/fixtures/prompt-baseline.json": "4c9ca0bf5dadc5db85a836176203bd27559c59a36ce40965f00d186e68833cd5"
   },
   "origin_code": "1a9d360",
-  "git_head": "5a7957d",
-  "tool_commit": "5a7957d",
+  "git_head": "00548a3",
+  "tool_commit": "00548a3",
   "python": "3.12.14",
   "metadata": {
     "platform": "Windows"
