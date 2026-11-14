@@ -32,15 +32,24 @@ if not (CODE / "app_core").is_dir():
 
 # 数据根：尊重外部 QQBOT_ROOT（CI 会显式设 mktemp -d），但**只认临时目录**——
 # 防止有人在生产根上跑 --write，把基线生成变成对真实数据的写入。
+def _root_allowed(p: Path) -> bool:
+    """数据根必须在临时目录下：防止在生产根上跑 --write。"""
+    tmp = Path(tempfile.gettempdir()).resolve()
+    try:
+        rp = p.resolve()
+    except Exception:
+        return False
+    return tmp == rp or tmp in rp.parents
+
+
 _env_root = os.environ.get("QQBOT_ROOT")
 if _env_root:
     ROOT = Path(_env_root)
-    _tmp = Path(tempfile.gettempdir()).resolve()
-    try:
-        _inside = _tmp == ROOT.resolve() or _tmp in ROOT.resolve().parents
-    except Exception:
-        _inside = False
-    if not _inside:
+    _allowed = _root_allowed(ROOT)
+    if os.environ.get("QQBOT_ROOT_CHECK_ONLY"):
+        # 只跑校验就退出：测试这条路径时不该建任何目录
+        raise SystemExit(0 if _allowed else 3)
+    if not _allowed:
         print("FATAL QQBOT_ROOT 不在临时目录下，拒绝运行：" + str(ROOT))
         raise SystemExit(3)
 else:
@@ -533,16 +542,17 @@ async def main() -> int:
             CASES[0]["user"] = orig
         _ck("语料生效（改输入 → sha 变）", altered != cache[CASES[0]["id"]])
 
-        # 4) 数据根未隔离 → exit 3（子进程，避免污染当前进程）
+        # 4) 数据根校验：纯函数 + 端到端（CHECK_ONLY：只跑校验就退出，不建目录，
+        #    测试本身不可能写坏宿主；也不依赖「项目根是否恰好在 /tmp」这种巧合）
         import os as _os
         import subprocess as _sp
+        _ck("校验函数拒绝非临时根", not _root_allowed(Path("/opt/not-a-root")))
+        _ck("校验函数接受临时根", _root_allowed(ROOT))
         env = dict(_os.environ)
-        # 用项目内的哨兵目录：不靠「临时目录的父目录」构造非法场景。
-        # 父目录在 Linux 是 /、Windows 是 AppData\Local——断言若被改坏到校验之前，
-        # 测试自己就会往系统目录里建 nonebot/data。
-        env["QQBOT_ROOT"] = str(HERE.parent / ".sentinel-not-a-root")
-        pr = _sp.run([sys.executable, __file__, "--report"], capture_output=True,
-                     text=True, timeout=180, env=env)
+        env["QQBOT_ROOT"] = "/opt/not-a-root"
+        env["QQBOT_ROOT_CHECK_ONLY"] = "1"
+        pr = _sp.run([sys.executable, __file__], capture_output=True,
+                     text=True, timeout=120, env=env)
         _ck("数据根未隔离 → exit 3", pr.returncode == 3, f"rc={pr.returncode}")
 
         print(f"\n=== selftest {ok}/{ok + fail} 通过 ===")
