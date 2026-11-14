@@ -69,7 +69,9 @@ def now_line(now=None, gap_hours: float | None = None) -> str:
     s = f"[现在] {t:%Y-%m-%d} {t:%H:%M} 周{_WEEK[t.weekday()]}（{p}）"
     if gap_hours and gap_hours >= 6:
         s += f"，距你上次说话 {gap_hours:.0f} 小时"
-    return s + "（算「明天/后天/下周几」以这个为准）"
+    # 只说「以这个为准」不够：实测给原话（「下周三」）它也算不出日期（D 组 0/5）。
+    # 要求它把相对时间**换算成具体日期再说**，才有可判定的输出。
+    return s + "（他说「明天/后天/下周几/月底」时，先按上面的日期换算成 MM-DD 再说）"
 
 
 def freshness_hint() -> str:

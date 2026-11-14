@@ -4,11 +4,11 @@
     "ops/fixtures/freeze.py": "5cd32ba04eabae0dc5c137841730678e1f08101aa274b01950c23ef046db37ef",
     "ops/fixtures/seed.py": "5cbf6ad8d4735769c1df9036b4200ce32ac6e775223834309379e8169e3bfae7",
     "ops/fixtures/prompt-cases.jsonl": "438687518267cec63fde191d9587e28464d5671735493d401f3b20c51776a5d5",
-    "ops/fixtures/prompt-baseline.json": "c1b81a45bf3b64ddcaf21f4ed018e312c9b09bc56758fca0b23712f03ad12d63"
+    "ops/fixtures/prompt-baseline.json": "4c9ca0bf5dadc5db85a836176203bd27559c59a36ce40965f00d186e68833cd5"
   },
   "origin_code": "1a9d360",
-  "git_head": "7c1bdff",
-  "tool_commit": "7c1bdff",
+  "git_head": "5a7957d",
+  "tool_commit": "5a7957d",
   "python": "3.12.14",
   "metadata": {
     "platform": "Windows"
