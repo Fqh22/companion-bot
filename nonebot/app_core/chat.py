@@ -1054,6 +1054,15 @@ class ChatCore(ChatTurnMixin):
                 r = self.memory.cleanup()
                 if r.get("archived"):
                     log.info("每日清理：归档 %d 条", r.get("archived"))
+                # 知识库索引：kb.index() 原来没有任何调用点，索引是某次一次性建好的
+                # 快照——之后新增的 learn/*.md 永远进不了检索（2026-11-15 实测：
+                # 新笔记相似度 0.566 却查不到，因为根本没入库）。增量，只处理改动过的文件。
+                try:
+                    n = await kb.index()
+                    if n:
+                        log.info("知识库索引：新增/更新 %d 块", n)
+                except Exception as e:  # noqa: BLE001
+                    log.debug("知识库索引失败：%s", e)
         except Exception as e:  # noqa: BLE001
             log.debug("每日清理失败：%s", e)
 
