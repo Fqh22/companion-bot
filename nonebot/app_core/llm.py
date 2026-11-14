@@ -77,6 +77,12 @@ def _http():
     return _http_client
 
 
+def _is_429(err: Exception) -> bool:
+    """只数 429：RETRY_STATUS 里还有 408/425/500 等，不能混在一起算限流率。"""
+    return (isinstance(err, httpx.HTTPStatusError)
+            and err.response.status_code == 429)
+
+
 def _retryable(err: Exception) -> bool:
     """能不能重试，看的是「再发一次有没有可能成功」。"""
     if isinstance(err, (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout,
@@ -132,6 +138,7 @@ class LLM:
             raise RuntimeError("deepseek key 未配置（/opt/qqbot-data/keys.json）")
         headers = {"Authorization": f"Bearer {key}"}
         last_err: Exception | None = None
+        n429 = 0
         for attempt in range(retries + 1):
             try:
                 t0 = time.perf_counter()
@@ -141,7 +148,8 @@ class LLM:
                 latency = int((time.perf_counter() - t0) * 1000)
                 try:
                     u = data.get("usage") or {}
-                    await self.record_usage(payload["model"], u, latency, purpose)
+                    await self.record_usage(payload["model"], u, latency, purpose,
+                                            retry_429=n429)
                 except Exception:
                     pass
                 ch = (data.get("choices") or [{}])[0]
@@ -164,6 +172,8 @@ class LLM:
                 return msg
             except Exception as e:  # noqa: BLE001
                 last_err = e
+                if _is_429(e):
+                    n429 += 1
                 if not _retryable(e):
                     # 400 参数错 / 401 key 失效 / 402 余额不足：重试只是把同样的
                     # 错误再犯三次，还会把「今天只会说在」的真实原因埋掉。
@@ -312,7 +322,7 @@ class LLM:
 
     # ---------- 记账 ----------
     async def record_usage(self, model: str, usage: dict, latency_ms: int = 0,
-                           purpose: str = "") -> None:
+                           purpose: str = "", retry_429: int = 0) -> None:
         pt = int(usage.get("prompt_tokens") or 0)
         ct = int(usage.get("completion_tokens") or 0)
         if not (pt or ct):
@@ -323,6 +333,7 @@ class LLM:
         async with aiosqlite.connect(self.db, timeout=15) as db:
             await db.execute(
                 "INSERT INTO usage(ts, model, prompt_tokens, completion_tokens, latency_ms,"
-                " cache_hit, cache_miss, purpose) VALUES (?,?,?,?,?,?,?,?)",
-                (time.time(), model, pt, ct, latency_ms, hit, miss, purpose))
+                " cache_hit, cache_miss, purpose, retry_429)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (time.time(), model, pt, ct, latency_ms, hit, miss, purpose, int(retry_429)))
             await db.commit()

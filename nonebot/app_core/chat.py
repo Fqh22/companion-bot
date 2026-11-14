@@ -327,7 +327,8 @@ class ChatCore(ChatTurnMixin):
             await db.execute(
                 "CREATE TABLE IF NOT EXISTS usage ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, model TEXT, "
-                "prompt_tokens INTEGER, completion_tokens INTEGER)")
+                "prompt_tokens INTEGER, completion_tokens INTEGER, "
+                "retry_429 INTEGER DEFAULT 0)")
             # last_id：已固化到的消息水位。老库没有这一列，补上（默认 0 = 从头）
             # fail_count / fail_id：同一段连续总结失败次数，用来熔断毒批次
             for ddl in ("ALTER TABLE summaries ADD COLUMN last_id INTEGER DEFAULT 0",
@@ -336,6 +337,7 @@ class ChatCore(ChatTurnMixin):
                         "ALTER TABLE usage ADD COLUMN latency_ms INTEGER DEFAULT 0",
                         "ALTER TABLE usage ADD COLUMN cache_hit INTEGER DEFAULT 0",
                         "ALTER TABLE usage ADD COLUMN cache_miss INTEGER DEFAULT 0",
+                        "ALTER TABLE usage ADD COLUMN retry_429 INTEGER DEFAULT 0",
                         "ALTER TABLE usage ADD COLUMN purpose TEXT DEFAULT ''"):
                 try:
                     await db.execute(ddl)
