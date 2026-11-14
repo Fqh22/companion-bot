@@ -1,4 +1,4 @@
-﻿# sync-from-cloud.ps1 —— 把云端的每日备份拉到本地。
+# sync-from-cloud.ps1 —— 把云端的每日备份拉到本地。
 #
 # 为什么是「拉」不是「推」：家里没有公网 IP，云端推不过来；本地也不保证 24 小时开机。
 # 所以改成「开机/手动时补拉」：云端留 7 天，本地留 30 天。
@@ -30,7 +30,11 @@ if (-not (Test-Path $ConfigFile)) {
     Write-Log "缺少配置：$ConfigFile（模板见 ops/sync-config.example.json）"
     exit 2
 }
-$cfg = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+# 必须显式 -Encoding UTF8：PS 5.1 的 Get-Content 默认按 ANSI/GBK 解码，
+# 无 BOM 的 UTF-8 配置会把「备份/云端」读成「澶囦唤/浜戠」——备份就被写进
+# 一个乱码目录里，而正常目录看起来「停在 11-11」（2026-11-15 实测：
+# 11-12~11-14 三份都写错了位置，恢复时差点漏掉最近三天）。
+$cfg = Get-Content $ConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json
 $Key      = [string]$cfg.key
 $SshHost  = [string]$cfg.host
 $LocalDir = [string]$cfg.local_dir
