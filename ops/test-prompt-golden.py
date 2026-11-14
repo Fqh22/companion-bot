@@ -32,6 +32,9 @@ if not (CODE / "app_core").is_dir():
 
 # 数据根：尊重外部 QQBOT_ROOT（CI 会显式设 mktemp -d），但**只认临时目录**——
 # 防止有人在生产根上跑 --write，把基线生成变成对真实数据的写入。
+_LAST_CALLS: dict = {}
+
+
 def _root_allowed(p: Path) -> bool:
     """数据根必须在临时目录下：防止在生产根上跑 --write。"""
     tmp = Path(tempfile.gettempdir()).resolve()
@@ -309,6 +312,8 @@ async def run_case(case):
     turn = await core._turn_prepare(sess, case["user"], _materialize_images(case), None)
     await core._turn_compose(turn)
     _assert_stubs(case, core)
+    _LAST_CALLS.clear()
+    _LAST_CALLS.update(turn.calls)
     return turn.msgs
 
 
@@ -386,12 +391,19 @@ def check_matrix(results):
     """results: [(case_id, slots, covers)]。返回 (missing, wrong)。"""
     cells = {(s, b): {"decl": 0, "bad": []}
              for s, bs in MATRIX.items() for b in bs}
-    for cid, sl, covers in results:
+    for cid, sl, covers, calls in results:
         for item in covers or []:
             slot, branch, exp = item[0], item[1], item[2]
+            reason = item[3] if len(item) > 3 else ""
             cell = cells.setdefault((slot, branch), {"decl": 0, "bad": []})
             cell["decl"] += 1
-            good = bool(sl.get(slot)) if exp == "nonempty" else not sl.get(slot)
+            # reason 决定「该不该被调用」：no_call = 一次都没走；degraded = 走了但降级
+            if reason == "no_call":
+                good = calls.get(slot, 0) == 0
+            elif reason == "degraded":
+                good = calls.get(slot, 0) >= 1
+            else:
+                good = bool(sl.get(slot)) if exp == "nonempty" else not sl.get(slot)
             if not good:
                 cell["bad"].append(cid)
     missing = [f"{s}/{b}" for s, bs in MATRIX.items() for b in bs
@@ -650,7 +662,7 @@ async def main() -> int:
         for case in CASES:
             sm = summarize(await run_case(case))
             sl = slot_hits(sm["blocks"])
-            results.append((case["id"], sl, case.get("covers")))
+            results.append((case["id"], sl, case.get("covers"), dict(_LAST_CALLS)))
             for k, v in sl.items():
                 if v:
                     cover[k] += 1
@@ -681,7 +693,7 @@ async def main() -> int:
 
     for case in CASES:
         first = summarize(await run_case(case), with_raw=args.self_check)
-        results.append((case["id"], slot_hits(first["blocks"]), case.get("covers")))
+        results.append((case["id"], slot_hits(first["blocks"]), case.get("covers"), dict(_LAST_CALLS)))
         if args.self_check:
             second = summarize(await run_case(case), with_raw=True)
             same = first["sha"] == second["sha"]
@@ -729,7 +741,7 @@ async def main() -> int:
         for case in CASES:
             sm = summarize(await run_case(case))
             data[case["id"]] = sm
-            results.append((case["id"], slot_hits(sm["blocks"]), case.get("covers")))
+            results.append((case["id"], slot_hits(sm["blocks"]), case.get("covers"), dict(_LAST_CALLS)))
         # 覆盖不全的语料不能生成「合法」基线
         if not matrix_report(results):
             return 2

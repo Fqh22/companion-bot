@@ -108,6 +108,7 @@ class Turn:
     stored: str = ""
     slots: dict = field(default_factory=dict)
     prefetch: dict = field(default_factory=dict)
+    calls: dict = field(default_factory=dict)   # 每个 fetch 被调用几次（判 no_call / degraded）
     stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
@@ -205,18 +206,7 @@ class ChatTurnMixin:
         # 天气只在命中词表时查（不是每轮碰外部 API）；失败不常驻 prompt，
         # 只在「他确实问了」时给一句「没查到，别编」（docs/15 的失败双路语义）。
         if perception.should_read(user_text):
-            try:
-                _w = await asyncio.wait_for(perception.read(), timeout=10)
-            except Exception:  # noqa: BLE001
-                _w = None
-            if _w:
-                turn.prefetch.setdefault("weather", []).append(
-                    (0, "【天气】" + str(_w.get("text") or "")[:200]
-                    + "（" + time.strftime("%H:%M", time.localtime(_w.get("as_of") or time.time()))
-                    + " 查的；只作依据，别把没说的天气硬塞进去）"))
-            else:
-                turn.prefetch.setdefault("weather", []).append(
-                    (0, "【天气】这次没查到，不知道就直说，别编。"))
+            turn.prefetch["weather"] = await self._fetch_weather(turn)
 
         try:
             turn.digest = await self.get_digest(session)
@@ -269,18 +259,36 @@ class ChatTurnMixin:
             return
         # 预搜索是锦上添花，不能吃掉整轮预算：web.search 自己的超时是 25s，
         # 而整轮 deadline 只有 45s —— 慢一次就只剩 20s 给模型，首字都可能出不来。
-        try:
-            res = await asyncio.wait_for(web_mod.search(t[:64], 3), timeout=5.0)
-        except asyncio.TimeoutError:
-            log.info("分析类预搜索超时（>5s），本轮不注入")
-            return
-        except Exception as e:  # noqa: BLE001
-            log.debug("分析类预搜索失败：%s", e)
-            return
+        res = await self._fetch_search(turn, t[:64])
         if not res or res.startswith("没搜到") or res.startswith("搜索失败"):
             return
-        turn.prefetch.setdefault("search", []).append(
-            (0, "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200]))
+        turn.prefetch["search"] = [
+            (0, "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200])]
+
+    async def _fetch_weather(self, turn: Turn) -> list[tuple[int, str]]:
+        """查天气。被调用即计数：矩阵靠它区分「没走」和「走了但降级」。"""
+        turn.calls["weather"] = turn.calls.get("weather", 0) + 1
+        try:
+            _w = await asyncio.wait_for(perception.read(), timeout=10)
+        except Exception:  # noqa: BLE001
+            _w = None
+        if _w:
+            return [(0, "【天气】" + str(_w.get("text") or "")[:200]
+                     + "（" + time.strftime("%H:%M", time.localtime(_w.get("as_of") or time.time()))
+                     + " 查的；只作依据，别把没说的天气硬塞进去）")]
+        return [(0, "【天气】这次没查到，不知道就直说，别编。")]
+
+    async def _fetch_search(self, turn: Turn, q: str) -> str:
+        """跑一次分析类预搜索。被调用即计数（超时/失败也算走过）。"""
+        turn.calls["search"] = turn.calls.get("search", 0) + 1
+        try:
+            return await asyncio.wait_for(web_mod.search(q, 3), timeout=5.0) or ""
+        except asyncio.TimeoutError:
+            log.info("分析类预搜索超时（>5s），本轮不注入")
+            return ""
+        except Exception as e:  # noqa: BLE001
+            log.debug("分析类预搜索失败：%s", e)
+            return ""
 
     def _prepare_followup(self, turn: Turn, user_text: str) -> None:
         """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
@@ -508,6 +516,7 @@ class ChatTurnMixin:
         # 「附了 1 张图」，问「这是什么」时答不出来。这里先给一次图注，再进 prompt。
         _cap = ""
         if turn.images:
+            turn.calls["caption"] = turn.calls.get("caption", 0) + 1
             try:
                 _cap = await self.caption_images(turn.images)
                 if _cap:
