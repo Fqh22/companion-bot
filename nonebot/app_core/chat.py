@@ -1046,6 +1046,16 @@ class ChatCore(ChatTurnMixin):
             await self._summarize_once(session)
         finally:
             await self._release(lock)
+        # 遗忘：cleanup 原来只有 /cleanup 命令能触发，记忆只增不减。
+        # 每次成功总结后顺带跑一次，用锁做「每天最多一次」（ttl 21.6h，
+        # 不 release——让锁自然过期，否则下一轮立刻又能抢）。
+        try:
+            if await self._claim("cleanup:daily", ttl=86400 * 0.9):
+                r = self.memory.cleanup()
+                if r.get("archived"):
+                    log.info("每日清理：归档 %d 条", r.get("archived"))
+        except Exception as e:  # noqa: BLE001
+            log.debug("每日清理失败：%s", e)
 
     async def catch_up_summary(self) -> dict:
         """启动时补一次总结，接住「崩溃窗口」里没固化的对话。
