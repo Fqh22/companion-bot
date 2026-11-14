@@ -150,7 +150,16 @@ def _reset_root():
     （observe 写 mood、_log_prompt 插 prompt_log、trace/shadow 滚动写）。
     基线生成和比对都按同一顺序跑，sha 依然全绿——绿的是「共享同一套污染顺序」，
     不是「渲染逻辑稳定」。这条不修，等 S1a 后顺序一变就会红，且极难归因。
+
+    2026-11-14 事故：生产 /opt/nonebot/data 被这个函数删过（chat.db、
+    persona.json、relation.md）。所以这里**先断言再删**：数据根必须在临时目录下，
+    且不能是系统根。断言失败直接退出，不清理、不写入。
     """
+    _p = str(ROOT).replace("\\", "/").rstrip("/")
+    if _p in ("/opt", "/opt/nonebot", "/", "C:", "") or _p.endswith("/opt/nonebot"):
+        raise SystemExit("FATAL 拒绝清理系统/生产目录：" + str(ROOT))
+    if not _root_allowed(ROOT):
+        raise SystemExit("FATAL 数据根不在临时目录，拒绝清理：" + str(ROOT))
     for sub in ("nonebot/data", "qqbot-data", "backup"):
         d = ROOT / sub
         shutil.rmtree(d, ignore_errors=True)

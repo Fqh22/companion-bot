@@ -24,7 +24,14 @@ def fake_embed(texts: list[str]) -> list[list[float]]:
 
 
 def write_files(root: Path, case: dict) -> None:
-    """文件类种子：关系小抄 / 画像 / 知识笔记 / 配置。"""
+    """文件类种子：关系小抄 / 画像 / 知识笔记 / 配置。
+
+    写之前断言 root 不是生产目录：relation.md / profile.json 都是真数据，
+    写错地方会静默覆盖（2026-11-14 就这么清空过生产的两份）。
+    """
+    _p = str(root).replace("\\", "/").rstrip("/")
+    if _p in ("/opt", "/opt/nonebot", "/", "C:", "") or _p.endswith("/opt/nonebot"):
+        raise SystemExit("FATAL 拒绝写生产目录：" + str(root))
     data = root / "nonebot" / "data"
     qdata = root / "qqbot-data"
 
