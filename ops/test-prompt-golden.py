@@ -202,8 +202,12 @@ def _stub_search(case):
         web.search = _hit
 
 
-def _manifest(baseline_path: Path) -> dict:
-    """基线清单：护住「工具 + 冻结桩 + seed + 语料」不被悄悄放宽。"""
+def _manifest(baseline_path: Path, prev: dict | None = None) -> dict:
+    """基线清单：护住「工具 + 冻结桩 + seed + 语料」不被悄悄放宽。
+
+    记两条血统：origin_code = 渲染字节来自哪版生产代码；tool_commit = 哪版工具生成。
+    基线字节没变但工具变了时，只有后者会变——别让将来的人以为 origin_code 的 freeze 就这么写的。
+    """
     import platform
     import subprocess
     rels = ["ops/test-prompt-golden.py", "ops/fixtures/freeze.py",
@@ -218,7 +222,10 @@ def _manifest(baseline_path: Path) -> dict:
                               capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception:
         head = ""
-    return {"files": files, "git_head": head, "python": platform.python_version(),
+    prev = prev or {}
+    origin = prev.get("origin_code") or prev.get("git_head") or ""
+    return {"files": files, "origin_code": origin, "git_head": head,
+            "tool_commit": head, "python": platform.python_version(),
             "metadata": {"platform": platform.system()}}
 
 
@@ -491,6 +498,25 @@ async def main() -> int:
             _ct.SLOTS = origin
             _ck("删掉 situation 槽 → 必须红", n2 > 0, f"fail={n2}")
 
+            # M4 槽内多块顺序：契约层验证，不依赖语料里是否有多块
+            from app_core.chat_turn import RENDER_SLOTS as _RS
+            from app_core.chat_turn import Turn as _T
+
+            def _mk_turn():
+                return _T(session="s", user_text="u", images=[], store_text=None,
+                          owner=True, rid="r", t0=0.0)
+
+            _t1 = _mk_turn()
+            _t1.stage = _RS
+            for _x in ("done", "confirm", "drop"):
+                _t1.set_slot("followup", _x)
+            _t2 = _mk_turn()
+            _t2.stage = _RS
+            for _x in ("drop", "confirm", "done"):
+                _t2.set_slot("followup", _x)
+            _ck("槽内追加序可见（反转 followup 三块）",
+                list(_t1.extra_system) != list(_t2.extra_system))
+
             # M3 反序所有槽 → 顺序必须被看见
             _ct.SLOTS = tuple(replace(s, sid=100 - s.sid) for s in origin)
             n3 = await _compare_all(baseline_path)
@@ -554,6 +580,31 @@ async def main() -> int:
         pr = _sp.run([sys.executable, __file__], capture_output=True,
                      text=True, timeout=120, env=env)
         _ck("数据根未隔离 → exit 3", pr.returncode == 3, f"rc={pr.returncode}")
+
+        # 5) 时钟源全表：逐项断言，不靠 sha 间接推断
+        snap = freeze.snapshot()
+        want = {
+            "time.time": freeze.FIXED_TS,
+            "time.strftime": "2026-11-15 20:00",
+            "datetime.now": "2026-11-15 20:00",
+            "datetime.utcnow": "2026-11-15 12:00",
+            "date.today": "2026-11-15",
+            "tzname": ["CST", "CST"],
+            "timezone": -8 * 3600,
+            "daylight": 0,
+        }
+        bad_src = [k for k, v in want.items() if snap.get(k) != v]
+        _ck("时钟源全表固定（9 项）", not bad_src,
+            "; ".join(f"{k}={snap.get(k)!r}" for k in bad_src))
+
+        # 6) 时区无关：TZ=UTC 子进程跑 36 条，sha 必须与基线一致
+        env2 = dict(_os.environ)
+        env2["TZ"] = "UTC"
+        env2["QQBOT_ROOT"] = tempfile.mkdtemp(prefix="golden-tz-")
+        pr2 = _sp.run([sys.executable, __file__], capture_output=True, text=True,
+                      timeout=900, env=env2)
+        _ck("TZ=UTC 子进程 36/36", pr2.returncode == 0,
+            f"rc={pr2.returncode} " + (pr2.stdout or "")[-120:])
 
         print(f"\n=== selftest {ok}/{ok + fail} 通过 ===")
         return 0 if fail == 0 else 1
@@ -662,7 +713,13 @@ async def main() -> int:
         out.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                        encoding="utf-8", newline="\n")
         man = out.parent / "_manifest.sha256"
-        man.write_text(json.dumps(_manifest(out), ensure_ascii=False, indent=2),
+        _prev = {}
+        if man.exists():
+            try:
+                _prev = json.loads(man.read_text(encoding="utf-8"))
+            except Exception:
+                _prev = {}
+        man.write_text(json.dumps(_manifest(out, _prev), ensure_ascii=False, indent=2),
                        encoding="utf-8", newline="\n")
         print(f"\n=== 基线已写：{out}（{len(data)} 条）===")
         print(f"=== 清单已写：{man} ===")
