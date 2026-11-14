@@ -241,6 +241,17 @@ def _check_manifest(base_dir: Path) -> list[str]:
     return bad
 
 
+async def _compare_all(baseline_path: Path) -> int:
+    """跑全部 case 与基线比，返回失败条数（--mutate 用）。"""
+    base = json.loads(baseline_path.read_text(encoding="utf-8"))
+    fail = 0
+    for case in CASES:
+        got = summarize(await run_case(case))["sha"]
+        if (base.get(case["id"]) or {}).get("sha") != got:
+            fail += 1
+    return fail
+
+
 def msg_sha(msgs):
     return hashlib.sha256(
         json.dumps(msgs, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -438,6 +449,52 @@ async def main() -> int:
         print(f"FATAL 数据根未隔离：paths.ROOT={_paths.ROOT}，应为 {ROOT}")
         return 3
 
+    if args.mutate:
+        # 固化成 CI 自检：每次都必须「改了就红」，否则标尺本身已经失效。
+        from dataclasses import replace
+
+        from app_core import chat_turn as _ct
+
+        origin = _ct.SLOTS
+        ok = fail = 0
+
+        def _ck(name, cond, extra=""):
+            nonlocal ok, fail
+            print(("PASS " if cond else "FAIL ") + name + ("  " + extra if extra else ""))
+            ok, fail = (ok + 1, fail) if cond else (ok, fail + 1)
+
+        try:
+            base_fail = await _compare_all(baseline_path)
+            _ck("未改动时基线全绿", base_fail == 0, f"fail={base_fail}")
+
+            # M1 交换同轮共现的两个槽（caption 60 / share 70）
+            _ct.SLOTS = tuple(
+                replace(s, sid=(70 if s.key == "caption" else
+                                60 if s.key == "share" else s.sid))
+                for s in origin)
+            n1 = await _compare_all(baseline_path)
+            _ct.SLOTS = origin
+            _ck("交换 caption/share 的 sid → 必须红", n1 > 0, f"fail={n1}")
+
+            # M2 删掉一个槽 → 用到它的 case 必须红
+            _ct.SLOTS = tuple(s for s in origin if s.key != "situation")
+            n2 = await _compare_all(baseline_path)
+            _ct.SLOTS = origin
+            _ck("删掉 situation 槽 → 必须红", n2 > 0, f"fail={n2}")
+
+            # M3 反序所有槽 → 顺序必须被看见
+            _ct.SLOTS = tuple(replace(s, sid=100 - s.sid) for s in origin)
+            n3 = await _compare_all(baseline_path)
+            _ct.SLOTS = origin
+            _ck("槽序整体反序 → 必须红", n3 > 0, f"fail={n3}")
+        finally:
+            _ct.SLOTS = origin
+
+        n4 = await _compare_all(baseline_path)
+        _ck("恢复后必须回到全绿", n4 == 0, f"fail={n4}")
+        print(f"\n=== mutate 自检 {ok}/{ok + fail} 通过 ===")
+        return 0 if fail == 0 else 1
+
     if args.selftest:
         ok = fail = 0
 
@@ -480,9 +537,10 @@ async def main() -> int:
         import os as _os
         import subprocess as _sp
         env = dict(_os.environ)
-        # 用临时目录的**父目录**：项目根不行——云端部署在 /tmp/golden 下，
-        # 项目根本身就在临时目录里，测试会假绿。
-        env["QQBOT_ROOT"] = str(Path(tempfile.gettempdir()).parent)
+        # 用项目内的哨兵目录：不靠「临时目录的父目录」构造非法场景。
+        # 父目录在 Linux 是 /、Windows 是 AppData\Local——断言若被改坏到校验之前，
+        # 测试自己就会往系统目录里建 nonebot/data。
+        env["QQBOT_ROOT"] = str(HERE.parent / ".sentinel-not-a-root")
         pr = _sp.run([sys.executable, __file__, "--report"], capture_output=True,
                      text=True, timeout=180, env=env)
         _ck("数据根未隔离 → exit 3", pr.returncode == 3, f"rc={pr.returncode}")

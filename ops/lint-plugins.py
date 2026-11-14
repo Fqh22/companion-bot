@@ -403,6 +403,96 @@ def check_duplicate_commands() -> list[str]:
             for k, v in sorted(seen.items()) if len(v) > 1]
 
 
+def check_slot_writes() -> list[str]:
+    """R1：全库禁止对 extra_system 赋值/增删——槽位表是唯一入口。"""
+    fails = []
+    for f in sorted(list(CORE.rglob("*.py")) + list(PLUGINS.rglob("*.py"))):
+        if "__pycache__" in f.parts:
+            continue
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+                    and node.func.attr in ("append", "extend", "insert", "pop", "remove"):
+                v = node.func.value
+                if isinstance(v, ast.Attribute) and v.attr == "extra_system":
+                    fails.append(f"{_rel(f)}:{node.lineno}: 不许对 extra_system 调 .{node.func.attr}()"
+                                 f"——注入块走 turn.set_slot()")
+            if isinstance(node, (ast.Assign, ast.AugAssign)):
+                tgts = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for t in tgts:
+                    if isinstance(t, ast.Attribute) and t.attr == "extra_system":
+                        fails.append(f"{_rel(f)}:{node.lineno}: 不许给 extra_system 赋值"
+                                     f"——顺序由 chat_turn.SLOTS 决定")
+    return fails
+
+
+def check_slot_table() -> list[str]:
+    """R2：SLOTS 表完整性——sid 唯一、key 唯一、字段是字面量。
+
+    「唯一」而不是「书写递增」：渲染按 sorted(sid) 走，书写顺序不参与判断。
+    """
+    f = CORE / "chat_turn.py"
+    try:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return [f"chat_turn.py 解析失败：{e}"]
+    node = None
+    for n in tree.body:
+        if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SLOTS":
+            node = n.value
+    if node is None:
+        return ["chat_turn.py: 找不到模块级 SLOTS 表（槽位顺序的唯一真源）"]
+    fails = []
+    sids, keys = [], []
+    for elt in getattr(node, "elts", []):
+        if not (isinstance(elt, ast.Call) and getattr(elt.func, "id", "") == "Slot"):
+            fails.append("SLOTS 里出现非 Slot(...) 元素")
+            continue
+        if len(elt.args) < 3 or not all(isinstance(a, ast.Constant) for a in elt.args[:3]):
+            fails.append("Slot 的 sid/key/nullable 必须是字面量")
+            continue
+        sids.append(elt.args[0].value)
+        keys.append(elt.args[1].value)
+        if not isinstance(elt.args[2].value, bool):
+            fails.append(f"Slot({elt.args[1].value}) 的 nullable 必须是 bool")
+    if len(sids) != len(set(sids)):
+        fails.append(f"SLOTS 的 sid 有重复：{sids}")
+    if len(keys) != len(set(keys)):
+        fails.append(f"SLOTS 的 key 有重复：{keys}")
+    return fails
+
+
+def check_gather_local_sync() -> list[str]:
+    """R3：asyncio.gather 里不许放同步阻塞取数（recall / knowledge / profile）。
+
+    这些走 sqlite3 + numpy，gather 不会让它们并行，还会碰 check_same_thread。
+    """
+    banned = {"recall", "_prepare_recall", "_prepare_knowledge", "_prepare_profile"}
+    fails = []
+    for f in sorted(CORE.rglob("*.py")):
+        if "__pycache__" in f.parts:
+            continue
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "gather"):
+                continue
+            for a in node.args:
+                name = None
+                if isinstance(a, ast.Call):
+                    name = getattr(a.func, "attr", None) or getattr(a.func, "id", None)
+                if name in banned:
+                    fails.append(f"{_rel(f)}:{node.lineno}: gather 里不许放 {name}"
+                                 f"（LOCAL_SYNC，GIL + sqlite 线程亲和性，不会更快）")
+    return fails
+
+
 def main() -> int:
     name = sys.argv[1].strip() if len(sys.argv) > 1 else None
     if not NB.is_dir():
@@ -421,6 +511,9 @@ def main() -> int:
         api_fails, api_warns = check_core_api()
         all_fails += api_fails
         all_warns += api_warns
+        all_fails += check_slot_writes()
+        all_fails += check_slot_table()
+        all_fails += check_gather_local_sync()
         mp_fails, mp_warns = check_memory_port()
         all_fails += mp_fails
         all_warns += mp_warns
