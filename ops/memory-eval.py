@@ -97,6 +97,7 @@ async def main() -> int:
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--out", default="/tmp/mem-eval.jsonl")
     ap.add_argument("--cls", default="")   # 只跑某一类（time/update/abstain）
+    ap.add_argument("--repeat", type=int, default=1)   # 每条重复次数（采样噪声会盖过差异）
     args = ap.parse_args()
     if not CASES.exists():
         print("缺语料：", CASES)
@@ -136,8 +137,11 @@ async def main() -> int:
                 continue
             if g == "D" and not case.get("inject_d"):
                 continue
-            rows.append(await one(core, case, g))
-            print(g, case["id"], "ok")
+            for rep in range(args.repeat):
+                row = await one(core, case, g)
+                row["rep"] = rep
+                rows.append(row)
+            print(g, case["id"], "x%d" % args.repeat)
     mf = manifest()
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(json.dumps({"manifest": mf}, ensure_ascii=False) + "\n")
