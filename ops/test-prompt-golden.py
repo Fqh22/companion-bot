@@ -481,7 +481,7 @@ async def main() -> int:
 
         def _ck(name, cond, extra=""):
             nonlocal ok, fail
-            print(("PASS " if cond else "FAIL ") + name + ("  " + extra if extra else ""))
+            print(("PASS " if cond else "FAIL ") + name + ("  " + str(extra) if extra else ""))
             ok, fail = (ok + 1, fail) if cond else (ok, fail + 1)
 
         try:
@@ -511,16 +511,18 @@ async def main() -> int:
                 return _T(session="s", user_text="u", images=[], store_text=None,
                           owner=True, rid="r", t0=0.0)
 
+            # 子顺序由 order 决定后，反转**调用序**必须不产生差异——这正是状态化的目的
             _t1 = _mk_turn()
             _t1.stage = _RS
-            for _x in ("done", "confirm", "drop"):
-                _t1.set_slot("followup", _x)
+            for _i, _x in enumerate(("done", "confirm", "drop")):
+                _t1.set_slot("followup", _x, order=_i)
             _t2 = _mk_turn()
             _t2.stage = _RS
-            for _x in ("drop", "confirm", "done"):
-                _t2.set_slot("followup", _x)
-            _ck("槽内追加序可见（反转 followup 三块）",
-                list(_t1.extra_system) != list(_t2.extra_system))
+            for _x, _o in (("drop", 2), ("confirm", 1), ("done", 0)):
+                _t2.set_slot("followup", _x, order=_o)
+            _ck("调用序反转 → 输出不变（done<confirm<drop）",
+                list(_t1.extra_system) == list(_t2.extra_system)
+                == ["done", "confirm", "drop"], list(_t2.extra_system))
 
             # M3 反序所有槽 → 顺序必须被看见
             _ct.SLOTS = tuple(replace(s, sid=100 - s.sid) for s in origin)
@@ -540,7 +542,7 @@ async def main() -> int:
 
         def _ck(name, cond, extra=""):
             nonlocal ok, fail
-            print(("PASS " if cond else "FAIL ") + name + ("  " + extra if extra else ""))
+            print(("PASS " if cond else "FAIL ") + name + ("  " + str(extra) if extra else ""))
             ok, fail = (ok + 1, fail) if cond else (ok, fail + 1)
 
         # 1) 顺序无关：case 之间必须互不污染

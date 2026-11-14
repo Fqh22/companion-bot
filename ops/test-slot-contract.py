@@ -61,14 +61,12 @@ def main() -> int:
     # 3) 同槽多块保持追加序（followup 的 done/confirm/drop）
     t = mk()
     t.stage = RENDER_SLOTS
-    t.set_slot("followup", "done")
-    t.set_slot("followup", "confirm")
-    t.set_slot("followup", "drop")
-    check("同槽多块保持追加序", t.slots.get("followup") == ["done", "confirm", "drop"],
-          t.slots.get("followup"))
-    check("同槽多块连续出现在输出里",
+    t.set_slot("followup", "done", order=0)
+    t.set_slot("followup", "confirm", order=1)
+    t.set_slot("followup", "drop", order=2)
+    check("同槽多块按 order 渲染",
           [x for x in t.extra_system if x in ("done", "confirm", "drop")]
-          == ["done", "confirm", "drop"])
+          == ["done", "confirm", "drop"], t.slots.get("followup"))
 
     # 4) 未赋值的槽不出现
     t = mk()
@@ -104,14 +102,15 @@ def main() -> int:
     # 9) 契约层 mutate：把 followup 的三块反序，输出必须跟着变
     t1 = mk()
     t1.stage = RENDER_SLOTS
-    for x in ("done", "confirm", "drop"):
-        t1.set_slot("followup", x)
+    for i, x in enumerate(("done", "confirm", "drop")):
+        t1.set_slot("followup", x, order=i)
     t2 = mk()
     t2.stage = RENDER_SLOTS
-    for x in ("drop", "confirm", "done"):
-        t2.set_slot("followup", x)
-    check("槽内顺序变化会被看见（契约层 mutate）",
-          list(t1.extra_system) != list(t2.extra_system))
+    for x, o in (("drop", 2), ("confirm", 1), ("done", 0)):
+        t2.set_slot("followup", x, order=o)
+    check("调用序反转不影响输出（子顺序由 order 决定）",
+          list(t1.extra_system) == list(t2.extra_system) == ["done", "confirm", "drop"],
+          list(t2.extra_system))
 
     print("\n=== 槽位契约：%d/%d 通过 ===" % (PASS, PASS + FAIL))
     return 0 if FAIL == 0 else 1

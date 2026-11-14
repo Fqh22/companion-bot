@@ -139,25 +139,28 @@ class Turn:
     meta_leak: bool = False
     gap: float = 0.0
 
-    def set_slot(self, key: str, text: str | None) -> None:
+    def set_slot(self, key: str, text: str | None, order: int = 0) -> None:
         """追加一个注入块。只允许在 RENDER_SLOTS 阶段——这是结构约束，不是注释。
 
-        同一槽可以有多块（followup 的 done/confirm/drop 理论上能同时命中），
-        槽内保持追加序；槽与槽之间由 SLOTS 决定。
+        槽内顺序由 order 决定，不由调用序决定：followup 的 done(0)/confirm(1)/drop(2)
+        各自带固定优先级，所以把三段代码的顺序调换、甚至并发 append，渲染结果都不变。
+        同 order 的块按追加序排（order 相同才回落到调用序）。
         """
         if self.stage != RENDER_SLOTS:
             raise StageError(f"槽位 {key} 只能在 {RENDER_SLOTS} 写，当前 {self.stage}")
         if text is None:
             return
-        self.slots.setdefault(key, []).append(text)
+        box = self.slots.setdefault(key, [])
+        box.append((int(order), len(box), text))
 
     @property
     def extra_system(self) -> tuple[str, ...]:
-        """按 SLOTS 顺序渲染，与赋值时序无关。"""
+        """按 SLOTS 的 sid 排槽，槽内按 order 排块——与赋值时序无关。"""
         out: list[str] = []
-        # 按 sid 排序：sid 才是顺序真源，元组顺序只是书写顺序
         for s in sorted(SLOTS, key=lambda x: x.sid):
-            out.extend(self.slots.get(s.key) or ())
+            for _o, _i, t in sorted(self.slots.get(s.key) or [],
+                                    key=lambda x: (x[0], x[1])):
+                out.append(t)
         return tuple(out)
 
 
@@ -201,12 +204,12 @@ class ChatTurnMixin:
                 _w = None
             if _w:
                 turn.prefetch.setdefault("weather", []).append(
-                    "【天气】" + str(_w.get("text") or "")[:200]
+                    (0, "【天气】" + str(_w.get("text") or "")[:200]
                     + "（" + time.strftime("%H:%M", time.localtime(_w.get("as_of") or time.time()))
-                    + " 查的；只作依据，别把没说的天气硬塞进去）")
+                    + " 查的；只作依据，别把没说的天气硬塞进去）"))
             else:
                 turn.prefetch.setdefault("weather", []).append(
-                    "【天气】这次没查到，不知道就直说，别编。")
+                    (0, "【天气】这次没查到，不知道就直说，别编。"))
 
         try:
             turn.digest = await self.get_digest(session)
@@ -270,7 +273,7 @@ class ChatTurnMixin:
         if not res or res.startswith("没搜到") or res.startswith("搜索失败"):
             return
         turn.prefetch.setdefault("search", []).append(
-            "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200])
+            (0, "【本轮搜索（可作依据；引用时标 [n]；没用到的别硬塞）】\n" + res[:1200]))
 
     def _prepare_followup(self, turn: Turn, user_text: str) -> None:
         """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
@@ -288,18 +291,18 @@ class ChatTurnMixin:
                 log.info("[chat] followup %s", res)
             if res.get("done"):
                 turn.prefetch.setdefault("followup", []).append(
-                    "他刚说这件事办完了，你已经记成完成——"
-                    "这轮别再问进展，也别再说「记得跟我说」。")
+                    (0, "他刚说这件事办完了，你已经记成完成——"
+                    "这轮别再问进展，也别再说「记得跟我说」。"))
             if res.get("confirm"):
                 names = followup.texts_for(res["confirm"])
                 if names:
                     turn.prefetch.setdefault("followup", []).append(
-                        "他像是在说「%s」已经办完了，但你没把握："
-                        "在回复里顺口确认一句，别直接当成已完成。" % names[0])
+                        (1, "他像是在说「%s」已经办完了，但你没把握："
+                        "在回复里顺口确认一句，别直接当成已完成。" % names[0]))
             if res.get("drop"):
                 turn.prefetch.setdefault("followup", []).append(
-                    "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
-                    "这轮别提它，也别追问进展。")
+                    (2, "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
+                    "这轮别提它，也别追问进展。"))
         except Exception:
             pass
 
@@ -462,8 +465,8 @@ class ChatTurnMixin:
         # 取数与渲染分离：PREFETCH/READ_HISTORY 只写 turn.prefetch，
         # 到这里按 SLOTS 的固定顺序落槽位。
         for _k in ("weather", "search", "followup"):
-            for _v in turn.prefetch.get(_k) or ():
-                turn.set_slot(_k, _v)
+            for _o, _v in turn.prefetch.get(_k) or ():
+                turn.set_slot(_k, _v, _o)
         # 这一轮怎么说：长度 / 形式 / 图片 / 时效 / 纠正 合成**一条**消息。
         # 合并的原因：原来五条 system 消息会互相打架（allow_short 就是打过的补丁），
         # 现在冲突规则集中在一个函数里，可测、只需查一处。
