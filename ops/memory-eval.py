@@ -57,7 +57,7 @@ def manifest() -> dict:
             "prompt": sha(CODE / "app_core" / "prompt.py"),
             "chat_turn": sha(CODE / "app_core" / "chat_turn.py"),
             "fixture": sha(CASES),
-            "judge": "rule-v0（未起用）"}
+            "judge": sha(HERE / "fixtures" / "judge_abstain.py") or "missing"}
 
 
 async def _empty(*a, **k):
