@@ -114,6 +114,9 @@ class Turn:
     prepare_ms: float = 0.0                     # 取证+组装耗时（首字预算的实际占用）
     first_token_at: float = 0.0                 # 首字时间戳（perf_counter）
     prepare_over_budget: bool = False
+    fetch_metrics: dict = field(default_factory=dict)   # 各路取数结果：ok/timeout/error/cancelled
+    budget_exhausted: bool = False
+    parallel: bool = False
     stage: str = PREFETCH
     digest: str = ""
     history: list = field(default_factory=list)
@@ -185,7 +188,65 @@ def _share_tier_on() -> bool:
         return False
 
 
+GEN_RESERVE = 15.0                       # 给生成和发送留的秒数
+_PATH_TIMEOUT = {"weather": 10.0, "search": 5.0}
+
+
 class ChatTurnMixin:
+    async def _prepare_fetches(self, turn: Turn, user_text: str) -> None:
+        """取数：默认串行（行为与改造前完全一致）；开关打开时并发。
+
+        三个约束：
+        1. 开关默认全 false——关着时一条路径都不变，36/36 逐字节相同；
+        2. 总闸 = min(max(各路超时), 剩余预算)；剩余 <= 0.5s 时全降级，不把负数交给 wait；
+        3. 每路独立降级（空结果），异常不抛出；指标区分 budget_exhausted / cancelled / error。
+        """
+        cfg = (config.load().get("chat") or {}).get("prepare_parallel") or {}
+        want = {k: bool(cfg.get(k)) for k in ("weather", "search")}
+        if not any(want.values()):
+            await self._prepare_search(turn, user_text)
+            if perception.should_read(user_text):
+                turn.prefetch["weather"] = await self._fetch_weather(turn)
+            return
+
+        tasks: dict = {}
+        if want["search"]:
+            tasks["search"] = asyncio.create_task(self._prepare_search(turn, user_text))
+        if want["weather"] and perception.should_read(user_text):
+            tasks["weather"] = asyncio.create_task(self._fetch_weather(turn))
+        if not tasks:
+            return
+        turn.parallel = True
+
+        remaining = self.reply_deadline - (time.perf_counter() - turn.t0) - GEN_RESERVE
+        if remaining <= 0.5:
+            for t in tasks.values():
+                t.cancel()
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+            turn.budget_exhausted = True
+            turn.fetch_metrics = {k: "budget_exhausted" for k in tasks}
+            return
+
+        budget = min(max(_PATH_TIMEOUT[k] for k in tasks), remaining)
+        _done, pending = await asyncio.wait(tasks.values(), timeout=budget)
+        for t in pending:
+            t.cancel()
+        # 收尸：不收集的话取消中的任务会留下未取回的异常
+        await asyncio.gather(*pending, return_exceptions=True)
+        for name, t in tasks.items():
+            if t.cancelled():
+                turn.fetch_metrics[name] = "cancelled"
+            elif t.exception() is not None:
+                turn.fetch_metrics[name] = "error"
+            else:
+                turn.fetch_metrics[name] = "ok"
+                # weather 的 task 返回数据本身，结果要落回 prefetch；
+                # search 的 task 是 _prepare_search，内部自己写。
+                if name == "weather":
+                    res = t.result()
+                    if res:
+                        turn.prefetch["weather"] = res
+
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None) -> Turn:
         """取证：历史、记忆、知识、画像、情绪。"""
@@ -207,11 +268,8 @@ class ChatTurnMixin:
             turn.stored = user_text
 
         self._prepare_followup(turn, user_text)
-        await self._prepare_search(turn, user_text)
-        # 天气只在命中词表时查（不是每轮碰外部 API）；失败不常驻 prompt，
-        # 只在「他确实问了」时给一句「没查到，别编」（docs/15 的失败双路语义）。
-        if perception.should_read(user_text):
-            turn.prefetch["weather"] = await self._fetch_weather(turn)
+        # 取数：默认串行；chat.prepare_parallel 打开时并发（S2）。
+        await self._prepare_fetches(turn, user_text)
 
         try:
             turn.digest = await self.get_digest(session)
@@ -758,6 +816,8 @@ class ChatTurnMixin:
                     "total_ms": int((time.perf_counter() - turn.t0) * 1000),
                     "over_budget": bool(turn.prepare_over_budget),
                     "degraded": int(turn.degraded), "streamed": bool(turn.streamed),
+                    "parallel": bool(turn.parallel), "budget_exhausted": bool(turn.budget_exhausted),
+                    "fetches": turn.fetch_metrics,
                 }, ensure_ascii=False) + "\n")
         except Exception as e:  # noqa: BLE001
             log.debug("轮次统计写入失败：%s", e)

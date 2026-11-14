@@ -24,6 +24,11 @@ llm:
   # 首字预算（秒）：取证阶段最多花这么久。用户感知的是首字，不是整轮——
   # 超了就在 turn_stats 里标 over_budget，S2 据此决定跳过可选取数。
   first_token_budget_seconds: 10
+  # 取数并发（S2）。默认全 false = 与改造前完全一致；打开后 search/weather 并发跑，
+  # 受首字预算与总闸约束。embed 是 recall 的 barrier，暂不并行（保留位）。
+  prepare_parallel:
+    search: false
+    weather: false
   # 思考模式。deepseek-flash 默认开着思考：更聪明、回复更有内容，但首字慢约 0.8s，
   # 输出 token 更多（每次约 +100），且思考模式下 temperature 完全不生效。
   # 2026-10-31 实测取舍后选择开启；想更快更省改成 false。
