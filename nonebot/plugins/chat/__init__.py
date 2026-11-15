@@ -93,7 +93,11 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         if not silk:
             logger.info("[chat] 语音合成返回空，跳过")
             return
-        ok = await QQChannel().send_voice(sid, str(silk))
+        # 走协议入口而不是直接调 send_voice：形式分发和降级都在 runner/adapter 里，
+        # 直接调原语等于绕过统一出口（这就是之前「加一种形式要改三处」的老路）。
+        from app_core.message import Part
+
+        ok = await QQChannel().send_part(sid, Part("voice", str(silk)))
         logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
