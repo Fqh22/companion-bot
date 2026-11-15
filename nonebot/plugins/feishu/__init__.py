@@ -321,6 +321,10 @@ async def _handle(data) -> None:
                 wav.unlink(missing_ok=True)
             if not text:
                 logger.info(f"[feishu] 语音转写为空：{str(res.get('error') or '')[:80]}")
+        if voice and text:
+            # 和 QQ 的历史格式保持一致：让模型知道「这句是语音转写」，
+            # 否则它会说「我拿到手的分不出是打字还是转的」。入库也带这个标记。
+            text = "[语音] " + text
         if not text and not images:
             await asyncio.to_thread(
                 _send_message, msg.chat_id, "text",
