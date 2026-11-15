@@ -50,6 +50,10 @@ _cfg = (config.load().get("feishu") or {})
 ENABLED = bool(_cfg.get("enabled", False))
 OWNER = str(_cfg.get("owner_open_id") or "").strip()
 MAX_CHARS = int(_cfg.get("max_text_chars", 4000) or 4000)
+# 语音回复形态（和 QQ 同一套配置）：旧行为 / 先语音再文字 / 只语音
+_CHAT_CFG = (config.load().get("chat") or {})
+_VMODE = str(_CHAT_CFG.get("voice_reply_mode") or "voice").strip().lower()
+VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
 
 _client: "lark.Client | None" = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -213,10 +217,12 @@ class FeishuChannel:
 
     forms = {"text", "image", "voice"}
 
-    def __init__(self, session: str, chat_id: str) -> None:
+    def __init__(self, session: str, chat_id: str, defer_text: bool = False) -> None:
         self.session = session
         self.chat_id = chat_id
         self.sent_text: list[str] = []
+        self.defer_text = defer_text
+        self.buffered: list[str] = []
 
     async def send_part(self, session: str, part) -> bool:
         if part.form == "text":
@@ -231,6 +237,10 @@ class FeishuChannel:
         text = (text or "").strip()
         if not text:
             return False
+        if self.defer_text:
+            self.buffered.append(text)
+            self.sent_text.append(text)
+            return True
         ok = await asyncio.to_thread(
             _send_message, self.chat_id, "text", {"text": text[:MAX_CHARS]})
         if ok:
@@ -308,6 +318,34 @@ async def _speak_later(session: str, chat_id: str, text: str) -> None:
         logger.warning(f"[feishu] 语音链路失败：{e!r}")
 
 
+async def _deliver_voice_reply(session: str, ch: FeishuChannel) -> None:
+    """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
+    buffered = list(ch.buffered)
+    ch.defer_text = False
+    say = "".join(buffered).strip()[:300]
+    ok = False
+    try:
+        audio = await tts.synth_opus(say, mood=mood.load()) if say else None
+        if audio:
+            ok = await ch.send_voice("", str(audio))
+            audio.unlink(missing_ok=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[feishu] 语音发送失败，退回文字：{e}")
+    if ok:
+        try:
+            await core.record_assistant(
+                session, "（这句话我也用语音说了一遍）", kind="voice")
+        except Exception:  # noqa: BLE001
+            pass
+    if not ok or VOICE_REPLY_MODE == "voice_then_text":
+        for seg in buffered:
+            try:
+                await ch.send_text("", seg)
+            except Exception:  # noqa: BLE001
+                pass
+    logger.info(f"[feishu] voice_reply mode={VOICE_REPLY_MODE} ok={ok} {session}")
+
+
 async def _handle(data) -> None:
     """处理一条飞书事件（3 秒内返回由 _on_event 保证，这里是后台任务）。"""
     try:
@@ -360,7 +398,10 @@ async def _handle(data) -> None:
 
         session = config.owner_session() or f"feishu:{open_id}"
         _chat_of[session] = str(msg.chat_id)
-        ch = FeishuChannel(session=session, chat_id=str(msg.chat_id))
+        want_voice = voice or any(k in text for k in
+                                  ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
+        ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
+                           defer_text=want_voice and VOICE_REPLY_MODE != "text_then_voice")
         inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id), text=text,
                              images=images, event_id=mid, voice=voice, session=session)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline)
@@ -373,9 +414,9 @@ async def _handle(data) -> None:
             if ch.sent_text:
                 await asyncio.to_thread(
                     _send_message, msg.chat_id, "text", {"text": "这次想太久了，先说到这。"})
-        want_voice = voice or any(k in text for k in
-                                  ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
-        if want_voice and ch.sent_text:
+        if want_voice and ch.buffered:
+            await _deliver_voice_reply(session, ch)
+        elif want_voice and ch.sent_text:
             asyncio.create_task(
                 _speak_later(session, str(msg.chat_id), "".join(ch.sent_text)))
     except Exception as e:  # noqa: BLE001

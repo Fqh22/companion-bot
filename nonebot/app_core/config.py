@@ -148,6 +148,10 @@ DEFAULTS = {
     # 输入：现在没有「先等再答」的防抖了（实测合并率 0、白等 1.05s），
     # 文本零等待；只有图片/文件之后等 media_settle_seconds，看他有没有补一句。
     "chat": {
+        # 语音回复形态：text_then_voice（先文字后语音，旧行为）|
+        # voice_then_text（先语音再文字）| voice（只发语音，失败才退回文字）。
+        # 只在「他发语音 / 明确要语音」时生效；普通文字聊天不受影响。
+        "voice_reply_mode": "voice",
         "media_settle_seconds": 1.5,
         # 影子模式：原来同样只在 ChatCore 里用 get 兜底，没进 DEFAULTS。
         "shadow_followup": True,

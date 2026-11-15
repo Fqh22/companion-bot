@@ -56,6 +56,9 @@ _SETTLE_CFG = dict(config.load().get("chat") or {})
 SETTLE_MEDIA = float(_SETTLE_CFG.get("media_settle_seconds", 1.5))
 # 第一段是否引用他的消息。默认关：实测每条回复都挂引用框太重，只在长对话里才像接话。
 QUOTE_REPLY = bool(_SETTLE_CFG.get("quote_reply", False))
+# 语音回复形态：text_then_voice（旧）| voice_then_text | voice（只语音，失败退文字）
+_VMODE = str(_SETTLE_CFG.get("voice_reply_mode") or "voice").strip().lower()
+VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
 
 _locks: dict[str, asyncio.Lock] = {}
 
@@ -145,6 +148,37 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
 
 
+async def _deliver_voice_reply(sid: str, ch: QQChannel) -> None:
+    """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
+    from app_core import tts
+    from app_core.message import Part
+
+    buffered = list(ch.buffered)
+    ch.defer_text = False
+    say = "".join(buffered).strip()[:300]
+    ok = False
+    try:
+        silk = await tts.synth(say, mood=mood.load()) if say else None
+        if silk:
+            ok = await ch.send_part(sid, Part("voice", str(silk)))
+            silk.unlink(missing_ok=True)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[chat] 语音发送失败，退回文字：{e}")
+    if ok:
+        try:
+            await core.record_assistant(
+                sid, "（这句话我也用语音说了一遍）", kind="voice")
+        except Exception:  # noqa: BLE001
+            pass
+    if not ok or VOICE_REPLY_MODE == "voice_then_text":
+        for seg in buffered:
+            try:
+                await ch.send_text(sid, seg)
+            except Exception:  # noqa: BLE001
+                pass
+    logger.info(f"[chat] voice_reply mode={VOICE_REPLY_MODE} ok={ok} {sid}")
+
+
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
@@ -210,6 +244,9 @@ class QQChannel:
 
     def __init__(self) -> None:
         self.sent: list[str] = []
+        # 语音形态下先压住文字：voice / voice_then_text 时攒起来，等语音发完再处理
+        self.defer_text = False
+        self.buffered: list[str] = []
 
     async def send_part(self, session: str, part) -> bool:
         """协议入口：按 form 分派到具体原语。
@@ -226,6 +263,10 @@ class QQChannel:
         return False
 
     async def send_text(self, session: str, text: str) -> bool:
+        if self.defer_text:
+            self.buffered.append(text)
+            self.sent.append(text)
+            return True
         # 只有第一段带引用：后面几段接在它自己那条后面才对
         reply_id = None
         if QUOTE_REPLY and not self.sent:
@@ -277,7 +318,12 @@ _current_event_id: dict[str, str] = {}
 
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     prompt, stored = turn.compose()
+    # 语音回复只在两种情况下发：他发语音，或者他明确要求。要在跑之前知道，
+    # 才能决定本轮文字是先压住（voice/voice_then_text）还是照旧流式发（旧行为）。
+    _want_voice = (stored or "").startswith("[语音]") or any(
+        k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
     ch = QQChannel()
+    ch.defer_text = _want_voice and VOICE_REPLY_MODE != "text_then_voice"
     runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline)
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
@@ -299,11 +345,9 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
-        # 语音回复只在两种情况下发：他发语音，或者他明确要求。
-        # 不做「情绪高就发」那种概率策略——实测语音比文字更容易让人烦。
-        _want_voice = (stored or "").startswith("[语音]") or any(
-            k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
-        if _want_voice and ch.sent:
+        if _want_voice and ch.buffered:
+            await _deliver_voice_reply(sid, ch)
+        elif _want_voice and ch.sent:
             asyncio.create_task(_speak_later(sid, "".join(ch.sent), len(ch.sent)))
         # 画画同理：只在他明确要求时画，不做「氛围到了就画」
         _ask = " ".join(turn.texts or [])
