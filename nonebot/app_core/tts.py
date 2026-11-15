@@ -142,7 +142,8 @@ def mood_instructions(mood: dict | None, hour: int | None = None) -> str:
     elif b >= 0.2:
         parts.append("这一阵基调偏暖：自然放松")
     if e <= 0.3:
-        parts.append("精力低：声音轻、慢，别用力")
+        # 只轻不拖：2026-11-16 反馈「前段太慢」——低精力改音量，不改语速。
+        parts.append("精力低：声音轻一点，语速别拖，别用力")
     elif e >= 0.75:
         parts.append("精力足：语速正常偏快，吐字清楚")
     if hour is None:

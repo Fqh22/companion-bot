@@ -12,7 +12,10 @@
 - 其它 provider 兜底：PCM → ffmpeg opus 64k。
 - 新增 `tts.breeze_guidance`（1–10，越高越照语气指令演）与 `tts.breeze_speed`（0.5–2）。
 - 音色切换到用户选的新音色（云端 config `breeze_voice`）。
-- 待用户 A/B：旧链路 vs 直出 opus，确认是否更接近网页听感。
+- 音色切换到 `voc_swxkac72ugd6`；用户 A/B 后反馈：新链路（Breeze 直出 opus）比旧链路好，
+  且 guidance 4 + 演戏指令的**后半句**语气最好，但前段起手太慢 → 低精力语气指令从「轻、慢」
+  改为「轻一点，语速别拖」（只调音量不拖语速），另调 guidance/speed 再试。
+
 
 ## 2026-11-16 · 修 QQ 听不了语音：silk 要写腾讯头（tencent=True）
 
