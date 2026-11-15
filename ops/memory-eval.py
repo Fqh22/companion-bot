@@ -98,25 +98,12 @@ async def main() -> int:
     ap.add_argument("--out", default="/tmp/mem-eval.jsonl")
     ap.add_argument("--cls", default="")   # 只跑某一类（time/update/abstain）
     ap.add_argument("--repeat", type=int, default=1)   # 每条重复次数（采样噪声会盖过差异）
-    ap.add_argument("--model", default="")   # 覆盖 llm.model（对照实验用）
-    ap.add_argument("--api", default="")     # 覆盖 llm.api
     args = ap.parse_args()
     if not CASES.exists():
         print("缺语料：", CASES)
         return 2
     cases = [json.loads(x) for x in CASES.read_text(encoding="utf-8").splitlines() if x.strip()]
     print("fixture hash 一致:", sha(CASES) == sha(CASES), sha(CASES))
-    if args.model or args.api:
-        _cfg = ROOT / "nonebot" / "config.yaml"
-        _t = _cfg.read_text(encoding="utf-8")
-        if args.model:
-            _t = __import__("re").sub(r"(?m)^(\s*model:\s*).*$",
-                                      lambda m: m.group(1) + "'" + args.model + "'", _t, count=1)
-        if args.api:
-            _t = __import__("re").sub(r"(?m)^(\s*api:\s*).*$",
-                                      lambda m: m.group(1) + "'" + args.api + "'", _t, count=1)
-        _cfg.write_text(_t, encoding="utf-8")
-        print("覆盖模型:", args.model or "(不变)", args.api or "")
     core = ChatCore()
     await core.init_db()
     core.memory.init()

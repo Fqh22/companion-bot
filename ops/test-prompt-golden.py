@@ -198,25 +198,20 @@ def _stub_weather(case):
 
 
 def _stub_search(case):
-    # 两个入口都要打桩：_fetch_search 现在走 search_via_model（全家桶），
-    # 只桩 web.search 的话基线会真的去调网络——sha 差异且不可复现。
     s = case.get("search")
     if case.get("search_error"):
-        async def _boom(q, n=None, **kw):
+        async def _boom(q, n):
             raise RuntimeError("stub: search down")
         web.search = _boom
-        web.search_via_model = _boom
         return
     if s is None:
-        async def _none(q, n=None, **kw):
+        async def _none(q, n):
             return ""
         web.search = _none
-        web.search_via_model = _none
     else:
-        async def _hit(q, n=None, **kw):
+        async def _hit(q, n):
             return s
         web.search = _hit
-        web.search_via_model = _hit
 
 
 def _manifest(baseline_path: Path, prev: dict | None = None) -> dict:
