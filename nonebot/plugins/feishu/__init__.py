@@ -344,11 +344,23 @@ async def _draw_later(session: str, chat_id: str, ask: str) -> None:
                 _send_message, chat_id, "text",
                 {"text": "这次没画出来，等下再试。"})
             logger.info("[feishu] 画图返回空（额度/内容审核/网络），已提示")
+            try:
+                await core.record_assistant(
+                    session, "（这次画图失败了，我跟他说明了）", kind="draw_fail")
+            except Exception:  # noqa: BLE001
+                pass
             return
         image_provider._cleanup(path)
         ch = FeishuChannel(session=session, chat_id=chat_id)
         ok = await ch.send_image("", str(path))
         logger.info(f"[feishu] drawing sent={ok}")
+        if ok:
+            # 让它知道画过图（和 QQ 同一套旁注）
+            try:
+                await core.record_assistant(
+                    session, f"（我刚画了一张图发给他了：{ask[:40]}）", kind="draw")
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 画图链路失败：{e!r}")
 
@@ -448,12 +460,18 @@ async def _handle(data) -> None:
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
                     f"{f'（{len(images)} 图）' if images else ''}")
         try:
-            await runner.run(inbound)
+            out = await runner.run(inbound)
         except asyncio.TimeoutError:
             logger.error(f"[feishu] 回复超时（>{core.reply_deadline:.0f}s） {session}")
             if ch.sent_text:
                 await asyncio.to_thread(
                     _send_message, msg.chat_id, "text", {"text": "这次想太久了，先说到这。"})
+        if getattr(out, "images", None):
+            try:
+                await core.record_assistant(
+                    session, "（另外发了一张图）", kind="image")
+            except Exception:  # noqa: BLE001
+                pass
         if want_voice and ch.buffered:
             await _deliver_voice_reply(session, ch, rewrite=not _read_aloud)
         elif want_voice and ch.sent_text:

@@ -106,11 +106,23 @@ async def _draw_later(sid: str, ask: str) -> None:
             except Exception:  # noqa: BLE001
                 pass
             logger.info("[chat] 画图返回空（额度/内容审核/网络），已补一句提示")
+            try:
+                await core.record_assistant(
+                    sid, "（这次画图失败了，我跟他说明了）", kind="draw_fail")
+            except Exception:  # noqa: BLE001
+                pass
             return
         image_provider._cleanup(path)
         # 形式是 drawing（生成图）；通道侧再映射成图片发送
         ok = await QQChannel().send_part(sid, Part("drawing", str(path)))
         logger.info(f"[chat] drawing sent={ok} {sid} {path.stat().st_size} 字节")
+        if ok:
+            # 让它知道"我刚画了张图发出去"：否则被问「你刚画了什么」会一脸茫然
+            try:
+                await core.record_assistant(
+                    sid, f"（我刚画了一张图发给他了：{ask[:40]}）", kind="draw")
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
 
@@ -143,6 +155,8 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
         if not ok:
             try:
                 await ch.send_text(sid, "（语音没发出去，文字顶上）")
+                await core.record_assistant(
+                    sid, "（语音没发出去，我补了一句文字）", kind="voice_fail")
             except Exception:  # noqa: BLE001
                 pass
         logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
@@ -358,6 +372,13 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
+        if getattr(out, "images", None):
+            # 工具发出去的表情包/图片也记一笔（正文里不一定提到）
+            try:
+                await core.record_assistant(
+                    sid, "（另外发了一张图）", kind="image")
+            except Exception:  # noqa: BLE001
+                pass
         if _want_voice and ch.buffered:
             await _deliver_voice_reply(sid, ch, rewrite=not _read_aloud)
         elif _want_voice and ch.sent:
