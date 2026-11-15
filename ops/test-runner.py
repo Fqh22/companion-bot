@@ -142,6 +142,16 @@ async def main() -> None:
     check("语音发送失败也降级成文字",
           any("本来是语音" in t for t in ch6.texts), str(ch6.texts))
 
+    # 5. 生成图：不支持 drawing 的通道退化成普通图片（docs/19 的降级规则）
+    from app_core.message import Part as _P
+
+    class NoDrawChannel(FakeChannel):
+        forms = {"text", "image"}
+    ch7 = NoDrawChannel()
+    r7 = TurnRunner(FakeEngine([], OutboundMessage()), ch7, deadline=5)
+    await r7._send_part("private:7", _P("drawing", "d.png"))
+    check("不支持生成图的通道退化成图片", ch7.images == ["d.png"], str(ch7.images))
+
     passed = sum(1 for r in RESULTS if r)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
     sys.exit(0 if passed == len(RESULTS) else 1)

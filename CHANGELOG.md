@@ -11,8 +11,8 @@
   泄漏一个 fd），改为 `os.fdopen` 接管；`_cleanup` 单个文件删不掉不再中止整轮。
 - 语音/画图失败不再静默：`_speak_later`、`_draw_later` 失败补一句文字；
   `runner._send_part` 对「声明支持但发送失败」的 voice 也降级；出站 `audio` 接进 runner。
-- 画图改走 `Part("image")`：通道 `forms` 本来就没有 drawing，docstring 也写「画出来就是一张图」。
-- 入站语音转写的 `Part` 改回 `form="text"` + `meta={"voice": true}`，`parts_text` 不再丢转写。
+- 形式契约按 `docs/19` 对齐：`QQChannel.forms` 补上 `drawing`（它本来就支持发）；
+  `runner` 补 `drawing → image` 降级（此前只有 voice → text）。
 - 修掉两个「假测试」：`smoke-all` 的空 form 断言恒真；`test-runner` 桩通道声明 voice 却从不记录。
   新增：语音摘要只记一份、语音三种发送路径（会发 / 不支持 / 发送失败）的断言。
 - 验证：CI 绿；云端 `ops/verify.sh` 五件套全过。

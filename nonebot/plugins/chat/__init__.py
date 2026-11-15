@@ -95,8 +95,8 @@ async def _draw_later(sid: str, ask: str) -> None:
             logger.info("[chat] 画图返回空（额度/内容审核/网络），已补一句提示")
             return
         image_provider._cleanup(path)
-        # 画出来的图就是一张图：走 image 形式，通道不用知道「生成」还是「已有」
-        ok = await QQChannel().send_part(sid, Part("image", str(path)))
+        # 形式是 drawing（生成图）；通道侧再映射成图片发送
+        ok = await QQChannel().send_part(sid, Part("drawing", str(path)))
         logger.info(f"[chat] drawing sent={ok} {sid} {path.stat().st_size} 字节")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
@@ -198,7 +198,7 @@ async def _pump_loop(sid: str) -> None:
 class QQChannel:
     """QQ 的通道实现：IO 原语 + 能力声明，会话循环交给 app_core.runner。"""
 
-    forms = {"text", "image", "voice"}
+    forms = {"text", "image", "voice", "drawing"}
 
     def __init__(self) -> None:
         self.sent: list[str] = []

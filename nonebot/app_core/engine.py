@@ -39,10 +39,10 @@ class InboundMessage:
 
         out = []
         if (self.text or "").strip():
-            # 语音转写：内容种类仍是 text（parts_text 才拿得到正文），
-            # 「来源是语音」放 meta——形式描述内容，不描述来源。
-            out.append(Part("text", self.text,
-                            {"voice": True, "transcript": True} if self.voice else {}))
+            # 语音转写：形式是 voice，meta 里带 transcript 标记，
+            # 需要人读的正文仍可从 content 取（docs/19 的约定）
+            out.append(Part("voice" if self.voice else "text", self.text,
+                            {"transcript": True} if self.voice else {}))
         out += [Part("image", str(p)) for p in (self.images or [])]
         out += [Part("voice", str(p)) for p in (self.audio or [])]
         out += [Part("file", str(p)) for p in (self.files or [])]

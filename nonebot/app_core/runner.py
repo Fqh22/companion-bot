@@ -89,6 +89,9 @@ class TurnRunner:
         if part.form == "voice":
             # 语音发不了就说一句，不要静默丢——用户会以为漏回了
             return await self._send_part(session, _Part("text", "（这条本来是语音，这里发不了）"))
+        if part.form == "drawing" and "image" in forms:
+            # 不支持「生成图」的通道就退化成普通图片（docs/19 的降级规则）
+            return await self._send_part(session, _Part("image", part.content))
         log.info("[runner] 通道 %s 不支持 %s，已跳过", getattr(self.channel, "caps", "?"), part.form)
         return False
 
