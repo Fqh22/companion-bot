@@ -57,6 +57,9 @@ MOOD_INSTRUCTIONS = bool(_TTS_CFG.get("mood_instructions", True))
 # Breeze 的生成控制：guidance 越高越"照着指令演"（1–10，默认 1）；speed 0.5–2。
 BREEZE_GUIDANCE = float(_TTS_CFG.get("breeze_guidance") or 1.0)
 BREEZE_SPEED = float(_TTS_CFG.get("breeze_speed") or 1.0)
+# 结尾补多长静音/淡出（反馈「结尾收得太快」可加长）
+TAIL_SILENCE_MS = int(_TTS_CFG.get("tail_silence_ms") or 300)
+TAIL_FADE_MS = int(_TTS_CFG.get("tail_fade_ms") or 30)
 PROVIDERS = ("breeze", "zhipu", "deepseek")
 if PROVIDER not in PROVIDERS:
     PROVIDER = "zhipu"
@@ -252,10 +255,13 @@ def _clip_text(t: str, limit: int = MAX_CHARS) -> str:
     return head
 
 
-def _pad_pcm(pcm: bytes, ms: int = 300, fade_ms: int = 30) -> bytes:
-    """给 PCM 结尾补一段静音 + 轻微淡出：避免语音"说完戛然而止"。"""
+def _pad_pcm(pcm: bytes, ms: int | None = None,
+             fade_ms: int | None = None) -> bytes:
+    """给 PCM 结尾补一段静音 + 淡出：避免语音"说完戛然而止"。"""
     if not pcm:
         return pcm
+    ms = TAIL_SILENCE_MS if ms is None else ms
+    fade_ms = TAIL_FADE_MS if fade_ms is None else fade_ms
     rate = PCM_RATE
     try:
         import array

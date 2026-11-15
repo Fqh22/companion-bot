@@ -37,6 +37,9 @@ DEFAULTS = {
         # speed 0.5–2（默认 1，忽略时走模型默认）。
         "breeze_guidance": 1.0,
         "breeze_speed": 1.0,
+        # 语音结尾补的静音/淡出（毫秒）：反馈"结尾收太快"就加长
+        "tail_silence_ms": 300,
+        "tail_fade_ms": 30,
         # 语速，智谱 0.5–2（DeepSeek 不支持，忽略）。
         "speed": 1.0,
         "fallback": True,
