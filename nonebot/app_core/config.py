@@ -22,6 +22,14 @@ DEFAULTS = {
         # 例如 [{"platform": "console", "user_id": "local"}]
         "identities": [],
     },
+    "feishu": {
+        # 飞书自建应用（长连接）通道。只做私聊，只认 owner_open_id。
+        # App ID / Secret 不在这里，放 /opt/qqbot-data/keys.json 的 feishu 字段。
+        "enabled": False,
+        "owner_open_id": "",
+        # 飞书文本消息可以很长；给个保守上限，超长由 Capability 截断。
+        "max_text_chars": 4000,
+    },
     "llm": {
         "api": "https://api.deepseek.com/v1/chat/completions",
         # 2026-11-12 A/B：chat 在判断/澄清/承认不知道上明显更稳；编数据两者一样。

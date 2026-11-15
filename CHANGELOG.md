@@ -2,6 +2,22 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · 飞书通道上线：长连接 + 私聊 + 文字/图片/语音
+
+- 飞书自建应用「大肥鱼」跑通最小回环后接进内核：`plugins/feishu` 用 SDK 长连接
+  （不需公网 IP/域名/内网穿透）收私聊事件，3 秒内 ack、后台交给 `TurnRunner`，
+  和 QQ 共用同一套 45 秒硬线/分段/会话锁/记忆——主人 session 用
+  `config.owner_session()`，换端也记得住。
+- 只认 `config.feishu.owner_open_id`（可用范围设「仅自己」），群消息/陌生人直接忽略。
+- `adapters/feishu.py`：把飞书 content JSON（text/post/image/audio/…）归一成
+  `InboundMessage`，纯函数可离线测（新增 6 条断言）。
+- 语音双向：出站 TTS silk → pcm → opus（飞书要求 `msg_type=audio` + `file_type=opus`），
+  入站下载资源 → ffmpeg 转 wav → 复用现有 ASR；失败退回文字，不静默丢。
+- 依赖：`lark-oapi==1.7.5`（要求 websockets<16）→ `websockets` 17.4→15.0.1
+  （nonebot2 要求 >=15，取交集）；已进 `requirements.txt`，生产 venv 实测 `pip check` 干净、
+  重启后 QQ 通道正常。
+- 探针保留为运维工具：`ops/feishu-probe.py`（`--check` / 常驻收消息）。
+
 ## 2026-11-15 · 运维债清理：云端独有脚本入库 / 备份覆盖 / 拉取闭环 / CI 守门
 
 - 云端只在机器上有的 5 个 ops 脚本迁进仓库：`export-memory.py`、`export-persona.py`、

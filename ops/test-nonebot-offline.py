@@ -2409,6 +2409,29 @@ async def main() -> None:
     t3.merge(turn_mod.Turn(texts=["第二句"]))
     check("连续两条文字按顺序合并", t3.texts == ["第一句", "第二句"], str(t3.texts))
 
+    # ---------- 飞书入站归一化（adapters/feishu.py，纯函数，不碰 lark） ----------
+    from adapters.feishu import parse_content as _fp
+    from adapters.feishu import to_inbound as _fi
+
+    _p = _fp("text", '{"text": "在吗"}')
+    check("飞书 text 解析", _p["text"] == "在吗", str(_p))
+    _p = _fp("post", '{"title": "标题", "content": [[{"tag": "text", "text": "正文"},'
+                     '{"tag": "img", "image_key": "img_x"}]]}')
+    check("飞书 post 解析（标题+正文+内嵌图）",
+          "标题" in _p["text"] and "正文" in _p["text"]
+          and _p["image_keys"] == ["img_x"], str(_p))
+    _p = _fp("image", '{"image_key": "img_y"}')
+    check("飞书 image 解析", _p["image_keys"] == ["img_y"], str(_p))
+    _p = _fp("audio", '{"file_key": "file_x", "duration": 1000}')
+    check("飞书 audio 解析", _p["audio_key"] == "file_x", str(_p))
+    _p = _fp("text", '{"text": "@_user_1 你好"}')
+    check("飞书 @ 占位被清掉", _p["text"] == "你好", _p["text"])
+    _m = _fi(open_id="ou_x", chat_id="oc_y", text="hi",
+             images=["/tmp/a.jpg"], event_id="m1", voice=True, session="private:1")
+    check("飞书 to_inbound 映射",
+          _m.platform == "feishu" and _m.session == "private:1"
+          and _m.voice and _m.images == ["/tmp/a.jpg"], str(_m))
+
     # ---------- 群聊：限流 / 上下文裁剪 / 隔离 ----------
     from app_core import group as group_mod
 

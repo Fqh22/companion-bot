@@ -6,6 +6,14 @@ admin:
   # 留空或 "0" 的后果：记忆不写入、主动消息和定时推送发不出去。
   user_id: "0"
 
+feishu:
+  # 飞书自建应用（长连接）通道：只做私聊，只认 owner_open_id。
+  # App ID / Secret 放 /opt/qqbot-data/keys.json 的 feishu 字段（不进仓库）。
+  # 打开前先跑 ops/feishu-probe.py 验证应用配置，再把 owner_open_id 填成你的 ou_…
+  enabled: false
+  owner_open_id: ""
+  max_text_chars: 4000
+
 llm:
   api: https://api.deepseek.com/v1/chat/completions
   # 2026-11-12 A/B：chat 在判断/澄清上明显更稳（编数据两者一样）。

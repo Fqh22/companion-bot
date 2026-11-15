@@ -57,6 +57,8 @@ EXPECT = {
     "plugins.admin": ["ping", "help_cmd", "reload_cmd"],
     "plugins.schedule": ["sched", "_send"],
     "plugins.proactive": ["_tick", "_compose"],
+    "plugins.feishu": ["core", "engine", "driver", "_handle", "_start", "_stop",
+                       "FeishuChannel"],
 }
 EXPECT_COUNT = len(EXPECT)      # 加插件时只改 EXPECT，不用再找魔数
 missing = []
