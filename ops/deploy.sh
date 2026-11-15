@@ -6,7 +6,7 @@
 # git archive 保证「部署的就是 HEAD 这一版」，sha 落在 .deployed_sha 里可对账。
 set -euo pipefail
 HOST="${QQBOT_HOST:-ubuntu@150.158.90.134}"
-KEY="${QQBOT_KEY:-$HOME/.ssh/qq_bot.pem}"
+KEY="${QQBOT_KEY:?请先 export QQBOT_KEY 指向 ssh 私钥}"
 cd "$(dirname "$0")/.."
 SHA="$(git rev-parse --short HEAD)"
 if [[ -n "$(git status --porcelain)" ]]; then
