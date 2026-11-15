@@ -308,9 +308,20 @@ def _compact_background(memories, knowledge: str, skills, lessons: str,
 
     mem = [m for m in (memories or []) if m.get("text")][:3]
     if mem:
-        lines = [f"- [记忆] {age_label(m.get('age_days'))}{clip(m['text'], 160)}"
-                 for m in mem]
-        sections.append(("memory", "相关记忆：\n" + "\n".join(lines)))
+        # 事实和洞察必须分开：insight 是模型自己的推断，
+        # 混进「相关记忆」会被当成「他说过的话」复述——那是把解读伪装成事实。
+        _facts = [m for m in mem if m.get("type") != "insight"]
+        _ins = [m for m in mem if m.get("type") == "insight"]
+        if _facts:
+            lines = [f"- [记忆] {age_label(m.get('age_days'))}{clip(m['text'], 160)}"
+                     for m in _facts]
+            sections.append(("memory", "相关记忆：\n" + "\n".join(lines)))
+        if _ins:
+            lines = [f"- {clip(m['text'], 160)}" for m in _ins]
+            sections.append(("insight",
+                             "我对他的理解（**这是你的推断，不是他说过的话**；"
+                             "只在相关时作参考，别当成事实复述，也别主动宣布「我觉得你…」）：\n"
+                             + "\n".join(lines)))
 
     if knowledge:
         sections.append(("knowledge",

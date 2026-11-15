@@ -444,6 +444,8 @@ class ChatTurnMixin:
                 turn.memories = [{
                     "doc_id": i.ref,
                     "text": i.text,
+                    # fact / insight：渲染时要分开——洞察是推断，不是他说过的话
+                    "type": getattr(i, "type", "fact") or "fact",
                     "meta": {"create_time": i.created,
                              "last_access_time": i.last_used},
                     "age_days": i.age_days,
