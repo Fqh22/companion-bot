@@ -618,8 +618,6 @@ async def main() -> None:
         except ValueError:
             _empty_form_rejected = True
         check("message: 空 form 会被拒", _empty_form_rejected)
-        check("tts: 口语化改写提示词存在", "口语" in tts_mod.REWRITE_SYSTEM)
-        check("tts: 改写开关是布尔", isinstance(tts_mod.REWRITE, bool))
         check("ocr: 布局标记被清掉",
               ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "hello")
         check("ocr: 接口地址", ocr_mod.OCR_API.endswith("/v1/tools/ocr"))
@@ -631,6 +629,8 @@ async def main() -> None:
         check("memory_instant 不把感慨当事实", not mi_mod.pick("今天好累啊"))
         from app_core import tts as tts_mod
         check("tts: PCM 采样率与长度上限", tts_mod.PCM_RATE == 24000 and tts_mod.MAX_CHARS > 0)
+        check("tts: 口语化改写提示词存在", "口语" in tts_mod.REWRITE_SYSTEM)
+        check("tts: 改写开关是布尔", isinstance(tts_mod.REWRITE, bool))
         from app_core import embed_provider as ep_mod
         check("embed_provider: 内置 provider 带维度",
               ep_mod.PROVIDERS["zhipu"]["dim"] == 2048
