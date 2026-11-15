@@ -5,7 +5,7 @@
 # 逐个 scp 漏一个就会出现「改了却跑的是旧代码」——2026-11-15 因此浪费了三次排障。
 # git archive 保证「部署的就是 HEAD 这一版」，sha 落在 .deployed_sha 里可对账。
 set -euo pipefail
-HOST="${QQBOT_HOST:-ubuntu@150.158.90.134}"
+HOST="${QQBOT_HOST:?请先 export QQBOT_HOST（含用户名，如 ubuntu@host）}"
 KEY="${QQBOT_KEY:?请先 export QQBOT_KEY 指向 ssh 私钥}"
 cd "$(dirname "$0")/.."
 SHA="$(git rev-parse --short HEAD)"
