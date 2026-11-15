@@ -65,11 +65,17 @@ def main() -> int:
           abs(b["valence"] - a["valence"]) < 1e-3,
           f"{a['valence']:.4f} -> {b['valence']:.4f}")
 
-    res = profile.update_state({"家庭": "催婚"}, {"家庭": 0.9},
-                               {"家庭": now - 121 * 86400}, {},
+    # 用「作息与身体」（阈值 120 天）验证过期机制；
+    # 「家庭」现在是 730 天——稳定特征不该因为半年没提就作废。
+    res = profile.update_state({"作息与身体": "失眠"}, {"作息与身体": 0.9},
+                               {"作息与身体": now - 121 * 86400}, {},
                                {}, {}, {}, {}, now)
     check("真实时钟下 121 天没证据 → 字段过期",
-          "家庭" not in res["fields"], str(res["fields"]))
+          "作息与身体" not in res["fields"], str(res["fields"]))
+    res2 = profile.update_state({"家庭": "催婚"}, {"家庭": 0.9},
+                                {"家庭": now - 121 * 86400}, {},
+                                {}, {}, {}, {}, now)
+    check("稳定字段（家庭）121 天不过期", "家庭" in res2["fields"], str(res2["fields"]))
     res2 = profile.update_state({"家庭": "催婚"}, {"家庭": 0.9},
                                 {"家庭": now - 10 * 86400}, {},
                                 {}, {}, {}, {}, now)
