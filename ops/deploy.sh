@@ -40,7 +40,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 echo "== 1/6 云端旧代码快照（回滚点）"
-"${SSH[@]}" "mkdir -p /opt/backup && tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot app_core plugins adapters && ls -l /opt/backup/code-$TS.tgz"
+"${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot app_core plugins adapters && sudo -n ls -l /opt/backup/code-$TS.tgz"
 
 echo "== 2/6 上传 HEAD:$SHA 的 nonebot/ 与 ops/"
 git archive HEAD:nonebot | "${SSH[@]}" "tar -x -C /opt/nonebot"
