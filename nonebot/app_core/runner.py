@@ -10,8 +10,10 @@ Channel 的三个原语：
 
 引擎只认 InboundMessage/OutboundMessage，所以新通道不需要 NoneBot、不需要 QQ。
 
-注意：这一层**不做**消息合并/会话锁——那是「入站侧」的事（TurnQueue），
-和通道无关但需要事件循环，留给入口实现。typing 心跳和 45 秒硬线在这里。
+会话锁：原设计说「留给入站侧的 TurnQueue」，但 TurnQueue 至今只有定义、没有使用点
+（2026-11-15 确认），并发轮次会各自 prepare 并互相覆盖记忆/情绪/跟催状态。
+所以锁放在这里——宁可违背这条注释，也不要留一个只存在于文档里的保障。
+typing 心跳和 45 秒硬线也在这里。
 """
 from __future__ import annotations
 
