@@ -89,6 +89,29 @@ def _contradictions(data_dir: Path, since: float) -> int:
     return n
 
 
+def _alerts(data_dir: Path, hours: float = 24.0, now: float | None = None) -> dict:
+    """最近 N 小时的告警计数：{code: n}。
+
+    这是「静默失败」的可见面：写记忆失败、索引失败、即时记忆失败都记在这里。
+    只读最后 2000 行——告警文件本身也有轮转，不需要全量解析。
+    """
+    out: dict[str, int] = {}
+    p = Path(data_dir) / "alerts.jsonl"
+    try:
+        cutoff = (time.time() if now is None else now) - hours * 3600
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines()[-2000:]:
+            try:
+                row = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if float(row.get("ts") or 0) >= cutoff:
+                k = str(row.get("code") or "?")
+                out[k] = out.get(k, 0) + 1
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def _shadow_bytes(data_dir: Path) -> int:
     total = 0
     for pat in _SHADOW_GLOBS:
@@ -120,6 +143,8 @@ def snapshot(now: float | None = None, data_dir: Path | None = None,
         "chat": chat,
         "today": {"contradictions": _contradictions(data, now - 86400)},
         "files": {"shadow_bytes": _shadow_bytes(data)},
+        # 24 小时告警：静默失败的可见面。空 dict = 一切安静。
+        "alerts": _alerts(data, 24.0, now),
     }
 
 
@@ -150,6 +175,10 @@ def render(s: dict) -> str:
         f"今日矛盾判定 {s['today']['contradictions']} 次",
         f"影子日志 {s['files']['shadow_bytes'] // 1024} KB",
     ]
+    _al = s.get("alerts") or {}
+    if _al:
+        _top = sorted(_al.items(), key=lambda x: -x[1])[:4]
+        lines.append("24h 告警 " + "｜".join(f"{k}×{v}" for k, v in _top))
     try:
         from app_core import shadow as shadow_mod
 
