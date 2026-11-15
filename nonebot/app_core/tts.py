@@ -240,6 +240,39 @@ _PCM_FUNCS = {"breeze": _pcm_breeze, "zhipu": _pcm_zhipu,
               "deepseek": _pcm_deepseek}
 
 
+def _clip_text(t: str, limit: int = MAX_CHARS) -> str:
+    """超长时按句子边界截断——截在词中间会让结尾听上去被切断。"""
+    if len(t) <= limit:
+        return t
+    head = t[:limit]
+    for sep in ("。", "！", "？", "…", "\n"):
+        i = head.rfind(sep)
+        if i >= limit // 2:
+            return head[: i + 1]
+    return head
+
+
+def _pad_pcm(pcm: bytes, ms: int = 300, fade_ms: int = 30) -> bytes:
+    """给 PCM 结尾补一段静音 + 轻微淡出：避免语音"说完戛然而止"。"""
+    if not pcm:
+        return pcm
+    rate = PCM_RATE
+    try:
+        import array
+
+        samples = array.array("h")
+        samples.frombytes(pcm[: len(pcm) // 2 * 2])
+        fade_n = max(1, int(rate * fade_ms / 1000))
+        keep = max(0, len(samples) - fade_n)
+        for i in range(min(fade_n, len(samples))):
+            idx = len(samples) - 1 - i
+            samples[idx] = int(samples[idx] * (i / fade_n))
+        pad = array.array("h", [0] * int(rate * ms / 1000))
+        return samples[:keep].tobytes() + samples[keep:].tobytes() + pad.tobytes()
+    except Exception:  # noqa: BLE001
+        return pcm + b"\x00\x00" * int(PCM_RATE * ms / 1000)
+
+
 def _silk_from_pcm(pcm: bytes) -> Path | None:
     try:
         import pilk
@@ -250,7 +283,7 @@ def _silk_from_pcm(pcm: bytes) -> Path | None:
         out = Path(out_name)
         raw = Path(raw_name)
         with os.fdopen(raw_fd, "wb") as fh:
-            fh.write(pcm)
+            fh.write(_pad_pcm(pcm))
         # tencent=True：写成腾讯系 silk 头（首字节 0x02），QQ/OneBot 才认。
         pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE, tencent=True)
         raw.unlink(missing_ok=True)
@@ -291,24 +324,14 @@ async def synth_opus(text: str, *, retries: int = 2,
     if not t:
         return None
     t = await spoken_script(t)
-    if len(t) > MAX_CHARS:
-        t = t[:MAX_CHARS]
+    t = _clip_text(t)
     order = [PROVIDER]
     if FALLBACK:
         order += [p for p in PROVIDERS if p != PROVIDER]
     for prov in order:
-        if prov == "breeze" and voice_for("breeze"):
-            data = await _breeze_request(t, "opus", retries, mood)
-            if data:
-                fd, name = tempfile.mkstemp(prefix="tts-", suffix=".opus")
-                os.close(fd)
-                out = Path(name)
-                out.write_bytes(data)
-                return out
-            continue
         pcm = await _PCM_FUNCS[prov](t, retries, mood)
         if pcm:
-            return _pcm_to_opus(pcm)
+            return _pcm_to_opus(_pad_pcm(pcm))
     return None
 
 
@@ -322,8 +345,7 @@ async def synth(text: str, *, voice: str | None = None,
     if not t:
         return None
     t = await spoken_script(t)
-    if len(t) > MAX_CHARS:
-        t = t[:MAX_CHARS]
+    t = _clip_text(t)
 
     order = [PROVIDER]
     if FALLBACK:
