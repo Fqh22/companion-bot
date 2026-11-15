@@ -14,6 +14,7 @@
 - 新增 `ops/check-links.py`（Markdown 相对链接检查）并进 CI；修掉 group README 一个坏链。
 - 同步：`docs/00` 定位与数字（735/280/7 插件、飞书通道、语音双 provider）、
   `AGENTS.md`、`pyproject.toml` 描述；GitHub 仓库 About 改为多通道记忆体描述 + topics。
+- 状态更新：`docs/20` 从「接入中」改为「已接入」，待办勾掉已完成项（图片真机验收仍待做）。
 - **无运行时代码变更**（文档、元数据、CI 检查脚本）。
 
 ## 2026-11-15 · TTS 双 provider：智谱主用（已充值）+ DeepSeek 兜底
