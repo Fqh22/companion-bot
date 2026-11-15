@@ -232,8 +232,12 @@ def _manifest(baseline_path: Path, prev: dict | None = None) -> dict:
     files = {}
     for rel in rels:
         q = HERE.parent / rel
-        files[rel] = hashlib.sha256(q.read_bytes()).hexdigest() if q.exists() else "MISSING"
-    files["ops/fixtures/prompt-baseline.json"] = hashlib.sha256(baseline_path.read_bytes()).hexdigest()
+        # 和 _check_manifest 用同一口径：换行规范化后再算，否则 Windows 生成的
+        # 清单在 Linux CI 上永远对不上（seed.py 就是这么红的）。
+        files[rel] = (hashlib.sha256(q.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+                      if q.exists() else "MISSING")
+    files["ops/fixtures/prompt-baseline.json"] = hashlib.sha256(
+        baseline_path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     try:
         head = subprocess.run(["git", "-C", str(HERE.parent), "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, timeout=10).stdout.strip()
@@ -268,7 +272,9 @@ def _check_manifest(base_dir: Path) -> list[str]:
         if not q.exists():
             bad.append(rel + " 缺失")
             continue
-        got = hashlib.sha256(q.read_bytes()).hexdigest()
+        # 换行符规范化：同一个文件在 Windows（CRLF）和 Linux（LF）上
+        # 字节不同，hash 必然不同。基线的语义是「内容一致」，不是「字节一致」。
+        got = hashlib.sha256(q.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
         if got != want:
             bad.append(rel + " 变了")
     return bad
