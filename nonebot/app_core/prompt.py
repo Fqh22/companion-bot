@@ -321,7 +321,9 @@ def _compact_background(memories, knowledge: str, skills, lessons: str,
             sections.append(("insight",
                              "我对他的理解（**这是你的推断，不是他说过的话**；"
                              "只在相关时作参考，别当成事实复述，也别主动宣布「我觉得你…」）：\n"
-                             + "\n".join(lines)))
+                             + "\n".join(lines)
+                             + "\n（如果它和「此刻」或画像冲突：以「此刻」为准，画像次之——"
+                             "此刻最准，长期画像最可能停在旧印象上。）"))
 
     if knowledge:
         sections.append(("knowledge",

@@ -1077,6 +1077,23 @@ class ChatCore(ChatTurnMixin):
                 # wiki 归档：archive_stale 自身限量 5 页/次，所以按周跑，
                 # 每天跑会把半个库在几天内下架。
                 try:
+                    # 月度维护：maintenance.run() 原来只被 review 读状态、从没执行过。
+                    # 三件事都是「不做不会立刻坏、做了一年省几十 MB」：JSONL 截断、
+                    # WAL checkpoint、VACUUM。顺带轮转备份包（purge.rotate）。
+                    if await self._claim("maint:monthly", ttl=30 * 86400 * 0.9):
+                        try:
+                            from app_core import maintenance as _maint
+                            _mr = _maint.run()
+                            log.info("月度维护：%s", _mr)
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("月度维护失败：%s", e)
+                            alerts.record("warn", "maintenance_failed", str(e)[:200])
+                        try:
+                            from app_core import purge as _purge2
+                            _purge2.rotate()
+                            _purge2.prune_old_packs()
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("备份轮转失败：%s", e)
                     if await self._claim("wiki:weekly", ttl=7 * 86400 * 0.9):
                         from app_core import wiki as _wiki
                         _w = _wiki.archive_stale()
