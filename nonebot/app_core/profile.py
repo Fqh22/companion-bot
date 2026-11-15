@@ -39,6 +39,17 @@ MIN_CONF = 0.6
 # 不搞渐进衰减（对折对折会让阈值附近变得难以解释）：要么有证据，要么到期作废。
 DROP_AFTER_DAYS = 120
 
+# 字段级过期：原来所有字段共享 120 天，会把「明确讨厌」「家庭」这类稳定特征
+# 一起删掉（120 天没提不代表变了）。会变的是职业/作息，不会变的是雷区和家人。
+_DROP_DAYS: dict[str, float] = {
+    "明确讨厌": 3650.0,      # 十年：雷区几乎不会变
+    "家庭": 730.0,           # 两年
+    "审美与偏好": 730.0,
+    "技术与项目": 365.0,
+    "职业与求职": 180.0,     # 半年：他会换工作
+    "作息与身体": 120.0,     # 四个月：作息最容易变
+}
+
 
 def _value(v) -> tuple[str, float]:
     """一个字段的 (文本, 置信度)。兼容「纯字符串」和 {"text","confidence"} 两种写法。"""
@@ -139,7 +150,7 @@ def compact(fields: dict[str, str], conf: dict[str, float] | None = None,
             continue
         base = float(conf.get(k, 0.7)) if conf is not None else 1.0
         days = age_days((seen or {}).get(k), now)
-        if effective_conf(base, days) < min_conf:
+        if effective_conf(base, days, k) < min_conf:
             continue
         parts.append(v)
     out = ""
@@ -291,7 +302,9 @@ def update_state(fields: dict[str, str], conf: dict[str, float],
     # 过期：太久没有新证据，从库里删掉（不只是不注入）
     for k in list(f):
         d = age_days(s.get(k), now)
-        if d is not None and d > drop_after_days:
+        # 删除阈值和注入口径必须一致：否则会出现「库里删了但 compact 还以为有效」，
+        # 或者反过来——画像在每轮注入里活着，但库里已经没了。
+        if d is not None and d > _DROP_DAYS.get(k, drop_after_days):
             f.pop(k, None)
             c.pop(k, None)
             s.pop(k, None)
@@ -309,11 +322,15 @@ def age_days(seen: float | None, now: float | None = None) -> float | None:
     return max(0.0, (now - float(seen)) / 86400.0)
 
 
-def effective_conf(conf: float, days: float | None) -> float:
-    """到期就是 0（不注入）。没过期就照原样——不做渐进衰减，规则要能一句话说清。"""
+def effective_conf(conf: float, days: float | None, field: str = "") -> float:
+    """到期就是 0（不注入）。没过期就照原样——不做渐进衰减，规则要能一句话说清。
+
+    field 用来查字段级阈值：雷区和家人该长期保留，职业和作息该更早过期。
+    """
     if days is None:
         return float(conf)
-    return 0.0 if days > DROP_AFTER_DAYS else float(conf)
+    limit = _DROP_DAYS.get(field, DROP_AFTER_DAYS)
+    return 0.0 if days > limit else float(conf)
 
 
 def load_seen(path: Path) -> dict[str, float]:
