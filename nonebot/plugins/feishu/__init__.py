@@ -55,6 +55,16 @@ _CHAT_CFG = (config.load().get("chat") or {})
 _VMODE = str(_CHAT_CFG.get("voice_reply_mode") or "voice").strip().lower()
 VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
 
+# 用户明确要求「原样念一段」：让模型逐字输出，TTS 不做口语化改写。
+_READ_ALOUD_KEYS = ("读一遍", "念一遍", "读一下", "念一下", "朗读", "照着读",
+                    "照着念", "原样念", "一字不差")
+_READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原样念出来："
+                         "逐字输出原文，不要改写、不要寒暄、不要加解释。\n\n")
+
+
+def _read_aloud_requested(text: str) -> bool:
+    return any(k in (text or "") for k in _READ_ALOUD_KEYS)
+
 _client: "lark.Client | None" = None
 _loop: asyncio.AbstractEventLoop | None = None
 _seen: set[str] = set()
@@ -291,14 +301,15 @@ class FeishuChannel:
         return None
 
 
-async def _speak_later(session: str, chat_id: str, text: str) -> None:
+async def _speak_later(session: str, chat_id: str, text: str,
+                       rewrite: bool = True) -> None:
     """文字发完后补一条语音（和 QQ 同一策略：只在他要/他发语音时才发）。"""
     try:
         say = (text or "").strip()[:300]
         if not say:
             return
         # 飞书直接吃 opus：走 tts.synth_opus（Breeze 直出，少一次 silk 转码）
-        audio = await tts.synth_opus(say, mood=mood.load())
+        audio = await tts.synth_opus(say, mood=mood.load(), rewrite=rewrite)
         if not audio:
             logger.info("[feishu] 语音合成返回空，跳过")
             return
@@ -318,14 +329,16 @@ async def _speak_later(session: str, chat_id: str, text: str) -> None:
         logger.warning(f"[feishu] 语音链路失败：{e!r}")
 
 
-async def _deliver_voice_reply(session: str, ch: FeishuChannel) -> None:
+async def _deliver_voice_reply(session: str, ch: FeishuChannel,
+                                 rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
     buffered = list(ch.buffered)
     ch.defer_text = False
     say = "".join(buffered).strip()[:300]
     ok = False
     try:
-        audio = await tts.synth_opus(say, mood=mood.load()) if say else None
+        audio = await tts.synth_opus(say, mood=mood.load(),
+                                     rewrite=rewrite) if say else None
         if audio:
             ok = await ch.send_voice("", str(audio))
             audio.unlink(missing_ok=True)
@@ -396,14 +409,17 @@ async def _handle(data) -> None:
                 {"text": "这条消息我暂时读不了（%s）" % (parsed["unsupported"] or msg.message_type)})
             return
 
+        _read_aloud = _read_aloud_requested(text)
+        _model_text = (_READ_ALOUD_DIRECTIVE + text) if _read_aloud else text
         session = config.owner_session() or f"feishu:{open_id}"
         _chat_of[session] = str(msg.chat_id)
         want_voice = voice or any(k in text for k in
                                   ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
         ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
                            defer_text=want_voice and VOICE_REPLY_MODE != "text_then_voice")
-        inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id), text=text,
-                             images=images, event_id=mid, voice=voice, session=session)
+        inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id),
+                             text=_model_text, images=images, event_id=mid,
+                             voice=voice, session=session, store_text=text)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline)
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
                     f"{f'（{len(images)} 图）' if images else ''}")
@@ -415,10 +431,11 @@ async def _handle(data) -> None:
                 await asyncio.to_thread(
                     _send_message, msg.chat_id, "text", {"text": "这次想太久了，先说到这。"})
         if want_voice and ch.buffered:
-            await _deliver_voice_reply(session, ch)
+            await _deliver_voice_reply(session, ch, rewrite=not _read_aloud)
         elif want_voice and ch.sent_text:
             asyncio.create_task(
-                _speak_later(session, str(msg.chat_id), "".join(ch.sent_text)))
+                _speak_later(session, str(msg.chat_id), "".join(ch.sent_text),
+                             rewrite=not _read_aloud))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 处理失败：{e!r}")
 

@@ -62,6 +62,16 @@ VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "v
 
 _locks: dict[str, asyncio.Lock] = {}
 
+# 用户明确要求「原样念一段」时：让模型逐字输出；TTS 也不做口语化改写。
+_READ_ALOUD_KEYS = ("读一遍", "念一遍", "读一下", "念一下", "朗读", "照着读",
+                    "照着念", "原样念", "一字不差")
+_READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原样念出来："
+                         "逐字输出原文，不要改写、不要寒暄、不要加解释。\n\n")
+
+
+def _read_aloud_requested(text: str) -> bool:
+    return any(k in (text or "") for k in _READ_ALOUD_KEYS)
+
 chat = on_message(priority=10, block=False)
 
 
@@ -105,7 +115,7 @@ async def _draw_later(sid: str, ask: str) -> None:
         logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
 
 
-async def _speak_later(sid: str, text: str, parts: int) -> None:
+async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) -> None:
     """后台合成语音并发送。
 
     只读最后一段：几段拼起来读会像播报，而语音本来就该说一句。
@@ -119,7 +129,7 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         say = (text or "").strip()
         if len(say) > 300:
             say = say[:300]
-        silk = await tts.synth(say, mood=mood.load())
+        silk = await tts.synth(say, mood=mood.load(), rewrite=rewrite)
         if not silk:
             logger.info("[chat] 语音合成返回空，跳过")
             return
@@ -148,7 +158,8 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
 
 
-async def _deliver_voice_reply(sid: str, ch: QQChannel) -> None:
+async def _deliver_voice_reply(sid: str, ch: QQChannel,
+                             rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
     from app_core import tts
     from app_core.message import Part
@@ -158,7 +169,7 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel) -> None:
     say = "".join(buffered).strip()[:300]
     ok = False
     try:
-        silk = await tts.synth(say, mood=mood.load()) if say else None
+        silk = await tts.synth(say, mood=mood.load(), rewrite=rewrite) if say else None
         if silk:
             ok = await ch.send_part(sid, Part("voice", str(silk)))
             silk.unlink(missing_ok=True)
@@ -322,6 +333,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     # 才能决定本轮文字是先压住（voice/voice_then_text）还是照旧流式发（旧行为）。
     _want_voice = (stored or "").startswith("[语音]") or any(
         k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
+    _read_aloud = _read_aloud_requested(prompt)
+    _model_text = (_READ_ALOUD_DIRECTIVE + prompt) if _read_aloud else prompt
     ch = QQChannel()
     ch.defer_text = _want_voice and VOICE_REPLY_MODE != "text_then_voice"
     runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline)
@@ -336,7 +349,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                 user_id=str(turn.meta.get("user_id") or ""),
                 chat_id=turn.meta.get("chat_id"),
                 is_group=bool(turn.meta.get("is_group")),
-                text=prompt, images=list(turn.images or []),
+                text=_model_text, images=list(turn.images or []),
                 event_id=turn.meta.get("event_id"),
                 reply_to=turn.meta.get("reply_to"),
                 store_text=stored,
@@ -346,9 +359,10 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
         if _want_voice and ch.buffered:
-            await _deliver_voice_reply(sid, ch)
+            await _deliver_voice_reply(sid, ch, rewrite=not _read_aloud)
         elif _want_voice and ch.sent:
-            asyncio.create_task(_speak_later(sid, "".join(ch.sent), len(ch.sent)))
+            asyncio.create_task(
+                _speak_later(sid, "".join(ch.sent), len(ch.sent), rewrite=not _read_aloud))
         # 画画同理：只在他明确要求时画，不做「氛围到了就画」
         _ask = " ".join(turn.texts or [])
         if any(k in _ask for k in _DRAW_TRIGGERS):

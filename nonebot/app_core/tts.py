@@ -321,7 +321,8 @@ def _pcm_to_opus(pcm: bytes) -> Path | None:
 
 
 async def synth_opus(text: str, *, retries: int = 2,
-                     mood: dict | None = None) -> Path | None:
+                     mood: dict | None = None,
+                     rewrite: bool = True) -> Path | None:
     """给飞书这类直接吃 opus 的通道：Breeze 直接要 opus，不经过 silk 二次转码。
 
     其它 provider 退回 PCM → ffmpeg 转 opus。
@@ -329,7 +330,8 @@ async def synth_opus(text: str, *, retries: int = 2,
     t = (text or "").strip()
     if not t:
         return None
-    t = await spoken_script(t)
+    if rewrite:
+        t = await spoken_script(t)
     t = _clip_text(t)
     order = [PROVIDER]
     if FALLBACK:
@@ -342,7 +344,8 @@ async def synth_opus(text: str, *, retries: int = 2,
 
 
 async def synth(text: str, *, voice: str | None = None,
-                retries: int = 2, mood: dict | None = None) -> Path | None:
+                retries: int = 2, mood: dict | None = None,
+                rewrite: bool = True) -> Path | None:
     """合成一条 silk，返回路径；失败返回 None。
 
     voice 参数保留兼容旧调用；实际音色由 config.tts.voice 决定。
@@ -350,7 +353,8 @@ async def synth(text: str, *, voice: str | None = None,
     t = (text or "").strip()
     if not t:
         return None
-    t = await spoken_script(t)
+    if rewrite:
+        t = await spoken_script(t)
     t = _clip_text(t)
 
     order = [PROVIDER]
