@@ -749,7 +749,8 @@ async def main() -> None:
 
     summary_inputs = []
 
-    async def fake_complete_summary(msgs, max_tokens=None, temperature=None):
+    async def fake_complete_summary(msgs, max_tokens=None, temperature=None,
+                                    json_mode=False):
         # 滚动纪要和矛盾检测走的是同一个函数，别把它们算进「总结次数」
         head = msgs[0].get("content") or ""
         if "滚动纪要" in head:
@@ -1323,7 +1324,7 @@ async def main() -> None:
         await core.remember(poison, "user", f"脏数据{i}")
         await core.remember(poison, "assistant", "嗯")
 
-    async def bad_summary(msgs, max_tokens=None):
+    async def bad_summary(msgs, max_tokens=None, **kw):
         return "这段不是 JSON"
 
     core.complete_summary = bad_summary
@@ -1511,7 +1512,7 @@ async def main() -> None:
         "# 装机清单" + _nl + _nl + "- 标签：硬件" + _nl + "- 项目：硬件" + _nl + _nl
         + "R7 5800H 无独显，电源建议 550W。" + _nl, encoding="utf-8")
 
-    async def fake_note_summary(msgs, max_tokens=None):
+    async def fake_note_summary(msgs, max_tokens=None, **kw):
         return "{\"title\": \"装机清单\", \"summary\": \"5800H 配置与电源建议\"}"
 
     core.complete_summary = fake_note_summary

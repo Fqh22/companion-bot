@@ -122,7 +122,8 @@ class LLM:
                        max_tokens: int | None = None, model: str | None = None,
                        retries: int = LLM_RETRIES, thinking: bool | None = None,
                        purpose: str = "chat",
-                       temperature: float | None = None) -> dict:
+                       temperature: float | None = None,
+                       response_format: dict | None = None) -> dict:
         """temperature=None 用客户端默认（聊天档）；只有批处理类脚本会显式压低，
         用来让「同一段输入重跑两次结果一致」——线上路径一律不传。"""
         think = self.thinking if thinking is None else thinking
@@ -132,6 +133,9 @@ class LLM:
                    "thinking": {"type": "enabled" if think else "disabled"}}
         if tools_arg:
             payload["tools"] = tools_arg
+        if response_format:
+            # 结构化输出：服务端约束成合法 JSON，减少「长 JSON 半截截断」
+            payload["response_format"] = response_format
         key = self.key_fn()
         if not key:
             # 没有 key 时发出去的请求连 header 都不合法，报错还看不懂
@@ -296,7 +300,8 @@ class LLM:
 
     # ---------- 总结 ----------
     async def summarize(self, messages: list[dict], max_tokens: int | None = None,
-                        temperature: float | None = None) -> str:
+                        temperature: float | None = None,
+                        json_mode: bool = False) -> str:
         """总结类任务。
 
         重试策略：主模型重试一次；只有配置了**不同**的备用模型才再换一个。
@@ -311,7 +316,8 @@ class LLM:
                 msg = await self.complete(
                     messages, None, mt, model=model, thinking=self.summary_thinking,
                     retries=1 if i == 0 else 0, purpose="summary",
-                    temperature=temperature)
+                    temperature=temperature,
+                    response_format=({"type": "json_object"} if json_mode else None))
                 text = (msg.get("content") or "").strip()
                 if text:
                     return text

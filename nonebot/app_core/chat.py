@@ -640,9 +640,11 @@ class ChatCore(ChatTurnMixin):
         return (msg.get("content") or "").strip()
 
     async def complete_summary(self, messages: list[dict], max_tokens: int | None = None,
-                               temperature: float | None = None) -> str:
+                               temperature: float | None = None,
+                               json_mode: bool = False) -> str:
         self._sync_llm_db()
-        return await self.llm.summarize(messages, max_tokens, temperature=temperature)
+        return await self.llm.summarize(messages, max_tokens, temperature=temperature,
+                                        json_mode=json_mode)
 
     async def usage_stats(self, days: int = 1) -> dict:
         since = time.time() - days * 86400
@@ -1283,7 +1285,7 @@ class ChatCore(ChatTurnMixin):
              {"role": "user", "content": (
                  f"【旧纪要】\n{old_digest or '（还没有）'}\n\n"
                  f"【这段对话】\n\n{dialog}\n\n整理成一条长期记忆，并更新纪要。")}],
-            max_tokens=800)
+            max_tokens=1600, json_mode=True)
         data = summarize.parse(raw)
         # 归并到已有词表：模型偶尔还是会给「求职面试」这种自造的近义标签，
         # 而基于实体的连边只认完全相同的字符串。
