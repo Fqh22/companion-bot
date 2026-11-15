@@ -14,8 +14,9 @@ from pathlib import Path
 
 import httpx
 
-ASR_API = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
-ASR_MODEL = "glm-asr-2512"
+# 2026-11-15 换到 DeepSeek 全家桶：/v1/tools/asr（multipart，16-bit PCM WAV 或 Ogg Opus）。
+# 换的理由不只是「文字更准」——智谱是单点，它欠费那晚语音和记忆一起挂过。
+ASR_API = "https://api.deepseek.com/v1/tools/asr"
 MAX_SECONDS = 30.0          # 智谱限制：≤30 秒、≤25MB
 MAX_BYTES = 25 * 1024 * 1024
 
@@ -28,7 +29,7 @@ def _keys_file() -> Path:
 
 def _key() -> str:
     try:
-        return str(json.loads(_keys_file().read_text(encoding="utf-8")).get("zhipu") or "")
+        return str(json.loads(_keys_file().read_text(encoding="utf-8")).get("deepseek") or "")
     except Exception:  # noqa: BLE001
         return ""
 
@@ -112,7 +113,6 @@ async def transcribe(wav: Path) -> dict:
                     r = await c.post(
                         ASR_API,
                         headers={"Authorization": "Bearer " + key},
-                        data={"model": ASR_MODEL},
                         files={"file": (wav.name, f, "audio/wav")},
                     )
             if r.status_code in (429, 500, 502, 503, 504) and attempt < 2:

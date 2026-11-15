@@ -17,22 +17,24 @@ from pathlib import Path
 
 import httpx
 
-TTS_API = "https://open.bigmodel.cn/api/paas/v4/audio/speech"
-TTS_MODEL = "cogtts"
-PCM_RATE = 24000          # 智谱 TTS 默认 24k mono 16bit
+# 2026-11-15 换到 DeepSeek 全家桶：/v1/tools/tts，返回 PCM 24k（和智谱一样）。
+# 换的理由是「去单点」：智谱欠费那晚语音和记忆一起挂了。
+TTS_API = "https://api.deepseek.com/v1/tools/tts"
+VOICE_ID = "stella"       # stella 女声 / tide 男声
+PCM_RATE = 24000          # 两家都是 24k mono 16bit，pilk.encode 不用改
 MAX_CHARS = 300           # 一条语音别太长（约 30 秒）
 
 
 def _key() -> str:
     from app_core import paths
     try:
-        return str(json.loads(paths.KEYS.read_text(encoding="utf-8")).get("zhipu") or "")
+        return str(json.loads(paths.KEYS.read_text(encoding="utf-8")).get("deepseek") or "")
     except Exception:  # noqa: BLE001
         return ""
 
 
-async def synth(text: str, *, voice: str = "female",
-                model: str = TTS_MODEL, retries: int = 2) -> Path | None:
+async def synth(text: str, *, voice: str = VOICE_ID,
+                retries: int = 2) -> Path | None:
     """合成一条 silk，返回路径；失败返回 None。"""
     t = (text or "").strip()
     if not t:
@@ -46,8 +48,10 @@ async def synth(text: str, *, voice: str = "female",
     for attempt in range(retries):
         try:
             async with httpx.AsyncClient(timeout=40) as c:
+                # format=pcm：直接拿 16-bit mono 24k，省一次 wav 解包
                 r = await c.post(TTS_API, headers={"Authorization": "Bearer " + key},
-                                 json={"model": model, "input": t, "voice": voice})
+                                 json={"text": t, "voice_id": voice,
+                                       "format": "pcm", "filter_markdown": True})
             if r.status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
                 await asyncio.sleep(1.5 * (attempt + 1))
                 continue
