@@ -195,7 +195,8 @@ def _share_tier_on() -> bool:
 
 
 GEN_RESERVE = 15.0                       # 给生成和发送留的秒数
-_PATH_TIMEOUT = {"weather": 10.0, "search": 5.0}
+# 预搜索换全家桶（模型侧检索）后变慢：5 秒是老的自建搜索的预算
+_PATH_TIMEOUT = {"weather": 10.0, "search": 25.0}
 
 
 class ChatTurnMixin:
@@ -355,10 +356,9 @@ class ChatTurnMixin:
         """跑一次分析类预搜索。被调用即计数（超时/失败也算走过）。"""
         turn.calls["search"] = turn.calls.get("search", 0) + 1
         try:
-            # 全家桶搜索（web.search_via_model）实测可用：8 秒、带引用、不用清 HTML。
-            # 但接进预搜索后 CI 的快照基线连续红三次，且拿不到 CI 侧的失败原文——
-            # 先回滚到自建搜索保住绿，函数保留在 web.py 里，等定位完基线问题再切。
-            return await asyncio.wait_for(web_mod.search(q, 3), timeout=5.0) or ""
+            # 全家桶搜索：服务端完成检索 + 引用，返回消化过的答案。
+            # 实测 8 秒、带 annotations 来源、不用清 HTML。
+            return await asyncio.wait_for(web_mod.search_via_model(q), timeout=25.0) or ""
         except asyncio.TimeoutError:
             log.info("分析类预搜索超时（>25s），本轮不注入")
             # 记下来：metrics 里永远没有 timeout，就分不清「没走」和「走了但超时」
