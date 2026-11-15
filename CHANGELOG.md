@@ -15,6 +15,9 @@
 - 音色切换到 `voc_swxkac72ugd6`；用户 A/B 后反馈：新链路（Breeze 直出 opus）比旧链路好，
   且 guidance 4 + 演戏指令的**后半句**语气最好，但前段起手太慢 → 低精力语气指令从「轻、慢」
   改为「轻一点，语速别拖」（只调音量不拖语速），另调 guidance/speed 再试。
+- 第三轮同文本对比（guidance 2/3/4 × speed 1.05/1.10/1.15）后用户选定：
+  **guidance 3.0 + speed 1.10**（备选：guidance 2.0 + 1.05 更克制）。云端 config 已定稿并重启，
+  实测新进程读到 `guidance=3.0 / speed=1.1 / voice=voc_swxkac72ugd6`，确认音已发。
 
 
 ## 2026-11-16 · 修 QQ 听不了语音：silk 要写腾讯头（tencent=True）
