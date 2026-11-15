@@ -17,7 +17,7 @@ from app_core import paths as _paths
 import aiosqlite
 import httpx
 
-from app_core import (attention, config, contradict, files, followup, intent, kb,
+from app_core import (alerts, attention, config, contradict, files, followup, intent, kb,
                       learn, mood, relational, remind, shadow, summarize, tools, wiki)
 from app_core import profile as profile_mod
 from app_core import vocab as vocab_mod
@@ -1063,6 +1063,7 @@ class ChatCore(ChatTurnMixin):
                         log.info("知识库索引：新增/更新 %d 块", n)
                 except Exception as e:  # noqa: BLE001
                     log.debug("知识库索引失败：%s", e)
+                    alerts.record("warn", "kb_index_failed", str(e)[:200])
                 # 跟催做减法：expire() 原来没有调用点，60 天没结果的事不会再被
                 # 标记取消——主动消息会越问越旧，像催债。
                 try:
@@ -1072,6 +1073,7 @@ class ChatCore(ChatTurnMixin):
                         log.info("跟催清理：%s", _r)
                 except Exception as e:  # noqa: BLE001
                     log.debug("跟催清理失败：%s", e)
+                    alerts.record("warn", "followup_expire_failed", str(e)[:200])
                 # wiki 归档：archive_stale 自身限量 5 页/次，所以按周跑，
                 # 每天跑会把半个库在几天内下架。
                 try:
@@ -1082,8 +1084,10 @@ class ChatCore(ChatTurnMixin):
                             log.info("wiki 归档：%d 页", len(_w))
                 except Exception as e:  # noqa: BLE001
                     log.debug("wiki 归档失败：%s", e)
+                    alerts.record("warn", "wiki_archive_failed", str(e)[:200])
         except Exception as e:  # noqa: BLE001
             log.debug("每日清理失败：%s", e)
+            alerts.record("warn", "daily_maintenance_failed", str(e)[:200])
 
     async def catch_up_summary(self) -> dict:
         """启动时补一次总结，接住「崩溃窗口」里没固化的对话。
@@ -1334,6 +1338,9 @@ class ChatCore(ChatTurnMixin):
                 log.warning("更新滚动纪要失败：%s", e)
         except Exception as e:  # noqa: BLE001
             log.warning("写记忆失败，水位不动：%s", e)
+            # 这条必须进 alerts：它是「记忆停止写入」的唯一信号，
+            # 2026-11-15 凌晨欠费就是在这里静默了一整晚。
+            alerts.record("error", "memory_write_failed", str(e)[:200], session)
             # 熔断必须和「解析失败」走同一个出口：只记数不判定，
             # 毒批次（例如 embedding 维度变了）会每轮重跑一次完整总结。
             same = (fails + 1) if fail_id == last_id else 1

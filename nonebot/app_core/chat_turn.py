@@ -857,6 +857,8 @@ class ChatTurnMixin:
                 turn.stored = (turn.stored or "") + _suffix
             except Exception as e:  # noqa: BLE001
                 log.debug("图注写回失败：%s", e)
+                from app_core import alerts as _alerts
+                _alerts.record("warn", "caption_writeback_failed", str(e)[:200], turn.session)
         # 即时记忆：明确自述立刻落库，不等批量总结。
         # 现在要等「8 轮 / 40 条 / 闲置 30 分钟」——你上午说「下周三面试」，
         # 之后不再说话，这句要等 30 分钟后的下一条消息才进记忆。
@@ -877,6 +879,8 @@ class ChatTurnMixin:
                                  "range_key": "instant:%s:%s" % (turn.session, turn.user_msg_id)}))
             except Exception as e:  # noqa: BLE001
                 log.debug("即时记忆失败：%s", e)
+                from app_core import alerts as _alerts
+                _alerts.record("warn", "instant_memory_failed", str(e)[:200], turn.session)
         # 自检标签：剥掉、记一条。P1 只观测，不改回复。
         try:
             _tag, _body = self_check_mod.parse(turn.text or "")
