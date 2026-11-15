@@ -33,6 +33,10 @@ DEFAULTS = {
         # Breeze 的音色 id（音色设计/克隆后保存的 voc_...）与语气指令。
         "breeze_voice": "",
         "breeze_instructions": "",
+        # Breeze 生成控制：guidance 越高越"照着语气指令演"（1–10，默认 1）；
+        # speed 0.5–2（默认 1，忽略时走模型默认）。
+        "breeze_guidance": 1.0,
+        "breeze_speed": 1.0,
         # 语速，智谱 0.5–2（DeepSeek 不支持，忽略）。
         "speed": 1.0,
         "fallback": True,

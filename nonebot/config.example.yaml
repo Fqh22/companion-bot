@@ -16,6 +16,9 @@ tts:
   # Breeze：音色 id（音色设计/克隆保存后得到的 voc_...）+ 自然语言语气指令
   breeze_voice: ""
   breeze_instructions: ""
+  # Breeze 生成控制：guidance 1–10（越高越照着语气指令演）；speed 0.5–2
+  breeze_guidance: 1.0
+  breeze_speed: 1.0
   # 智谱 0.5–2；DeepSeek 不支持（忽略）
   speed: 1.0
   fallback: true

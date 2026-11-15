@@ -153,6 +153,16 @@ def _save_image(message_id: str, image_key: str) -> Path | None:
     return out
 
 
+def _audio_duration_ms(path: Path) -> int:
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
+                              "format=duration", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, timeout=30)
+        return max(300, int(float(out.stdout.strip() or 0) * 1000))
+    except Exception:  # noqa: BLE001
+        return 1000
+
+
 def _silk_to_opus(silk: Path) -> tuple[Path, int] | None:
     """QQ 的 silk → 飞书要的 opus；返回 (路径, 时长毫秒)。"""
     try:
@@ -243,10 +253,17 @@ class FeishuChannel:
         if not p.exists():
             logger.warning(f"[feishu] 语音不存在：{p}")
             return False
-        conv = await asyncio.to_thread(_silk_to_opus, p)
-        if not conv:
-            return False
-        opus, duration = conv
+        own = False
+        if p.suffix.lower() == ".opus":
+            # Breeze 直出的 opus：不再解 silk、不再重编码（少一次有损转码）
+            opus = p
+            duration = await asyncio.to_thread(_audio_duration_ms, p)
+        else:
+            conv = await asyncio.to_thread(_silk_to_opus, p)
+            if not conv:
+                return False
+            opus, duration = conv
+            own = True
         try:
             key = await asyncio.to_thread(
                 _upload_file, opus, "opus", "voice.opus", duration)
@@ -256,7 +273,8 @@ class FeishuChannel:
                 _send_message, self.chat_id, "audio",
                 {"file_key": key, "duration": duration})
         finally:
-            opus.unlink(missing_ok=True)
+            if own:
+                opus.unlink(missing_ok=True)
 
     async def typing(self, session: str, on: bool) -> None:
         # 飞书机器人没有「正在输入」；保持空实现，编排层不用关心
@@ -269,13 +287,14 @@ async def _speak_later(chat_id: str, text: str) -> None:
         say = (text or "").strip()[:300]
         if not say:
             return
-        silk = await tts.synth(say, mood=mood.load())
-        if not silk:
+        # 飞书直接吃 opus：走 tts.synth_opus（Breeze 直出，少一次 silk 转码）
+        audio = await tts.synth_opus(say, mood=mood.load())
+        if not audio:
             logger.info("[feishu] 语音合成返回空，跳过")
             return
         ch = FeishuChannel(session="", chat_id=chat_id)
-        ok = await ch.send_voice("", str(silk))
-        silk.unlink(missing_ok=True)
+        ok = await ch.send_voice("", str(audio))
+        audio.unlink(missing_ok=True)
         logger.info(f"[feishu] voice sent={ok}")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 语音链路失败：{e!r}")

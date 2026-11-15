@@ -54,6 +54,9 @@ BREEZE_VOICE = str(_TTS_CFG.get("breeze_voice") or "").strip()
 BREEZE_INSTRUCTIONS = str(_TTS_CFG.get("breeze_instructions") or "").strip()
 # 情绪 → 语气指令：心情/精力/时段会影响 Breeze 怎么"演"这句话。
 MOOD_INSTRUCTIONS = bool(_TTS_CFG.get("mood_instructions", True))
+# Breeze 的生成控制：guidance 越高越"照着指令演"（1–10，默认 1）；speed 0.5–2。
+BREEZE_GUIDANCE = float(_TTS_CFG.get("breeze_guidance") or 1.0)
+BREEZE_SPEED = float(_TTS_CFG.get("breeze_speed") or 1.0)
 PROVIDERS = ("breeze", "zhipu", "deepseek")
 if PROVIDER not in PROVIDERS:
     PROVIDER = "zhipu"
@@ -157,8 +160,8 @@ def _breeze_instructions(mood: dict | None = None) -> str:
     return " ".join(x for x in (BREEZE_INSTRUCTIONS, dynamic) if x).strip()
 
 
-async def _pcm_breeze(text: str, retries: int = 2,
-                      mood: dict | None = None) -> bytes | None:
+async def _breeze_request(text: str, output_format: str, retries: int = 2,
+                         mood: dict | None = None) -> bytes | None:
     key = _key("breeze")
     voice = voice_for("breeze")
     if not key or not voice:
@@ -167,6 +170,13 @@ async def _pcm_breeze(text: str, retries: int = 2,
     instructions = _breeze_instructions(mood)
     if instructions:
         payload["instructions"] = instructions
+    settings = {}
+    if BREEZE_GUIDANCE > 1.0:
+        settings["guidance_scale"] = max(1.0, min(10.0, BREEZE_GUIDANCE))
+    if BREEZE_SPEED != 1.0:
+        settings["speed"] = max(0.5, min(2.0, BREEZE_SPEED))
+    if settings:
+        payload["voice_settings"] = settings
     last: bytes | None = None
     for attempt in range(retries):
         try:
@@ -174,7 +184,7 @@ async def _pcm_breeze(text: str, retries: int = 2,
                 r = await c.post(
                     f"{BREEZE_API}/{voice}",
                     headers={"xi-api-key": key},
-                    params={"output_format": "pcm_24000"},
+                    params={"output_format": output_format},
                     json=payload)
             if r.status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
                 await asyncio.sleep(1.5 * (attempt + 1))
@@ -188,6 +198,11 @@ async def _pcm_breeze(text: str, retries: int = 2,
                 continue
             return None
     return last if last and len(last) >= 1600 else None
+
+
+async def _pcm_breeze(text: str, retries: int = 2,
+                      mood: dict | None = None) -> bytes | None:
+    return await _breeze_request(text, "pcm_24000", retries, mood)
 
 
 async def _pcm_deepseek(text: str, retries: int = 2,
@@ -224,6 +239,78 @@ _PCM_FUNCS = {"breeze": _pcm_breeze, "zhipu": _pcm_zhipu,
               "deepseek": _pcm_deepseek}
 
 
+def _silk_from_pcm(pcm: bytes) -> Path | None:
+    try:
+        import pilk
+
+        out_fd, out_name = tempfile.mkstemp(prefix="tts-", suffix=".silk")
+        raw_fd, raw_name = tempfile.mkstemp(prefix="tts-", suffix=".pcm")
+        os.close(out_fd)
+        out = Path(out_name)
+        raw = Path(raw_name)
+        with os.fdopen(raw_fd, "wb") as fh:
+            fh.write(pcm)
+        # tencent=True：写成腾讯系 silk 头（首字节 0x02），QQ/OneBot 才认。
+        pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE, tencent=True)
+        raw.unlink(missing_ok=True)
+        return out if out.exists() and out.stat().st_size > 0 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _pcm_to_opus(pcm: bytes) -> Path | None:
+    """PCM → ogg/opus（48k 立体声容器、单声道源；Feishu 直接可播）。"""
+    try:
+        fd, pcm_name = tempfile.mkstemp(prefix="tts-", suffix=".pcm")
+        os.close(fd)
+        src = Path(pcm_name)
+        src.write_bytes(pcm)
+        fd, out_name = tempfile.mkstemp(prefix="tts-", suffix=".opus")
+        os.close(fd)
+        out = Path(out_name)
+        import subprocess
+
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "s16le",
+                        "-ar", str(PCM_RATE), "-ac", "1", "-i", str(src),
+                        "-c:a", "libopus", "-b:a", "64k", "-ar", "48000",
+                        str(out)], check=True, timeout=90)
+        src.unlink(missing_ok=True)
+        return out if out.exists() and out.stat().st_size > 0 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+async def synth_opus(text: str, *, retries: int = 2,
+                     mood: dict | None = None) -> Path | None:
+    """给飞书这类直接吃 opus 的通道：Breeze 直接要 opus，不经过 silk 二次转码。
+
+    其它 provider 退回 PCM → ffmpeg 转 opus。
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    t = await spoken_script(t)
+    if len(t) > MAX_CHARS:
+        t = t[:MAX_CHARS]
+    order = [PROVIDER]
+    if FALLBACK:
+        order += [p for p in PROVIDERS if p != PROVIDER]
+    for prov in order:
+        if prov == "breeze" and voice_for("breeze"):
+            data = await _breeze_request(t, "opus", retries, mood)
+            if data:
+                fd, name = tempfile.mkstemp(prefix="tts-", suffix=".opus")
+                os.close(fd)
+                out = Path(name)
+                out.write_bytes(data)
+                return out
+            continue
+        pcm = await _PCM_FUNCS[prov](t, retries, mood)
+        if pcm:
+            return _pcm_to_opus(pcm)
+    return None
+
+
 async def synth(text: str, *, voice: str | None = None,
                 retries: int = 2, mood: dict | None = None) -> Path | None:
     """合成一条 silk，返回路径；失败返回 None。
@@ -247,21 +334,4 @@ async def synth(text: str, *, voice: str | None = None,
             break
     if not pcm:
         return None
-    try:
-        import pilk
-
-        # mkstemp 的 fd 必须显式接管：丢掉会每合成一条泄漏一个 fd。
-        out_fd, out_name = tempfile.mkstemp(prefix="tts-", suffix=".silk")
-        raw_fd, raw_name = tempfile.mkstemp(prefix="tts-", suffix=".pcm")
-        os.close(out_fd)
-        out = Path(out_name)
-        raw = Path(raw_name)
-        with os.fdopen(raw_fd, "wb") as f:
-            f.write(pcm)
-        # tencent=True：写成腾讯系 silk 头（首字节 0x02，10 字节头），
-        # QQ/OneBot 才认。默认 False 写的是标准 silk，QQ 能收到但放不出来。
-        pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE, tencent=True)
-        raw.unlink(missing_ok=True)
-        return out if out.exists() and out.stat().st_size > 0 else None
-    except Exception:  # noqa: BLE001
-        return None
+    return _silk_from_pcm(pcm)

@@ -2,6 +2,18 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 飞书语音直出 opus + Breeze 生成控制
+
+- 现象：Breeze 在网页 Studio 里听起来比发出来的更有感觉。排查发现网页/API 都是 24k 单声道
+  （mp3/flac/wav 实测 sample_rate=24000），差别来自我们自己的链路：Breeze PCM → silk 编码
+  → 又解码 silk → ffmpeg opus 32k，**两次有损转码 + 低码率**。
+- 飞书改为**直出 opus**：`tts.synth_opus()` 让 Breeze 直接返回 `output_format=opus`，
+  不再经过 silk；飞书 `send_voice` 识别 `.opus` 直接上传。QQ 仍走 silk（平台限制）。
+- 其它 provider 兜底：PCM → ffmpeg opus 64k。
+- 新增 `tts.breeze_guidance`（1–10，越高越照语气指令演）与 `tts.breeze_speed`（0.5–2）。
+- 音色切换到用户选的新音色（云端 config `breeze_voice`）。
+- 待用户 A/B：旧链路 vs 直出 opus，确认是否更接近网页听感。
+
 ## 2026-11-16 · 修 QQ 听不了语音：silk 要写腾讯头（tencent=True）
 
 - 现象：QQ 里能收到语音消息但**点开播不出来**；飞书同一份 silk 正常。
