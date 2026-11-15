@@ -7,11 +7,15 @@ admin:
   user_id: "0"
 
 tts:
-  # 语音合成 provider：zhipu（智谱 cogtts）| deepseek。失败自动换另一家。
+  # 语音合成 provider：breeze（Breeze TTS 2）| zhipu（智谱 cogtts）| deepseek。
+  # 失败按顺序换下一家。
   provider: zhipu
   # 智谱：tongtong(温柔女) / female / xiaochen / chuichui / male / jam / kazi / douji / luodo
   # DeepSeek：stella(女) / tide(男)
   voice: tongtong
+  # Breeze：音色 id（音色设计/克隆保存后得到的 voc_...）+ 自然语言语气指令
+  breeze_voice: ""
+  breeze_instructions: ""
   # 智谱 0.5–2；DeepSeek 不支持（忽略）
   speed: 1.0
   fallback: true

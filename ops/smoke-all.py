@@ -632,6 +632,8 @@ async def main() -> None:
         check("tts: 口语化改写提示词存在", "口语" in tts_mod.REWRITE_SYSTEM)
         check("tts: 改写开关是布尔", isinstance(tts_mod.REWRITE, bool))
         check("tts: provider 在支持列表", tts_mod.PROVIDER in tts_mod.PROVIDERS)
+        check("tts: 三家 provider 都注册了",
+              set(tts_mod.PROVIDERS) == {"breeze", "zhipu", "deepseek"})
         check("tts: 主音色有默认", bool(tts_mod.voice_for(tts_mod.PROVIDER)))
         check("tts: fallback 是布尔", isinstance(tts_mod.FALLBACK, bool))
         from app_core import embed_provider as ep_mod

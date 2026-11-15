@@ -30,7 +30,11 @@ ZHIPU_VOICES = ("tongtong", "female", "xiaochen", "chuichui", "male",
                 "jam", "kazi", "douji", "luodo")
 DEEPSEEK_API = "https://api.deepseek.com/v1/tools/tts"
 DEEPSEEK_VOICES = ("stella", "tide")
-PCM_RATE = 24000          # 两家都是 24k mono 16bit，pilk.encode 不用改
+# BreezBlue / Breeze TTS 2：支持音色设计、用自然语言"导演"语气；
+# 直接请求 pcm_24000，省掉解码，和智谱/DeepSeek 的 PCM 链路一致。
+BREEZE_API = "https://api.breeze.blue/v1/text-to-speech"
+BREEZE_MODEL = "breeze-tts-2"
+PCM_RATE = 24000          # 三家都是 24k mono 16bit，pilk.encode 不用改
 MAX_CHARS = 300           # 一条语音别太长（约 30 秒）
 
 # ---- 口语化改写 ----------------------------------------------------------
@@ -46,7 +50,9 @@ VOICE = str(_TTS_CFG.get("voice") or "").strip()
 SPEED = float(_TTS_CFG.get("speed") or 1.0)
 FALLBACK = bool(_TTS_CFG.get("fallback", True))
 REWRITE = bool(_TTS_CFG.get("script_rewrite", True))
-PROVIDERS = ("zhipu", "deepseek")
+BREEZE_VOICE = str(_TTS_CFG.get("breeze_voice") or "").strip()
+BREEZE_INSTRUCTIONS = str(_TTS_CFG.get("breeze_instructions") or "").strip()
+PROVIDERS = ("breeze", "zhipu", "deepseek")
 if PROVIDER not in PROVIDERS:
     PROVIDER = "zhipu"
 
@@ -61,7 +67,9 @@ def _key(name: str) -> str:
 
 
 def voice_for(provider: str) -> str:
-    """当前配置的 voice 只对主 provider 生效，兜底那家用默认音色。"""
+    """各 provider 用各自的音色配置；兜底那家用默认音色。"""
+    if provider == "breeze":
+        return BREEZE_VOICE
     if provider == "zhipu":
         return VOICE if VOICE in ZHIPU_VOICES else "tongtong"
     return VOICE if VOICE in DEEPSEEK_VOICES else "stella"
@@ -102,6 +110,37 @@ async def _pcm_zhipu(text: str, retries: int = 2) -> bytes | None:
     return await _post_pcm(ZHIPU_API, key, payload, retries)
 
 
+async def _pcm_breeze(text: str, retries: int = 2) -> bytes | None:
+    key = _key("breeze")
+    voice = voice_for("breeze")
+    if not key or not voice:
+        return None
+    payload = {"text": text, "model_id": BREEZE_MODEL, "language_code": "zh"}
+    if BREEZE_INSTRUCTIONS:
+        payload["instructions"] = BREEZE_INSTRUCTIONS
+    last: bytes | None = None
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=60) as c:
+                r = await c.post(
+                    f"{BREEZE_API}/{voice}",
+                    headers={"xi-api-key": key},
+                    params={"output_format": "pcm_24000"},
+                    json=payload)
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            r.raise_for_status()
+            last = r.content
+            break
+        except Exception:  # noqa: BLE001
+            if attempt < retries - 1:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            return None
+    return last if last and len(last) >= 1600 else None
+
+
 async def _pcm_deepseek(text: str, retries: int = 2) -> bytes | None:
     key = _key("deepseek")
     if not key:
@@ -131,7 +170,8 @@ async def _post_pcm(api: str, key: str, payload: dict, retries: int) -> bytes | 
     return None
 
 
-_PCM_FUNCS = {"zhipu": _pcm_zhipu, "deepseek": _pcm_deepseek}
+_PCM_FUNCS = {"breeze": _pcm_breeze, "zhipu": _pcm_zhipu,
+              "deepseek": _pcm_deepseek}
 
 
 async def synth(text: str, *, voice: str | None = None,

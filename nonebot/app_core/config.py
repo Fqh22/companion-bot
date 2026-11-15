@@ -23,12 +23,16 @@ DEFAULTS = {
         "identities": [],
     },
     "tts": {
-        # 语音合成 provider：zhipu（智谱 cogtts，默认，用户已充值）| deepseek。
-        # fallback=true 时主 provider 失败自动换另一家——单点靠互备解决，不靠二选一。
+        # 语音合成 provider：breeze（Breeze TTS 2，音色设计/语气指令）|
+        # zhipu（智谱 cogtts）| deepseek。
+        # fallback=true 时主 provider 失败按顺序换下一家——单点靠互备解决。
         "provider": "zhipu",
         # 主 provider 的音色。智谱可用：tongtong / female / xiaochen / chuichui /
         # male / jam / kazi / douji / luodo；DeepSeek 只有 stella / tide。
         "voice": "tongtong",
+        # Breeze 的音色 id（音色设计/克隆后保存的 voc_...）与语气指令。
+        "breeze_voice": "",
+        "breeze_instructions": "",
         # 语速，智谱 0.5–2（DeepSeek 不支持，忽略）。
         "speed": 1.0,
         "fallback": True,

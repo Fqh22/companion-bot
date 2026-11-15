@@ -2,6 +2,22 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · TTS 接入 Breeze TTS 2（音色设计 / 语气指令）
+
+- 用户提供 Breeze API key 与音色 `voc_22b2x26tw9sj`：新增第三个 provider `breeze`
+  （REST 直连 `api.breeze.blue`，**不装官方 SDK**——它会把 websockets 升到 16.x，
+  和 lark-oapi 的 <16 冲突）。
+- 直接请求 `output_format=pcm_24000`，拿到的就是 24k PCM，和智谱/DeepSeek 同一条
+  silk/opus 链路，零解码改动。
+- 能力差异：Breeze 支持**音色设计/克隆**（`breeze_voice` 填设计后保存的 voc_...）和
+  **自然语言语气指令**（`breeze_instructions`，如「像深夜电台，温暖、慢一点」）——
+  之前想要「自己的音色」靠它而不是智谱固定音色。
+- provider 顺序：`breeze → zhipu → deepseek` 互备；云端拟设 breeze 主用、智谱兜底。
+- 成本口径：约 $30/百万字符（中文按 2 单位），一条 60 字语音约 0.03 元；
+  免费档每日 400 credits（≈2000 汉字，需手动领）。
+- 实测：默认音色与带语气指令两段均 200 OK（203KB / 173KB PCM），已发飞书试听。
+- **仍是 TTS，不会唱歌**；唱歌需独立的歌声合成/音乐生成服务。
+
 ## 2026-11-15 · 文档重构：README 按开源范式重写 + 文档地图 / 贡献指南 / 安全策略
 
 - `README.md` / `README.en.md` 重写：定位从「QQ 聊天机器人」改为**自托管长期记忆陪伴体**；
