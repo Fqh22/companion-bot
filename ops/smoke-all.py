@@ -634,6 +634,14 @@ async def main() -> None:
         check("tts: provider 在支持列表", tts_mod.PROVIDER in tts_mod.PROVIDERS)
         check("tts: 三家 provider 都注册了",
               set(tts_mod.PROVIDERS) == {"breeze", "zhipu", "deepseek"})
+        _low = tts_mod.mood_instructions({"valence": -0.6, "energy": 0.2}, hour=23)
+        _high = tts_mod.mood_instructions({"valence": 0.6, "energy": 0.9}, hour=10)
+        check("tts: 情绪影响语气", _low != _high and "轻" in _low and "轻快" in _high,
+              f"{_low} | {_high}")
+        check("tts: 深夜会压低声音",
+              "深夜" in tts_mod.mood_instructions({}, hour=1))
+        check("tts: 中性情绪 + 白天不硬加指令",
+              tts_mod.mood_instructions({"valence": 0.0, "energy": 0.5}, hour=14) == "")
         check("tts: 主音色有默认", bool(tts_mod.voice_for(tts_mod.PROVIDER)))
         check("tts: fallback 是布尔", isinstance(tts_mod.FALLBACK, bool))
         from app_core import embed_provider as ep_mod

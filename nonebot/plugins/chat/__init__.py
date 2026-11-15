@@ -116,7 +116,7 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         say = (text or "").strip()
         if len(say) > 300:
             say = say[:300]
-        silk = await tts.synth(say)
+        silk = await tts.synth(say, mood=mood.load())
         if not silk:
             logger.info("[chat] 语音合成返回空，跳过")
             return

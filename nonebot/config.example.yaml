@@ -19,6 +19,8 @@ tts:
   # 智谱 0.5–2；DeepSeek 不支持（忽略）
   speed: 1.0
   fallback: true
+  # 情绪 → 语气指令（仅 Breeze 生效）：心情低就轻/慢，深夜就压低声音。
+  mood_instructions: true
   # 合成前先把书面回复改写成口语（去书面词、加语气词），失败退回原文。
   script_rewrite: true
 

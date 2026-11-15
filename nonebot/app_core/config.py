@@ -36,6 +36,8 @@ DEFAULTS = {
         # 语速，智谱 0.5–2（DeepSeek 不支持，忽略）。
         "speed": 1.0,
         "fallback": True,
+        # 情绪 → 语气指令（Breeze 生效）：心情/精力/时段决定怎么"演"这句话。
+        "mood_instructions": True,
         # 合成前先把书面回复改写成口语（念稿感是「AI 味」的一半）。
         # 失败自动退回原文，不会因为改写挂掉语音。
         "script_rewrite": True,

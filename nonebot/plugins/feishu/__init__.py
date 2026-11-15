@@ -32,7 +32,7 @@ from lark_oapi.api.im.v1 import (
 )
 from nonebot import get_driver, logger
 
-from app_core import asr, config, paths, tts
+from app_core import asr, config, mood, paths, tts
 from app_core.delivery import Capability
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
@@ -269,7 +269,7 @@ async def _speak_later(chat_id: str, text: str) -> None:
         say = (text or "").strip()[:300]
         if not say:
             return
-        silk = await tts.synth(say)
+        silk = await tts.synth(say, mood=mood.load())
         if not silk:
             logger.info("[feishu] 语音合成返回空，跳过")
             return

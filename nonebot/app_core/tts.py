@@ -52,6 +52,8 @@ FALLBACK = bool(_TTS_CFG.get("fallback", True))
 REWRITE = bool(_TTS_CFG.get("script_rewrite", True))
 BREEZE_VOICE = str(_TTS_CFG.get("breeze_voice") or "").strip()
 BREEZE_INSTRUCTIONS = str(_TTS_CFG.get("breeze_instructions") or "").strip()
+# 情绪 → 语气指令：心情/精力/时段会影响 Breeze 怎么"演"这句话。
+MOOD_INSTRUCTIONS = bool(_TTS_CFG.get("mood_instructions", True))
 PROVIDERS = ("breeze", "zhipu", "deepseek")
 if PROVIDER not in PROVIDERS:
     PROVIDER = "zhipu"
@@ -100,7 +102,8 @@ async def spoken_script(text: str) -> str:
         return t
 
 
-async def _pcm_zhipu(text: str, retries: int = 2) -> bytes | None:
+async def _pcm_zhipu(text: str, retries: int = 2,
+                      mood: dict | None = None) -> bytes | None:
     key = _key("zhipu")
     if not key:
         return None
@@ -110,14 +113,58 @@ async def _pcm_zhipu(text: str, retries: int = 2) -> bytes | None:
     return await _post_pcm(ZHIPU_API, key, payload, retries)
 
 
-async def _pcm_breeze(text: str, retries: int = 2) -> bytes | None:
+def mood_instructions(mood: dict | None, hour: int | None = None) -> str:
+    """把情绪/时段翻译成 Breeze 的语气指令（纯函数）。
+
+    只描述"怎么念"，不描述"说什么"——事实层不受影响。任何异常都返回空串。
+    """
+    if not MOOD_INSTRUCTIONS:
+        return ""
+    m = mood or {}
+    try:
+        v = float(m.get("valence") or 0.0)
+        e = float(m.get("energy") or 0.5)
+        b = float(m.get("valence_base") or 0.0)
+    except Exception:  # noqa: BLE001
+        v, e, b = 0.0, 0.5, 0.0
+    parts: list[str] = []
+    if v <= -0.25:
+        parts.append("心情偏低：声音放软放轻，语速慢一点，不要劝人")
+    elif v >= 0.25:
+        parts.append("心情不错：语气轻快一点，带一点笑意")
+    if b <= -0.2:
+        parts.append("这一阵基调偏低：整体别太亮")
+    elif b >= 0.2:
+        parts.append("这一阵基调偏暖：自然放松")
+    if e <= 0.3:
+        parts.append("精力低：声音轻、慢，别用力")
+    elif e >= 0.75:
+        parts.append("精力足：语速正常偏快，吐字清楚")
+    if hour is None:
+        import time as _time
+        hour = _time.localtime().tm_hour
+    if hour >= 23 or hour < 6:
+        parts.append("深夜：压低声音，像怕吵到人")
+    elif 6 <= hour <= 9:
+        parts.append("早上：声音清一点，别太亢奋")
+    return ("语气：" + "；".join(parts)) if parts else ""
+
+
+def _breeze_instructions(mood: dict | None = None) -> str:
+    dynamic = mood_instructions(mood)
+    return " ".join(x for x in (BREEZE_INSTRUCTIONS, dynamic) if x).strip()
+
+
+async def _pcm_breeze(text: str, retries: int = 2,
+                      mood: dict | None = None) -> bytes | None:
     key = _key("breeze")
     voice = voice_for("breeze")
     if not key or not voice:
         return None
     payload = {"text": text, "model_id": BREEZE_MODEL, "language_code": "zh"}
-    if BREEZE_INSTRUCTIONS:
-        payload["instructions"] = BREEZE_INSTRUCTIONS
+    instructions = _breeze_instructions(mood)
+    if instructions:
+        payload["instructions"] = instructions
     last: bytes | None = None
     for attempt in range(retries):
         try:
@@ -141,7 +188,8 @@ async def _pcm_breeze(text: str, retries: int = 2) -> bytes | None:
     return last if last and len(last) >= 1600 else None
 
 
-async def _pcm_deepseek(text: str, retries: int = 2) -> bytes | None:
+async def _pcm_deepseek(text: str, retries: int = 2,
+                          mood: dict | None = None) -> bytes | None:
     key = _key("deepseek")
     if not key:
         return None
@@ -175,7 +223,7 @@ _PCM_FUNCS = {"breeze": _pcm_breeze, "zhipu": _pcm_zhipu,
 
 
 async def synth(text: str, *, voice: str | None = None,
-                retries: int = 2) -> Path | None:
+                retries: int = 2, mood: dict | None = None) -> Path | None:
     """合成一条 silk，返回路径；失败返回 None。
 
     voice 参数保留兼容旧调用；实际音色由 config.tts.voice 决定。
@@ -192,7 +240,7 @@ async def synth(text: str, *, voice: str | None = None,
         order += [p for p in PROVIDERS if p != PROVIDER]
     pcm: bytes | None = None
     for prov in order:
-        pcm = await _PCM_FUNCS[prov](t, retries)
+        pcm = await _PCM_FUNCS[prov](t, retries, mood)
         if pcm:
             break
     if not pcm:
