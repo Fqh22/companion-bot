@@ -258,7 +258,9 @@ async def synth(text: str, *, voice: str | None = None,
         raw = Path(raw_name)
         with os.fdopen(raw_fd, "wb") as f:
             f.write(pcm)
-        pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE)
+        # tencent=True：写成腾讯系 silk 头（首字节 0x02，10 字节头），
+        # QQ/OneBot 才认。默认 False 写的是标准 silk，QQ 能收到但放不出来。
+        pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE, tencent=True)
         raw.unlink(missing_ok=True)
         return out if out.exists() and out.stat().st_size > 0 else None
     except Exception:  # noqa: BLE001
