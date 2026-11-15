@@ -85,8 +85,8 @@ def _send_message(chat_id: str, msg_type: str, content: dict) -> bool:
            .build())
     resp = _client.im.v1.message.create(req)
     if getattr(resp, "code", 0) != 0:
-        logger.warning("[feishu] 发送失败 type=%s code=%s msg=%s",
-                       msg_type, getattr(resp, "code", "?"), getattr(resp, "msg", "?"))
+        logger.warning(f"[feishu] 发送失败 type={msg_type} code={getattr(resp, 'code', '?')} "
+                       f"msg={getattr(resp, 'msg', '?')}")
         return False
     return True
 
@@ -100,8 +100,8 @@ def _upload_image(path: Path) -> str:
         req = CreateImageRequest.builder().request_body(body).build()
         resp = _client.im.v1.image.create(req)
     if getattr(resp, "code", 0) != 0 or not getattr(resp, "data", None):
-        logger.warning("[feishu] 图片上传失败 code=%s msg=%s",
-                       getattr(resp, "code", "?"), getattr(resp, "msg", "?"))
+        logger.warning(f"[feishu] 图片上传失败 code={getattr(resp, 'code', '?')} "
+                       f"msg={getattr(resp, 'msg', '?')}")
         return ""
     return str(resp.data.image_key or "")
 
@@ -117,8 +117,8 @@ def _upload_file(path: Path, file_type: str, name: str, duration: int = 0) -> st
         req = CreateFileRequest.builder().request_body(b).build()
         resp = _client.im.v1.file.create(req)
     if getattr(resp, "code", 0) != 0 or not getattr(resp, "data", None):
-        logger.warning("[feishu] 文件上传失败 type=%s code=%s msg=%s",
-                       file_type, getattr(resp, "code", "?"), getattr(resp, "msg", "?"))
+        logger.warning(f"[feishu] 文件上传失败 type={file_type} "
+                       f"code={getattr(resp, 'code', '?')} msg={getattr(resp, 'msg', '?')}")
         return ""
     return str(resp.data.file_key or "")
 
@@ -178,7 +178,7 @@ def _silk_to_opus(silk: Path) -> tuple[Path, int] | None:
         duration = int(pcm_bytes / 2 / 24000 * 1000)
         return opus_path, max(200, duration)
     except Exception as e:  # noqa: BLE001
-        logger.warning("[feishu] silk→opus 失败：%r", e)
+        logger.warning(f"[feishu] silk→opus 失败：{e!r}")
         return None
 
 
@@ -230,7 +230,7 @@ class FeishuChannel:
     async def send_image(self, session: str, path: str) -> bool:
         p = Path(path)
         if not p.exists():
-            logger.warning("[feishu] 图片不存在：%s", p)
+            logger.warning(f"[feishu] 图片不存在：{p}")
             return False
         key = await asyncio.to_thread(_upload_image, p)
         if not key:
@@ -241,7 +241,7 @@ class FeishuChannel:
     async def send_voice(self, session: str, path: str) -> bool:
         p = Path(path)
         if not p.exists():
-            logger.warning("[feishu] 语音不存在：%s", p)
+            logger.warning(f"[feishu] 语音不存在：{p}")
             return False
         conv = await asyncio.to_thread(_silk_to_opus, p)
         if not conv:
@@ -276,9 +276,9 @@ async def _speak_later(chat_id: str, text: str) -> None:
         ch = FeishuChannel(session="", chat_id=chat_id)
         ok = await ch.send_voice("", str(silk))
         silk.unlink(missing_ok=True)
-        logger.info("[feishu] voice sent=%s", ok)
+        logger.info(f"[feishu] voice sent={ok}")
     except Exception as e:  # noqa: BLE001
-        logger.warning("[feishu] 语音链路失败：%r", e)
+        logger.warning(f"[feishu] 语音链路失败：{e!r}")
 
 
 async def _handle(data) -> None:
@@ -288,11 +288,11 @@ async def _handle(data) -> None:
         msg = event.message
         sender = event.sender
         if msg.chat_type != "p2p":
-            logger.info("[feishu] 群消息忽略（chat_type=%s）", msg.chat_type)
+            logger.info(f"[feishu] 群消息忽略（chat_type={msg.chat_type}）")
             return
         open_id = str(getattr(sender.sender_id, "open_id", "") or "")
         if not OWNER or open_id != OWNER:
-            logger.info("[feishu] 非主人消息忽略 open_id=%s", open_id[:10])
+            logger.info(f"[feishu] 非主人消息忽略 open_id={open_id[:10]}")
             return
         mid = str(msg.message_id or "")
         if mid and mid in _seen:
@@ -312,6 +312,7 @@ async def _handle(data) -> None:
         voice = False
         if parsed["audio_key"]:
             wav = await asyncio.to_thread(_audio_to_wav, mid, parsed["audio_key"])
+            res: dict = {}
             if wav:
                 res = await asr.transcribe(wav)
                 if res.get("text"):
@@ -319,7 +320,7 @@ async def _handle(data) -> None:
                     voice = True
                 wav.unlink(missing_ok=True)
             if not text:
-                logger.info("[feishu] 语音转写为空：%s", str(res.get("error") or "")[:80])
+                logger.info(f"[feishu] 语音转写为空：{str(res.get('error') or '')[:80]}")
         if not text and not images:
             await asyncio.to_thread(
                 _send_message, msg.chat_id, "text",
@@ -332,12 +333,12 @@ async def _handle(data) -> None:
         inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id), text=text,
                              images=images, event_id=mid, voice=voice, session=session)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline)
-        logger.info("[feishu] recv %s: %r%s", session, (text or "")[:60],
-                    f"（{len(images)} 图）" if images else "")
+        logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
+                    f"{f'（{len(images)} 图）' if images else ''}")
         try:
             await runner.run(inbound)
         except asyncio.TimeoutError:
-            logger.error("[feishu] 回复超时（>%.0fs） %s", core.reply_deadline, session)
+            logger.error(f"[feishu] 回复超时（>{core.reply_deadline:.0f}s） {session}")
             if ch.sent_text:
                 await asyncio.to_thread(
                     _send_message, msg.chat_id, "text", {"text": "这次想太久了，先说到这。"})
@@ -346,7 +347,7 @@ async def _handle(data) -> None:
         if want_voice and ch.sent_text:
             asyncio.create_task(_speak_later(str(msg.chat_id), "".join(ch.sent_text)))
     except Exception as e:  # noqa: BLE001
-        logger.warning("[feishu] 处理失败：%r", e)
+        logger.warning(f"[feishu] 处理失败：{e!r}")
 
 
 def _on_event(data) -> None:
@@ -377,7 +378,7 @@ async def _start() -> None:
     ws = lark.ws.Client(app_id, app_secret, event_handler=handler,
                         log_level=lark.LogLevel.INFO)
     threading.Thread(target=ws.start, name="feishu-ws", daemon=True).start()
-    logger.info("[feishu] 长连接启动（owner=%s…）", OWNER[:8])
+    logger.info(f"[feishu] 长连接启动（owner={OWNER[:8]}…）")
 
 
 @driver.on_shutdown
