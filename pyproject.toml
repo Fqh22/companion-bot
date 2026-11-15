@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "companion-core"
 version = "0.1.0"
-description = "Single-user companion engine facade (M6-mini)"
+description = "Self-hosted long-term memory companion — framework-agnostic core (memory, mood, prompt, scheduling)"
 requires-python = ">=3.12"
 dependencies = [
   "aiosqlite>=0.20",

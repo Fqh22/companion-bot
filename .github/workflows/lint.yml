@@ -18,6 +18,8 @@ jobs:
         run: python ops/lint-layers.py
       - name: 密钥扫描
         run: python ops/scan-secrets.py
+      - name: 文档链接检查
+        run: python ops/check-links.py
       # 2026-11-15 两次踩坑：.ps1 丢 BOM 后 PS 5.1 按 GBK 解析中文直接语法错；
       # 手工 scp 又让云端 ops/*.sh 丢了 +x，cron 静默停摆一天。两条都用 CI 守住。
       - name: PowerShell 脚本必须带 UTF-8 BOM
