@@ -17,6 +17,8 @@ from app_core.files import sanitize
 
 KEYS = _paths.KEYS
 SEARCH_API = "https://api.deepseek.com/v1/tools/search"
+# 全家桶能力挂在 chat/completions 上（tools 里声明 deepseek_web_search）
+CHAT_API = "https://api.deepseek.com/chat/completions"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 MAX_CHARS = 4000     # 返回给用户的正文上限
@@ -91,6 +93,48 @@ def clean_summary(text: str, title: str = "") -> str:
     if len(t) >= 6 and re.sub(r"\s+", "", s).startswith(t[:6]):
         s = s[len(t):].lstrip(" #：:｜|·-—")
     return s[:240]
+
+
+async def search_via_model(query: str, timeout: float = 30.0) -> str:
+    """全家桶搜索（2026-11-13 上线）：服务端完成检索 + 引用，返回模型消化后的答案。
+
+    和 search() 的区别：那个要自己清 HTML、去站点模板、截 240 字——清理逻辑
+    本质是在补偿「拿到的是脏摘要」。这里服务端已经消化过，直接给结论。
+
+    代价：模型会把结果再总结一遍（二手），且不快（10-20 秒）。
+    所以只在「预搜索」用，不走每轮。
+    """
+    q = (query or "").strip()[:128]
+    if not q:
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as c:
+            r = await c.post(
+                CHAT_API,
+                headers={"Authorization": "Bearer " + _deepseek_key(),
+                         "Content-Type": "application/json"},
+                json={"model": "deepseek-flash",
+                      "messages": [{"role": "user", "content": q}],
+                      "tools": [{"type": "deepseek_web_search"}]},
+            )
+            r.raise_for_status()
+            j = r.json()
+    except Exception as e:  # noqa: BLE001
+        return "搜索失败：" + type(e).__name__
+    msg = ((j.get("choices") or [{}])[0].get("message") or {})
+    text = (msg.get("content") or "").strip()
+    # 引用：annotations 里是服务端抓到的来源，拼在正文后面供模型核对
+    anns = msg.get("annotations") or []
+    refs = []
+    for a in anns[:5]:
+        if isinstance(a, dict):
+            u = a.get("url") or a.get("source") or ""
+            t = a.get("title") or ""
+            if u or t:
+                refs.append((t or u)[:40] + (" <" + u + ">" if u else ""))
+    if refs:
+        text += "\n\n来源：" + "；".join(refs)
+    return text[:1600]
 
 
 async def search(query: str, count: int = 5) -> str:
