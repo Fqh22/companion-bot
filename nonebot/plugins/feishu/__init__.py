@@ -329,6 +329,30 @@ async def _speak_later(session: str, chat_id: str, text: str,
         logger.warning(f"[feishu] 语音链路失败：{e!r}")
 
 
+# 画图触发词：和 QQ 同一套（动词 + 量词组合，避免「画的」「画面」误触发）
+_DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "给我画")
+
+
+async def _draw_later(session: str, chat_id: str, ask: str) -> None:
+    """后台画图并发送；画不出来就补一句文字，不打断主回复。"""
+    try:
+        from app_core import image_provider
+
+        path = await image_provider.generate(ask)
+        if not path:
+            await asyncio.to_thread(
+                _send_message, chat_id, "text",
+                {"text": "这次没画出来，等下再试。"})
+            logger.info("[feishu] 画图返回空（额度/内容审核/网络），已提示")
+            return
+        image_provider._cleanup(path)
+        ch = FeishuChannel(session=session, chat_id=chat_id)
+        ok = await ch.send_image("", str(path))
+        logger.info(f"[feishu] drawing sent={ok}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[feishu] 画图链路失败：{e!r}")
+
+
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
                                  rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
@@ -436,6 +460,9 @@ async def _handle(data) -> None:
             asyncio.create_task(
                 _speak_later(session, str(msg.chat_id), "".join(ch.sent_text),
                              rewrite=not _read_aloud))
+        # 画画：只在他明确要求时画（和 QQ 同一策略）
+        if any(k in text for k in _DRAW_TRIGGERS):
+            asyncio.create_task(_draw_later(session, str(msg.chat_id), text))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 处理失败：{e!r}")
 
