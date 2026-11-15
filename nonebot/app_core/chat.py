@@ -545,12 +545,7 @@ class ChatCore(ChatTurnMixin):
                 self.complete_raw([{"role": "user", "content": content}],
                                   None, max_tokens=140, thinking=False),
                 timeout=8)
-            _cap = (msg.get("content") or "").strip()[:200]
-            # OCR 文字单独拼在后面：视觉模型说「这是什么」，OCR 保证「里面写了什么」
-            # 两者互补——实测截图上 30 行报错，视觉只读到 2-3 行，OCR 全读对。
-            if ocr_text:
-                _cap = (_cap + "｜文字：" + ocr_text[:300]) if _cap else ("文字：" + ocr_text[:300])
-            return _cap
+            return (msg.get("content") or "").strip()[:200]
         except Exception as e:  # noqa: BLE001
             log.debug("生成图注失败：%s", e)
             return ""
