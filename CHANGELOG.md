@@ -9,7 +9,8 @@
   导致语音和记忆一起挂」的教训用互备解决，不用二选一。
 - 智谱实测可用音色：tongtong / female / xiaochen / chuichui / male / jam / kazi /
   douji / luodo（xiaoxiao/xiaobei/xiaomo/xiaoxuan 返回「音色不存在」）；
-  发飞书试听 4 个女声（tongtong / female / xiaochen / chuichui）等用户选。
+  发飞书试听 4 个女声（tongtong / female / xiaochen / chuichui），用户选定 **chuichui**；
+  云端 config 已切（provider=zhipu / voice=chuichui / speed=1.0 / fallback=true），实测出声并发送确认。
 - 配置：`tts.provider` / `tts.voice` / `tts.speed`（智谱 0.5–2）/ `tts.fallback`；
   `tts.script_rewrite`（口语化改写）保持。
 - silk 编码、飞书 opus 转码、QQ record 发送链路不变；smoke 补 provider/音色/fallback 三条。
