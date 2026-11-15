@@ -35,6 +35,11 @@ class Channel(Protocol):
     async def typing(self, session: str, on: bool) -> None: ...
 
 
+# 同一会话串行：两轮并发会各自 prepare，互相覆盖记忆/情绪/跟催状态。
+# 并发消息在真人聊天里也是「一句一句回」，排队是更对的行为，不是延迟缺陷。
+_SESSION_LOCKS: dict[str, asyncio.Lock] = {}
+
+
 class TurnRunner:
     """跑完一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
 
@@ -78,7 +83,15 @@ class TurnRunner:
         return await self.channel.send_text(session, text)
 
     async def run(self, msg: InboundMessage) -> OutboundMessage:
-        """跑一轮。超时抛 asyncio.TimeoutError，由调用方决定怎么兜底。"""
+        """跑一轮。同一会话串行（见 _SESSION_LOCKS），超时抛 asyncio.TimeoutError。"""
+        lock = _SESSION_LOCKS.setdefault(msg.session, asyncio.Lock())
+        if lock.locked():
+            log.info("[runner] 上一轮未结束，排队等待：%s", str(msg.session)[:24])
+        async with lock:
+            return await self._run(msg)
+
+    async def _run(self, msg: InboundMessage) -> OutboundMessage:
+        """真正的一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
         started = time.monotonic()
         sent = 0
         # 立刻亮一次「正在输入」：等 task 调度会晚一个 tick，短回复可能整个错过
