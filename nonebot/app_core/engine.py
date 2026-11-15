@@ -27,13 +27,41 @@ class InboundMessage:
     reply_to: str | None = None
     store_text: str | None = None
 
+    @property
+    def parts(self) -> list:
+        """形式视图：把旧字段翻译成 Part，不改存储。
+
+        2026-11-15：形式统一到 Part 之后，加「语音/画画」不再需要新字段——
+        入站语音走 audio、出站画图走 images（画出来的图就是一张图）。
+        """
+        from app_core.message import Part
+
+        out = []
+        if (self.text or "").strip():
+            out.append(Part("text", self.text))
+        out += [Part("image", str(p)) for p in (self.images or [])]
+        out += [Part("voice", str(p)) for p in (self.audio or [])]
+        out += [Part("file", str(p)) for p in (self.files or [])]
+        return out
+
 
 @dataclass
 class OutboundMessage:
-    """一轮回复的出口：文字分段 + 待发图片。"""
+    """一轮回复的出口：文字分段 + 待发图片 + 待发语音。"""
 
     chunks: list[str] = field(default_factory=list)
     images: list[str] = field(default_factory=list)
+    audio: list[str] = field(default_factory=list)
+
+    @property
+    def parts(self) -> list:
+        """形式视图：文字分段 → text Part，图片/语音各自成形。"""
+        from app_core.message import Part
+
+        out = [Part("text", str(c)) for c in (self.chunks or []) if str(c or "").strip()]
+        out += [Part("image", str(p)) for p in (self.images or [])]
+        out += [Part("voice", str(p)) for p in (self.audio or [])]
+        return out
 
 
 class Engine:

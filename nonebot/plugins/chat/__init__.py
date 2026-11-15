@@ -158,10 +158,25 @@ async def _pump_loop(sid: str) -> None:
 
 
 class QQChannel:
-    """QQ 的通道实现：三个 IO 原语，会话循环交给 app_core.runner。"""
+    """QQ 的通道实现：IO 原语 + 能力声明，会话循环交给 app_core.runner。"""
+
+    forms = {"text", "image", "voice"}
 
     def __init__(self) -> None:
         self.sent: list[str] = []
+
+    async def send_part(self, session: str, part) -> bool:
+        """协议入口：按 form 分派到具体原语。
+
+        加「画画」时这里不用改——画出来的图就是 image。
+        """
+        if part.form == "text":
+            return await self.send_text(session, part.content)
+        if part.form == "image":
+            return await self.send_image(session, part.content)
+        if part.form == "voice":
+            return await self.send_voice(session, part.content)
+        return False
 
     async def send_text(self, session: str, text: str) -> bool:
         # 只有第一段带引用：后面几段接在它自己那条后面才对

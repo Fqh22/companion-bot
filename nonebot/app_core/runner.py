@@ -18,6 +18,7 @@ typing 心跳和 45 秒硬线也在这里。
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from datetime import datetime
 from typing import Protocol
@@ -25,16 +26,24 @@ from typing import Protocol
 from app_core import mood, pacing
 from app_core.delivery import Capability, DeliveryPolicy
 from app_core.engine import Engine, InboundMessage, OutboundMessage
+from app_core.message import Part as _Part
+
+log = logging.getLogger("app_core.runner")
 
 
 class Channel(Protocol):
-    """一个通道只需要会三件事。"""
+    """一个通道 = 一份能力声明 + 一个 send。
 
-    async def send_text(self, session: str, text: str) -> bool: ...
+    forms 声明这个平台支持哪些形式（"text" / "image" / "voice" / "drawing" / "file"）。
+    runner 只按 Part.form 调 send；平台不支持的形式由 runner 侧降级，
+    所以加一个平台只需要写 adapter，不需要改业务代码。
+    """
 
-    async def send_image(self, session: str, path: str) -> bool: ...
+    forms: set[str]
 
-    async def send_voice(self, session: str, path: str) -> bool: ...
+    async def send_part(self, session: str, part) -> bool: ...
+
+    async def typing(self, session: str, on: bool) -> None: ...
 
     async def typing(self, session: str, on: bool) -> None: ...
 
@@ -58,6 +67,25 @@ class TurnRunner:
         self.policy = policy
         self.deadline = float(deadline)
         self.typing_interval = float(typing_interval)
+
+    async def _send_part(self, session: str, part) -> bool:
+        """按形式发送；平台不支持的形式在这里降级。
+
+        降级放在 runner 而不是 adapter：adapter 只回答「我会什么」，
+        「不会的时候退成什么」是编排层的决定，换平台不用重复写。
+        """
+        forms = getattr(self.channel, "forms", None) or {"text", "image"}
+        if part.form in forms:
+            try:
+                return bool(await self.channel.send_part(session, part))
+            except Exception as e:  # noqa: BLE001
+                log.warning("[runner] 发送 %s 失败：%s", part.form, e)
+                return False
+        if part.form == "voice":
+            # 语音发不了就说一句，不要静默丢——用户会以为漏回了
+            return await self._send_part(session, _Part("text", "（这条本来是语音，这里发不了）"))
+        log.info("[runner] 通道 %s 不支持 %s，已跳过", getattr(self.channel, "caps", "?"), part.form)
+        return False
 
     async def _typing_loop(self, session: str) -> None:
         """心跳：第一次由 run() 立刻发，这里只负责续期。"""
@@ -84,7 +112,7 @@ class TurnRunner:
         wait = min(gap + pace, max(0.0, left - 4))    # 留 4 秒给发送和收尾
         if wait > 0:
             await asyncio.sleep(wait)
-        return await self.channel.send_text(session, text)
+        return await self._send_part(session, _Part("text", text))
 
     async def run(self, msg: InboundMessage) -> OutboundMessage:
         """跑一轮。同一会话串行（见 _SESSION_LOCKS），超时抛 asyncio.TimeoutError。"""
@@ -134,7 +162,7 @@ class TurnRunner:
                 sent += 1
         for path in out.images:
             try:
-                await self.channel.send_image(msg.session, path)
+                await self._send_part(msg.session, _Part("image", path))
             except Exception:  # noqa: BLE001
                 pass
         return out

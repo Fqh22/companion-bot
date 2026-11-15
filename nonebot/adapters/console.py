@@ -31,6 +31,16 @@ class ConsoleChannel:
         self.out.flush()
         return True
 
+    forms = {"text", "image"}
+
+    async def send_part(self, session: str, part) -> bool:
+        """协议入口：终端只认文字和图片，语音降级由 runner 做。"""
+        if part.form == "text":
+            return await self.send_text(session, part.content)
+        if part.form == "image":
+            return await self.send_image(session, part.content)
+        return False
+
     async def typing(self, session: str, on: bool) -> None:
         # 终端没有「正在输入」；真实通道在这里实现自己的状态提示
         return None
