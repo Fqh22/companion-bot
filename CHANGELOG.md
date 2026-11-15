@@ -34,6 +34,8 @@
   落后于仓库，属于「本地修了、线上没跑」的隐性漂移。
 - `git` 里给 6 个入口脚本补 `+x`（`git update-index --chmod=+x`），从根上不再依赖
   部署时手工修权限。
+- `deploy.sh` 输出里的 `$(cat .deployed_sha)` 会被本地 shell 先展开（打印「No such file」
+  和空的 `deployed=`），改用单引号让远端展开。
 - 发现本地「开机拉备份」脚本 `ops/sync-from-cloud.ps1` 在 `ccd5090` 之后丢了 UTF-8 BOM：
   PowerShell 5.1 按 GBK 解析中文 → 整段语法错误，**备份拉取也静默失败**（和 AGENTS.md
   11-11 事故同根）。补 BOM 后实测拉回 `cloud-20261115-205920.tgz`，本地 9 份连续。

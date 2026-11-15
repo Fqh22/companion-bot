@@ -53,8 +53,8 @@ echo "== 3/6 权限 / 缓存 / 部署版本号"
 "${SSH[@]}" "chown -R ubuntu:ubuntu /opt/nonebot/app_core /opt/nonebot/adapters /opt/nonebot/plugins /opt/nonebot/ops
   find /opt/nonebot -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
   chmod +x /opt/nonebot/ops/*.sh
-  printf '%s\n' $SHA > /opt/nonebot/.deployed_sha
-  echo deployed_sha=$(cat /opt/nonebot/.deployed_sha)"
+  printf '%s\n' $SHA > /opt/nonebot/.deployed_sha"
+"${SSH[@]}" 'echo deployed_sha=$(cat /opt/nonebot/.deployed_sha)'
 
 if [ "$PRE_VERIFY" = 1 ]; then
   echo "== 4/6 重启前验证（--pre，不碰生产库、不发消息）"
@@ -73,7 +73,7 @@ fi
 
 echo "== 5/6 重启并确认存活"
 "${SSH[@]}" "sudo -n systemctl restart nonebot; sleep 5; systemctl is-active nonebot"
-"${SSH[@]}" "echo deployed=$(cat /opt/nonebot/.deployed_sha); systemctl is-active nonebot"
+"${SSH[@]}" 'echo deployed=$(cat /opt/nonebot/.deployed_sha); systemctl is-active nonebot'
 
 if [ "$POST_VERIFY" = 1 ]; then
   echo "== 6/6 重启后全量验证（五件套）"
