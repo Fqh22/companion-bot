@@ -26,6 +26,7 @@ class InboundMessage:
     event_id: str | None = None
     reply_to: str | None = None
     store_text: str | None = None
+    voice: bool = False        # 这条文字是语音转写来的（形式进数据，不进正文）
 
     @property
     def parts(self) -> list:
@@ -38,7 +39,10 @@ class InboundMessage:
 
         out = []
         if (self.text or "").strip():
-            out.append(Part("text", self.text))
+            # 语音转写：形式是 voice，meta 里带 transcript 标记，
+            # 需要人读的正文仍可从 content 取
+            out.append(Part("voice" if self.voice else "text", self.text,
+                            {"transcript": True} if self.voice else {}))
         out += [Part("image", str(p)) for p in (self.images or [])]
         out += [Part("voice", str(p)) for p in (self.audio or [])]
         out += [Part("file", str(p)) for p in (self.files or [])]

@@ -272,7 +272,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                 text=prompt, images=list(turn.images or []),
                 event_id=turn.meta.get("event_id"),
                 reply_to=turn.meta.get("reply_to"),
-                store_text=stored)
+                store_text=stored,
+                voice=bool(turn.meta.get("voice")))
             out = await runner.run(msg)
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
@@ -520,9 +521,11 @@ async def _collect_voice(sid: str, seg, text: str,
             await chat.finish("没听清，再说一遍？")
             return
         logger.info(f"[chat] voice {sid}: {len(heard)} 字")
-        # 前缀标明「这是语音转写的」：否则它以为他在打字，会回「我听不到语音」。
-        _voice_text = f"[语音] {heard}"
-        _add(sid, text=(text + " " + _voice_text).strip() if text else _voice_text, meta=meta)
+        # 形式进 meta，不再塞进正文：前缀是渲染细节，不该变成数据。
+        # 渲染层（Turn.compose）仍然会加「[语音] 」，模型看到的没变。
+        _m = dict(meta or {})
+        _m["voice"] = True
+        _add(sid, text=(text + " " + heard).strip() if text else heard, meta=_m)
     except FinishedException:
         raise
     except Exception as e:  # noqa: BLE001

@@ -15,7 +15,7 @@ from pathlib import Path
 import httpx
 
 IMAGE_API = "https://open.bigmodel.cn/api/paas/v4/images/generations"
-MODEL = "cogview-3-flash"      # 免费档，带水印；换 cogview-4 要去水印但要计费
+MODEL = "cogview-4"           # 无水印（3-flash 是免费档但图上有水印）
 SIZE = "1024x1024"
 _model = MODEL                  # 测试可替换
 

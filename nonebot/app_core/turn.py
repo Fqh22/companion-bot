@@ -47,7 +47,13 @@ class Turn:
                 "请根据文件内容回答；如果内容被截断，说明你只看到了一部分。")
             stored = (f"[发来文件：{name}，{len(text)} 字"
                       f"{('，' + note) if note else ''}] {text[:300]}…")
-        parts.extend(self.texts)
+        # 语音转写：形式来自 meta，前缀只在渲染时加（数据层是干净的文本）
+        _voice = bool((self.meta or {}).get("voice"))
+        if _voice and self.texts:
+            parts.extend("[语音] " + t for t in self.texts)
+            stored = "[语音] " + " ".join(self.texts)[:300]
+        else:
+            parts.extend(self.texts)
         if stored and self.texts:
             # 文件+补充说明：补充那句也要进历史，否则总结时它凭空消失
             stored += " 补充：" + " ".join(self.texts)[:200]
