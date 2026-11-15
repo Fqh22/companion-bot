@@ -252,20 +252,10 @@ def _check_manifest(base_dir: Path) -> list[str]:
     mf = base_dir / "_manifest.sha256"
     if not mf.exists():
         return []
-    text = mf.read_text(encoding="utf-8")
     try:
-        data = json.loads(text)
+        data = json.loads(mf.read_text(encoding="utf-8"))
     except Exception:
-        # 清单被两次 --write 拼成「{...}{...}」时 json.loads 会整份报错。
-        # 取第一个完整对象继续——但要把这件事报出来，不能静默（2026-11-15 踩过：
-        # CI 一直 exit 4，日志里只说「读不动」，看不出是拼接）。
-        try:
-            data, end = json.JSONDecoder().raw_decode(text)
-        except Exception:
-            return ["_manifest.sha256 读不动"]
-        tail = text[end:].strip()
-        if tail:
-            print("WARN 清单尾部有残留（{} 字节），按第一个对象校验——请重跑 --write".format(len(tail)))
+        return ["_manifest.sha256 读不动"]
     bad = []
     # 只比 major.minor：patch 版本不影响 json.dumps 的 sha，但 3.12.3 与 3.12.14
     # 在云端/CI 之间必然不同——比完整版本等于把基线绑死在一台机器上。
@@ -776,10 +766,6 @@ async def main() -> int:
                 _prev = json.loads(man.read_text(encoding="utf-8"))
             except Exception:
                 _prev = {}
-        # 先删再写：write_text 本身是覆盖，但如果上一次中途失败留下了残留，
-        # 追加式写入会把两个 JSON 拼在一起（json.loads 直接读不动）。
-        if man.exists():
-            man.unlink()
         man.write_text(json.dumps(_manifest(out, _prev), ensure_ascii=False, indent=2),
                        encoding="utf-8", newline="\n")
         print(f"\n=== 基线已写：{out}（{len(data)} 条）===")
