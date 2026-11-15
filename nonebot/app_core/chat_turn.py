@@ -14,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from app_core import (attention, config, correction, followup, intent, kb,
+from app_core import (attention, config, correction, followup, intent, kb, memory_instant,
                       learn, mood, perception, relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
@@ -857,6 +857,26 @@ class ChatTurnMixin:
                 turn.stored = (turn.stored or "") + _suffix
             except Exception as e:  # noqa: BLE001
                 log.debug("图注写回失败：%s", e)
+        # 即时记忆：明确自述立刻落库，不等批量总结。
+        # 现在要等「8 轮 / 40 条 / 闲置 30 分钟」——你上午说「下周三面试」，
+        # 之后不再说话，这句要等 30 分钟后的下一条消息才进记忆。
+        # 只写最窄的一类（memory_instant 里那几条模式），importance 0.35 可被 cleanup 清。
+        if turn.owner and turn.stored and turn.user_msg_id:
+            try:
+                _inst = memory_instant.pick(turn.stored)
+                _port = self._memory_port() if _inst else None
+                if _port:
+                    from app_core.memory_port import MemoryItem
+
+                    _vec = await self.memory.embed([_inst])
+                    await _port.remember(MemoryItem(
+                        type="fact", text=_inst, source="instant", confidence=0.35,
+                        payload={"session": turn.session, "topics": ["即时"],
+                                 "key_facts": [_inst],
+                                 "vec": (_vec[0] if _vec else None),
+                                 "range_key": "instant:%s:%s" % (turn.session, turn.user_msg_id)}))
+            except Exception as e:  # noqa: BLE001
+                log.debug("即时记忆失败：%s", e)
         # 自检标签：剥掉、记一条。P1 只观测，不改回复。
         try:
             _tag, _body = self_check_mod.parse(turn.text or "")
