@@ -452,7 +452,14 @@ class ChatTurnMixin:
                     "age_days": i.age_days,
                 } for i in items]
             else:
-                turn.memories = await self.memory.recall(turn.query, 5, qv=turn.qv) if turn.owner else []
+                # 旧路径已删除：port 是唯一入口。为 None 只可能是配置关掉了契约
+                # （chat.memory_port=false），这时给空记忆 + 告警——
+                # 而不是悄悄走一条行为不同的老路（type 字段缺失、洞察会和事实混渲染）。
+                turn.memories = []
+                if turn.owner:
+                    log.warning("记忆契约不可用（chat.memory_port=false），本轮无记忆")
+                    from app_core import alerts as _alerts3
+                    _alerts3.record("warn", "memory_port_off", "配置关闭了记忆契约", turn.session)
         except Exception as e:  # noqa: BLE001
             log.debug("召回失败（%s），本轮无记忆", e)
             turn.memories = []
@@ -494,8 +501,10 @@ class ChatTurnMixin:
                     ((h.get("content") or "").strip() for h in reversed(turn.history)
                      if h.get("role") == "user" and (h.get("content") or "").strip()),
                     "")
-                if prev_said and prev_said != user_text:
-                    extra = await self.memory.recall(prev_said, 3, touch=False)
+                _sp = self._memory_port() if turn.owner else None
+                if _sp and prev_said and prev_said != user_text:
+                    _items = await _sp.recall(prev_said, ("fact",), 3, touch=False)
+                    extra = [{"doc_id": i.ref, "text": i.text} for i in _items]
                     shadow.record_second_recall(user_text, prev_said, extra)
         except Exception as e:  # noqa: BLE001
             log.debug("二次召回影子失败：%s", e)
