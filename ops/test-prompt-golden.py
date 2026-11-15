@@ -264,6 +264,11 @@ def _check_manifest(base_dir: Path) -> list[str]:
     if want_py and want_py.split(".")[:2] != cur_py.split(".")[:2]:
         bad.append(f"Python {want_py} != {cur_py}（只比 major.minor）")
     for rel, want in (data.get("files") or {}).items():
+        if rel.endswith("prompt-baseline.json"):
+            # baseline 是比对对象，不是保护对象：它被重签、被 git 换行转换，
+            # hash 都会变。而它真被改坏时，逐条 sha 比对本来就会报错——
+            # 在这里再卡一次只会让「重签后 CI 红」这种假故障反复出现。
+            continue
         q = HERE.parent / rel
         if not q.exists():
             bad.append(rel + " 缺失")
