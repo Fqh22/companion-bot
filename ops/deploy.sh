@@ -50,7 +50,8 @@ git archive HEAD:ops | "${SSH[@]}" "tar -x -C /opt/nonebot/ops"
 "${SSH[@]}" "rm -f /opt/nonebot/ops/offline-test.py"
 
 echo "== 3/6 权限 / 缓存 / 部署版本号"
-"${SSH[@]}" "chown -R ubuntu:ubuntu /opt/nonebot/app_core /opt/nonebot/adapters /opt/nonebot/plugins /opt/nonebot/ops
+# ops 里有些状态文件是 root 写的（如 .local-pull-ts），ubuntu 自己 chown 不动，走 sudo。
+"${SSH[@]}" "sudo -n chown -R ubuntu:ubuntu /opt/nonebot/app_core /opt/nonebot/adapters /opt/nonebot/plugins /opt/nonebot/ops
   find /opt/nonebot -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
   chmod +x /opt/nonebot/ops/*.sh
   printf '%s\n' $SHA > /opt/nonebot/.deployed_sha"
