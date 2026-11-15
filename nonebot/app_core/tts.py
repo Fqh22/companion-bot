@@ -130,7 +130,9 @@ def mood_instructions(mood: dict | None, hour: int | None = None) -> str:
     parts: list[str] = []
     if v <= -0.25:
         parts.append("心情偏低：声音放软放轻，语速慢一点，不要劝人")
-    elif v >= 0.25:
+    elif v >= 0.25 and e >= 0.4:
+        # 精力很低时别同时喊「轻快」——两句指令会互相打架（2026-11-16 实测
+        # 当时 valence 0.52 / energy 0.09，组合出「轻快 + 轻慢」自相矛盾）。
         parts.append("心情不错：语气轻快一点，带一点笑意")
     if b <= -0.2:
         parts.append("这一阵基调偏低：整体别太亮")

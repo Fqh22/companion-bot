@@ -642,6 +642,9 @@ async def main() -> None:
               "深夜" in tts_mod.mood_instructions({}, hour=1))
         check("tts: 中性情绪 + 白天不硬加指令",
               tts_mod.mood_instructions({"valence": 0.0, "energy": 0.5}, hour=14) == "")
+        _tired_happy = tts_mod.mood_instructions({"valence": 0.6, "energy": 0.1}, hour=14)
+        check("tts: 心情好但精力低，不喊轻快", "轻快" not in _tired_happy,
+              _tired_happy)
         check("tts: 主音色有默认", bool(tts_mod.voice_for(tts_mod.PROVIDER)))
         check("tts: fallback 是布尔", isinstance(tts_mod.FALLBACK, bool))
         from app_core import embed_provider as ep_mod
