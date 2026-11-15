@@ -35,10 +35,10 @@ OPS="$CODE/ops"
 [ -x "$PY" ] || { echo "找不到解释器：$PY" >&2; exit 2; }
 [ -d "$OPS" ] || { echo "找不到 ops 目录：$OPS" >&2; exit 2; }
 
-# 仓库里叫 test-nonebot-offline.py，云端部署时改名为 offline-test.py。
-# 两个名字都认，别让「少跑一套」伪装成通过。
-OFFLINE="$OPS/offline-test.py"
-[ -f "$OFFLINE" ] || OFFLINE="$OPS/test-nonebot-offline.py"
+# 仓库里叫 test-nonebot-offline.py；云端历史上曾有 offline-test.py 的旧副本。
+# 优先仓库名——旧副本一旦残留就会遮住新回归集，「云端 5/5」跑的是旧测试。
+OFFLINE="$OPS/test-nonebot-offline.py"
+[ -f "$OFFLINE" ] || OFFLINE="$OPS/offline-test.py"
 
 # 云端是 root，但测试要用 ubuntu 跑（生产库只读副本、写临时目录）。
 # 本地/切换用户后已经是 ubuntu，就别再 sudo。

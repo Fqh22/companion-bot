@@ -150,6 +150,28 @@ case "$os_" in
     failed) probs+=("异地备份失败") ;;
     bad)    probs+=("异地备份状态异常") ;;
 esac
+
+# 备份新鲜度：每天 03:17 跑，超过 26 小时说明昨天的备份没出来。
+# 2026-11-15 就是因脚本丢可执行位、cron 报 Permission denied，备份静默缺了一天。
+bk=$("$PY" - /opt/backup 2>/dev/null <<'PY'
+import glob, os, sys, time
+files = glob.glob(os.path.join(sys.argv[1], "cloud-*.tgz"))
+if not files:
+    print("never")
+else:
+    age = time.time() - max(os.path.getmtime(f) for f in files)
+    print("stale:%.0fh" % (age / 3600) if age > 26 * 3600 else "ok")
+PY
+)
+case "$bk" in
+    never)   probs+=("从未有过云端备份") ;;
+    stale:*) probs+=("云端备份过期（${bk#stale:}）") ;;
+esac
+
+# 可执行位：cron 与 systemd 直接执行 ops/*.sh，丢 x 位就整条链路静默停摆。
+noexec=$(find /opt/nonebot/ops -maxdepth 1 -name '*.sh' ! -perm -u+x -printf '%f ' 2>/dev/null)
+[ -n "${noexec:-}" ] && probs+=("运维脚本丢失可执行位：$noexec")
+
 now=$(date +%s)
 fail_count=0; last_alert=0
 if [ -f "$STATE" ]; then

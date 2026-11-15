@@ -2,6 +2,24 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · 部署硬化：脚本权限位 / 验证门 / 备份与健康检查停摆一天
+
+- **事故**：手工 scp 覆盖 `ops/` 时丢了可执行位（云端全变 644）。cron 直接执行
+  `ops/*.sh`，于是「每日 03:17 云备份」与「每 5 分钟健康检查」从 11-14 20:35 起
+  `Permission denied` 静默停摆，11-15 的 `cloud-*.tgz` 缺失，备份链第一次断档。
+  已恢复权限位并补跑 `cloud-20261115-205920.tgz`（完整性校验通过）。
+- `ops/deploy.sh` 重写：`git archive` 上传 `nonebot/`+`ops/`（不再逐个 scp）→
+  云端 `code-<时间>.tgz` 快照 → 显式 `chmod +x ops/*.sh` → 写 `.deployed_sha` →
+  `verify.sh --pre` 不过**不重启** → 重启后跑全量五件套；失败时打印回滚命令。
+- `verify.sh` 改为优先 `test-nonebot-offline.py`：云端残留的 `offline-test.py` 旧副本
+  会遮住新回归集，让「云端 5/5」变成跑旧测试。
+- `cloud-healthcheck.sh` 新增两项：备份超过 26 小时、`ops/*.sh` 丢失可执行位。
+- 顺带把云端代码对齐到 HEAD：此前 `runner.py`（同一会话串行 / Part 协议）、
+  `shadow.py`（BM25 影子停用判据）、`console/fake` 适配器与部分 `ops` 测试脚本
+  落后于仓库，属于「本地修了、线上没跑」的隐性漂移。
+- `git` 里给 6 个入口脚本补 `+x`（`git update-index --chmod=+x`），从根上不再依赖
+  部署时手工修权限。
+
 ## 2026-11-14 · 分享轮档位（默认关）+ 测量台
 
 - 新增 `share_tier.py`：按「他配了几个字 + 内容体裁」算读深度上限（0–4 档），
