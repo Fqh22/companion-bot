@@ -133,6 +133,14 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
             except Exception:  # noqa: BLE001
                 pass
         logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
+        if ok:
+            # 让它知道"我刚发了语音"：否则历史里只有文字，问起来它会否认。
+            # 单独记一条极短的助手旁注，比改正文安全（不污染回复内容）。
+            try:
+                await core.record_assistant(
+                    sid, "（这句话我也用语音说了一遍）", kind="voice")
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
 

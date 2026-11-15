@@ -281,7 +281,7 @@ class FeishuChannel:
         return None
 
 
-async def _speak_later(chat_id: str, text: str) -> None:
+async def _speak_later(session: str, chat_id: str, text: str) -> None:
     """文字发完后补一条语音（和 QQ 同一策略：只在他要/他发语音时才发）。"""
     try:
         say = (text or "").strip()[:300]
@@ -296,6 +296,14 @@ async def _speak_later(chat_id: str, text: str) -> None:
         ok = await ch.send_voice("", str(audio))
         audio.unlink(missing_ok=True)
         logger.info(f"[feishu] voice sent={ok}")
+        if ok:
+            # 历史里补一条旁注：它得知道"这句话我刚用语音说过"，
+            # 否则被问「你发语音了吗」会答没有。
+            try:
+                await core.record_assistant(
+                    session, "（这句话我也用语音说了一遍）", kind="voice")
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 语音链路失败：{e!r}")
 
@@ -368,7 +376,8 @@ async def _handle(data) -> None:
         want_voice = voice or any(k in text for k in
                                   ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
         if want_voice and ch.sent_text:
-            asyncio.create_task(_speak_later(str(msg.chat_id), "".join(ch.sent_text)))
+            asyncio.create_task(
+                _speak_later(session, str(msg.chat_id), "".join(ch.sent_text)))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 处理失败：{e!r}")
 
