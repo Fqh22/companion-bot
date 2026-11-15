@@ -280,12 +280,14 @@ def retrieval_verdict(now: float | None = None) -> dict:
 
 
 def retrieval_line(now: float | None = None) -> str:
+    # 2026-11-14 判据被证伪后影子默认关闭。这里不再按「攒够样本就决策」的旧假设
+    # 汇报——那会让人以为实验还在跑（实测重合 2.8 < 3.0，但人工抽检否决，
+    # 代理指标本身失效，不是「这次恰好没转正」）。
     v = retrieval_verdict(now)
     if not v["n"]:
-        return "BM25 影子：还没有样本"
-    return (f"BM25 影子：{v['n']} 次，重合 {v['avg_overlap']:.1f}/5，第 {v['days']:.0f} 天"
-            f"（判据 {RETRIEVAL_DECIDE_DAYS} 天 / {RETRIEVAL_MIN_SAMPLES} 次）"
-            f" → {v['verdict']}")
+        return "BM25 影子：已停止（2026-11-14 判据失效）"
+    return (f"BM25 影子：已停止（累计 {v['n']} 次，重合 {v['avg_overlap']:.1f}/5）"
+            "——判据被人工否决，重合度不再作为转正依据")
 
 
 def _mean(xs: list[float]) -> float:
