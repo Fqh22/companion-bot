@@ -45,13 +45,59 @@ def _recent(mem, limit: int = 40) -> list[dict]:
     return [{"id": r[0], "text": (r[1] or "")[:120]} for r in rows]
 
 
+def _profile_text() -> str:
+    """当前画像，作为「已知」上下文——避免反思重复生成画像里已经有的判断。"""
+    try:
+        from app_core import paths as _paths
+        from app_core import profile as _prof
+
+        fields = _prof.load(_paths.LEARN / "profile.json")
+        return "；".join(f"{k}：{v}" for k, v in list(fields.items())[:6])[:500]
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _rejected(mem, limit: int = 20) -> list[str]:
+    """被用户否定过的洞察文本——负面清单，防止同一判断反复生成。"""
+    try:
+        c = mem._conn()
+        rows = c.execute(
+            "SELECT text FROM documents WHERE "
+            "json_extract(metadata, '$.status')='superseded' AND "
+            "COALESCE(json_extract(metadata, '$.type'), 'fact')='insight' "
+            "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        c.close()
+        return [(r[0] or "") for r in rows]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _too_similar(text: str, olds: list[str], th: float = 0.55) -> bool:
+    """字符二元组 Jaccard。够粗，但能挡住「换个说法重讲同一个判断」。"""
+    def grams(s: str) -> set:
+        return {s[i:i + 2] for i in range(len(s) - 1)}
+
+    g = grams(text)
+    if not g:
+        return False
+    for o in olds:
+        og = grams(o)
+        if og and len(g & og) / len(g | og) >= th:
+            return True
+    return False
+
+
 async def generate(mem, core, max_items: int = 3) -> list[dict]:
     """跑一次反思并写入。core 提供 complete_raw。返回被写入的 insight 列表。"""
     rows = _recent(mem)
     if len(rows) < 6:
         return []
     lines = ["%s | %s" % (r["id"][:8], r["text"]) for r in rows]
-    msgs = [{"role": "system", "content": INSIGHT_SYSTEM},
+    _prof = _profile_text()
+    _sys = INSIGHT_SYSTEM
+    if _prof:
+        _sys += ("\n\n已知的稳定画像（这些不用再判断，除非有新证据能修正它）：\n" + _prof)
+    msgs = [{"role": "system", "content": _sys},
             {"role": "user", "content": "\n".join(lines)[:4000]}]
     try:
         # 用 summary 通道：这是「批处理/总结」性质的任务，和聊天通道的参数不同
@@ -83,8 +129,11 @@ async def generate(mem, core, max_items: int = 3) -> list[dict]:
         if len(text) < 8 or len(src) < 2:
             continue
         out.append({"text": text, "sources": src, "ts": time.time()})
+    _olds = _rejected(mem)
     written: list[dict] = []
     for it in out:
+        if _too_similar(it["text"], _olds):
+            continue          # 被用户否定过的判断，不再写回来
         try:
             vec = await mem.embed([it["text"]])
             doc_id = mem.add_document(

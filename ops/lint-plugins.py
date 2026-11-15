@@ -272,6 +272,9 @@ _MEM_EXEMPT = frozenset({
 })
 
 _MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
+    "app_core/insight.py": {
+        "profile": {"load"},        # 反思要读画像：避免重复生成画像已有的判断
+    },
     "app_core/chat_turn.py": {
         "kb": {"recall"},                       # 索引没建好时的向量兜底
         "learn": {"profile_conf", "profile_fields", "profile_seen",
