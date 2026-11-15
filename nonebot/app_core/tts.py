@@ -25,6 +25,19 @@ VOICE_ID = "stella"       # stella 女声 / tide 男声
 PCM_RATE = 24000          # 两家都是 24k mono 16bit，pilk.encode 不用改
 MAX_CHARS = 300           # 一条语音别太长（约 30 秒）
 
+# 念稿感是「AI 味」的一半：书面回复直接朗读会像播报。合成前先用廉价模型
+# 改写成口语（保留意思和情绪），失败就退回原文——不能因为改写挂掉语音。
+REWRITE_API = "https://api.deepseek.com/v1/chat/completions"
+REWRITE_MODEL = "deepseek-chat"
+REWRITE_SYSTEM = (
+    "把这句话改写成适合念出来的口语：保留意思和情绪，不要书面词，"
+    "可以加语气词；只输出改写后的一句话，不要解释。")
+
+from app_core import config  # noqa: E402
+
+_TTS_CFG = (config.load().get("tts") or {})
+REWRITE = bool(_TTS_CFG.get("script_rewrite", True))
+
 
 def _key() -> str:
     from app_core import paths
@@ -32,6 +45,31 @@ def _key() -> str:
         return str(json.loads(paths.KEYS.read_text(encoding="utf-8")).get("deepseek") or "")
     except Exception:  # noqa: BLE001
         return ""
+
+
+async def spoken_script(text: str) -> str:
+    """书面回复 → 适合朗读的口语；任何失败都退回原文。"""
+    t = (text or "").strip()
+    if not t or not REWRITE:
+        return t
+    key = _key()
+    if not key:
+        return t
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(
+                REWRITE_API,
+                headers={"Authorization": "Bearer " + key},
+                json={"model": REWRITE_MODEL,
+                      "thinking": {"type": "disabled"},
+                      "messages": [{"role": "system", "content": REWRITE_SYSTEM},
+                                   {"role": "user", "content": t}],
+                      "temperature": 1.0, "max_tokens": 200})
+        r.raise_for_status()
+        out = (r.json()["choices"][0]["message"]["content"] or "").strip()
+        return out or t
+    except Exception:  # noqa: BLE001
+        return t
 
 
 async def synth(text: str, *, voice: str = VOICE_ID,
@@ -43,6 +81,7 @@ async def synth(text: str, *, voice: str = VOICE_ID,
     key = _key()
     if not key:
         return None
+    t = await spoken_script(t)
     if len(t) > MAX_CHARS:
         t = t[:MAX_CHARS]
     pcm: bytes | None = None

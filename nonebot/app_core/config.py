@@ -22,6 +22,11 @@ DEFAULTS = {
         # 例如 [{"platform": "console", "user_id": "local"}]
         "identities": [],
     },
+    "tts": {
+        # 语音合成前先把书面回复改写成口语（念稿感是「AI 味」的一半）。
+        # 失败自动退回原文，不会因为改写挂掉语音。
+        "script_rewrite": True,
+    },
     "feishu": {
         # 飞书自建应用（长连接）通道。只做私聊，只认 owner_open_id。
         # App ID / Secret 不在这里，放 /opt/qqbot-data/keys.json 的 feishu 字段。

@@ -6,6 +6,10 @@ admin:
   # 留空或 "0" 的后果：记忆不写入、主动消息和定时推送发不出去。
   user_id: "0"
 
+tts:
+  # 语音合成前先把书面回复改写成口语（去书面词、加语气词），失败退回原文。
+  script_rewrite: true
+
 feishu:
   # 飞书自建应用（长连接）通道：只做私聊，只认 owner_open_id。
   # App ID / Secret 放 /opt/qqbot-data/keys.json 的 feishu 字段（不进仓库）。

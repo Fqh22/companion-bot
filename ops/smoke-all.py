@@ -618,6 +618,8 @@ async def main() -> None:
         except ValueError:
             _empty_form_rejected = True
         check("message: 空 form 会被拒", _empty_form_rejected)
+        check("tts: 口语化改写提示词存在", "口语" in tts_mod.REWRITE_SYSTEM)
+        check("tts: 改写开关是布尔", isinstance(tts_mod.REWRITE, bool))
         check("ocr: 布局标记被清掉",
               ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "hello")
         check("ocr: 接口地址", ocr_mod.OCR_API.endswith("/v1/tools/ocr"))
