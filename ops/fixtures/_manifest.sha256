@@ -6,7 +6,7 @@
     "ops/fixtures/prompt-cases.jsonl": "438687518267cec63fde191d9587e28464d5671735493d401f3b20c51776a5d5",
     "ops/fixtures/prompt-baseline.json": "4c9ca0bf5dadc5db85a836176203bd27559c59a36ce40965f00d186e68833cd5"
   },
-  "origin_code": "",
+  "origin_code": "7c68caf",
   "git_head": "7c68caf",
   "tool_commit": "7c68caf",
   "python": "3.12.3",
