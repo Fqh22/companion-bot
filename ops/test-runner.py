@@ -40,6 +40,16 @@ class FakeChannel:
         self.typing_on = 0
         self.typing_off = 0
 
+    forms = {"text", "image", "voice"}
+
+    async def send_part(self, session: str, part) -> bool:
+        """协议入口：runner 现在按 Part.form 调这个，不再直接调 send_text。"""
+        if part.form == "text":
+            return await self.send_text(session, part.content)
+        if part.form == "image":
+            return await self.send_image(session, part.content)
+        return False
+
     async def send_text(self, session: str, text: str) -> bool:
         self.texts.append(text)
         return True
