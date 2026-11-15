@@ -75,6 +75,27 @@ _turns = turn_mod.TurnQueue()
 _pump: dict[str, asyncio.Task] = {}
 
 
+# 画图的触发词：动词 + 量词组合，避免「画的」「画面」这类误触发
+_DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "给我画")
+
+
+async def _draw_later(sid: str, ask: str) -> None:
+    """后台画图并发送。画不出来就说一句，不打断主回复。"""
+    try:
+        from app_core import image_provider
+        from app_core.message import Part
+
+        path = await image_provider.generate(ask)
+        if not path:
+            logger.info("[chat] 画图返回空（额度/内容审核/网络），跳过")
+            return
+        image_provider._cleanup(path)
+        ok = await QQChannel().send_part(sid, Part("drawing", str(path)))
+        logger.info(f"[chat] drawing sent={ok} {sid} {path.stat().st_size} 字节")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
+
+
 async def _speak_later(sid: str, text: str, parts: int) -> None:
     """后台合成语音并发送。
 
@@ -176,7 +197,8 @@ class QQChannel:
         """
         if part.form == "text":
             return await self.send_text(session, part.content)
-        if part.form == "image":
+        if part.form in ("image", "drawing"):
+            # 画出来的图就是一张图，通道不需要区分「生成」还是「已有」
             return await self.send_image(session, part.content)
         if part.form == "voice":
             return await self.send_voice(session, part.content)
@@ -261,6 +283,10 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
         if _want_voice and ch.sent:
             asyncio.create_task(_speak_later(sid, "".join(ch.sent), len(ch.sent)))
+        # 画画同理：只在他明确要求时画，不做「氛围到了就画」
+        _ask = " ".join(turn.texts or [])
+        if any(k in _ask for k in _DRAW_TRIGGERS):
+            asyncio.create_task(_draw_later(sid, _ask))
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))
