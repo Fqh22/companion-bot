@@ -147,6 +147,7 @@ class Turn:
     self_check: str = ""
     meta_leak: bool = False
     meta_leak_partial: bool = False   # 元叙述泄漏时已经发了一半（后半段丢了）
+    injected_insights: list = field(default_factory=list)   # 本轮注入的洞察（用户否定时要标掉）
     gap: float = 0.0
 
     def set_slot(self, key: str, text: str | None, order: int | None = None) -> None:
@@ -455,6 +456,9 @@ class ChatTurnMixin:
         except Exception as e:  # noqa: BLE001
             log.debug("召回失败（%s），本轮无记忆", e)
             turn.memories = []
+        # 本轮注入的洞察：用户下一句否定时要知道标掉哪几条
+        turn.injected_insights = [m.get("doc_id") for m in (turn.memories or [])
+                                  if m.get("type") == "insight" and m.get("doc_id")]
         # P4：这一轮读了什么，落一条轨迹，/trace 可查。
         # 轨迹由 recall 直接追加进 turn.memory_trace——port 是共享单例，
         # 不能再当「上一轮读了什么」的状态容器，否则并发轮次会互相覆盖。
@@ -861,6 +865,22 @@ class ChatTurnMixin:
                 log.debug("图注写回失败：%s", e)
                 from app_core import alerts as _alerts
                 _alerts.record("warn", "caption_writeback_failed", str(e)[:200], turn.session)
+        # 用户否定：把本轮注入的洞察标成被推翻。
+        # 这是 insight 唯一的纠错入口——没有它，一个错的理解会一直影响后续对话，
+        # 而且用户否定了也没人知道（和欠费那晚同类：错了但不响）。
+        _cport = self._memory_port() if turn.injected_insights else None
+        if _cport and correction.looks_like_correction(turn.stored or ""):
+            _n = 0
+            for _did in turn.injected_insights:
+                try:
+                    if await _cport.supersede(_did, "user_correction", "用户否定"):
+                        _n += 1
+                except Exception as e:  # noqa: BLE001
+                    log.debug("推翻洞察失败：%s", e)
+            if _n:
+                log.info("用户否定，推翻 %d 条洞察", _n)
+                from app_core import alerts as _alerts2
+                _alerts2.record("info", "insight_corrected", "用户否定 %d 条" % _n, turn.session)
         # 即时记忆：明确自述立刻落库，不等批量总结。
         # 现在要等「8 轮 / 40 条 / 闲置 30 分钟」——你上午说「下周三面试」，
         # 之后不再说话，这句要等 30 分钟后的下一条消息才进记忆。

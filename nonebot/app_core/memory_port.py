@@ -196,6 +196,10 @@ class CoreMemoryPort:
             range_key=str(p.get("range_key") or ""),
         )
 
+    async def supersede(self, ref: str, by: str = "", why: str = "") -> bool:
+        """把一条记忆标成「被推翻」。软删，可恢复；和 forget 的区别是不删原文。"""
+        return self.core.memory.supersede(ref, by, why)
+
     async def forget(self, ref: str, type: str = "fact") -> bool:
         """真删一条 fact（ref = doc_id）。用户要求忘记时走这里，不走归档。
 
