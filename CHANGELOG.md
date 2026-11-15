@@ -2,6 +2,19 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · TTS 双 provider：智谱主用（已充值）+ DeepSeek 兜底
+
+- 用户之前在智谱充过钱，要求用上：把 `tts` 改成 provider 可切换，
+  **默认 zhipu（cogtts）→ 失败自动换 DeepSeek**（反之亦然）——上次「智谱单点挂掉
+  导致语音和记忆一起挂」的教训用互备解决，不用二选一。
+- 智谱实测可用音色：tongtong / female / xiaochen / chuichui / male / jam / kazi /
+  douji / luodo（xiaoxiao/xiaobei/xiaomo/xiaoxuan 返回「音色不存在」）；
+  发飞书试听 4 个女声（tongtong / female / xiaochen / chuichui）等用户选。
+- 配置：`tts.provider` / `tts.voice` / `tts.speed`（智谱 0.5–2）/ `tts.fallback`；
+  `tts.script_rewrite`（口语化改写）保持。
+- silk 编码、飞书 opus 转码、QQ record 发送链路不变；smoke 补 provider/音色/fallback 三条。
+- 验证：本地编译 + lint + 密钥扫描通过；CI 后部署。
+
 ## 2026-11-15 · 语音去 AI 味：合成前先改口语（tts.spoken_script）
 
 - 试听 5 段（DeepSeek 海星/海星+改写/晓晓/晓伊/云希）后用户选 **② DeepSeek + 口语化改写**：

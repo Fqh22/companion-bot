@@ -7,7 +7,15 @@ admin:
   user_id: "0"
 
 tts:
-  # 语音合成前先把书面回复改写成口语（去书面词、加语气词），失败退回原文。
+  # 语音合成 provider：zhipu（智谱 cogtts）| deepseek。失败自动换另一家。
+  provider: zhipu
+  # 智谱：tongtong(温柔女) / female / xiaochen / chuichui / male / jam / kazi / douji / luodo
+  # DeepSeek：stella(女) / tide(男)
+  voice: tongtong
+  # 智谱 0.5–2；DeepSeek 不支持（忽略）
+  speed: 1.0
+  fallback: true
+  # 合成前先把书面回复改写成口语（去书面词、加语气词），失败退回原文。
   script_rewrite: true
 
 feishu:

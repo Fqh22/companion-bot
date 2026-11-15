@@ -23,7 +23,16 @@ DEFAULTS = {
         "identities": [],
     },
     "tts": {
-        # 语音合成前先把书面回复改写成口语（念稿感是「AI 味」的一半）。
+        # 语音合成 provider：zhipu（智谱 cogtts，默认，用户已充值）| deepseek。
+        # fallback=true 时主 provider 失败自动换另一家——单点靠互备解决，不靠二选一。
+        "provider": "zhipu",
+        # 主 provider 的音色。智谱可用：tongtong / female / xiaochen / chuichui /
+        # male / jam / kazi / douji / luodo；DeepSeek 只有 stella / tide。
+        "voice": "tongtong",
+        # 语速，智谱 0.5–2（DeepSeek 不支持，忽略）。
+        "speed": 1.0,
+        "fallback": True,
+        # 合成前先把书面回复改写成口语（念稿感是「AI 味」的一半）。
         # 失败自动退回原文，不会因为改写挂掉语音。
         "script_rewrite": True,
     },
