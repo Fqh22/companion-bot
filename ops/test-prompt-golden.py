@@ -197,6 +197,17 @@ def _stub_weather(case):
         perception.read = _ok
 
 
+def _stub_ocr() -> None:
+    """图注会先调 OCR（真实网络）。基线里必须打桩——否则同一 case 两次跑
+    会因为识别结果或网络状态不同而 sha 不同，那是不可复现的假差异。"""
+    from app_core import ocr as _ocr_mod
+
+    async def _none(p, purpose="rich_layout_recognition", timeout=60.0):
+        return ""
+
+    _ocr_mod.ocr_text = _none
+
+
 def _stub_search(case):
     # 两个入口都要桩：_fetch_search 现在走 search_via_model（全家桶），
     # 只桩 web.search 会让基线真的去调网络——sha 差异且不可复现。
@@ -329,6 +340,7 @@ async def run_case(case):
         await core.remember(sess, h["role"], h["content"])
     _stub_weather(case)
     _stub_search(case)
+    _stub_ocr()
     turn = await core._turn_prepare(sess, case["user"], _materialize_images(case), None)
     await core._turn_compose(turn)
     _assert_stubs(case, core)

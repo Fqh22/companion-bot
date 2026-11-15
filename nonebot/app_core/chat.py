@@ -518,6 +518,19 @@ class ChatCore(ChatTurnMixin):
         图注让"图"变成可检索的文字，代价是每张图多一次很小的模型调用（后台跑，不挡回复）。
         """
         from app_core.files import to_data_url
+        from app_core import ocr as ocr_mod
+
+        # OCR 先跑：图里的字由专门接口提，比让视觉模型「顺带读」准得多
+        # （实测截图 3 行报错：视觉只读到 2-3 行，OCR 全读对）。
+        # 失败返回空串 → 退回「视觉自己读」，不影响图注本身。
+        # 2026-11-15 踩过的坑：这里只加了下面对 ocr_text 的拼接、没加这个赋值，
+        # NameError 被 except 吞掉，图注直接变空（CI 报「图注生成走通」失败）。
+        ocr_text = ""
+        if paths:
+            try:
+                ocr_text = await ocr_mod.ocr_text(paths[0])
+            except Exception:  # noqa: BLE001
+                ocr_text = ""
 
         # 2026-11-15：图注的目标是「隔天能检索」，不是「完整理解」。
         # 当轮模型直接看原图，不需要图注；图注只进历史、占 token，所以按类型覆盖：

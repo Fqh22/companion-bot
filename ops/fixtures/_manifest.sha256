@@ -1,8 +1,8 @@
 {
   "files": {
-    "ops/test-prompt-golden.py": "a2954df15d81d5721fd3bde43b28fdd4d9e1da89f3eb8f7365d0f8ff3398ccad",
+    "ops/test-prompt-golden.py": "8b72d94627926e2f12e5034eaf53007deb17728542891c74a1f534a30ca78168",
     "ops/fixtures/freeze.py": "5cd32ba04eabae0dc5c137841730678e1f08101aa274b01950c23ef046db37ef",
-    "ops/fixtures/seed.py": "9cf214655c5017d5fb0b18f629e4fd50fe13d991b3c1310ecb80006968c92f49",
+    "ops/fixtures/seed.py": "5cbf6ad8d4735769c1df9036b4200ce32ac6e775223834309379e8169e3bfae7",
     "ops/fixtures/prompt-cases.jsonl": "438687518267cec63fde191d9587e28464d5671735493d401f3b20c51776a5d5",
     "ops/fixtures/prompt-baseline.json": "4c9ca0bf5dadc5db85a836176203bd27559c59a36ce40965f00d186e68833cd5"
   },
