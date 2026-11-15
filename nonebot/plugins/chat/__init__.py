@@ -74,6 +74,30 @@ _turns = turn_mod.TurnQueue()
 _pump: dict[str, asyncio.Task] = {}
 
 
+async def _speak_later(sid: str, text: str, parts: int) -> None:
+    """后台合成语音并发送。
+
+    只读最后一段：几段拼起来读会像播报，而语音本来就该说一句。
+    失败静默——文字已经发出去了，语音是补充不是替代。
+    """
+    try:
+        from app_core import tts
+
+        say = (text or "").strip()
+        if parts > 1:
+            say = say.split("。")[-2] + "。" if "。" in say else say[:120]
+        if len(say) > 300:
+            say = say[:300]
+        silk = await tts.synth(say)
+        if not silk:
+            logger.info("[chat] 语音合成返回空，跳过")
+            return
+        ok = await QQChannel().send_voice(sid, str(silk))
+        logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
+
+
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
@@ -163,6 +187,21 @@ class QQChannel:
             logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
             return False
 
+    async def send_voice(self, session: str, path: str) -> bool:
+        try:
+            p = Path(path)
+            if not p.exists():
+                logger.warning(f"[chat] 语音文件不存在：{p}")
+                return False
+            # 和表情包同理：传 bytes，适配器编成 base64；
+            # 传 Path 会变 file:// 宿主机路径，OneBot 跑在容器里看不到。
+            data = await asyncio.to_thread(p.read_bytes)
+            await chat.send(MessageSegment.record(data))
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[chat] 语音发送失败：{type(e).__name__}: {e}")
+            return False
+
     async def typing(self, session: str, on: bool) -> None:
         await _set_typing(session, on)
 
@@ -195,6 +234,12 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
+        # 语音回复只在两种情况下发：他发语音，或者他明确要求。
+        # 不做「情绪高就发」那种概率策略——实测语音比文字更容易让人烦。
+        _want_voice = (stored or "").startswith("[语音]") or any(
+            k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
+        if _want_voice and ch.sent:
+            asyncio.create_task(_speak_later(sid, "".join(ch.sent), len(ch.sent)))
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))
