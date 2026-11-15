@@ -2,6 +2,30 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · 运维债清理：云端独有脚本入库 / 备份覆盖 / 拉取闭环 / CI 守门
+
+- 云端只在机器上有的 5 个 ops 脚本迁进仓库：`export-memory.py`、`export-persona.py`、
+  `probe-budget.py`、`probe-recall.py`、`retopics.py`。迁移时修掉陈旧引用——
+  `probe-recall` 的 `kb_vectors` → `kb_chunks`、`_cos/_unpack` 改从 `app_core.vec` 取；
+  `export-persona` 删掉指向已移除 AstrBot 库的死兜底；`retopics` 标注为一次性迁移工具。
+  五个脚本在云端实跑通过（export-memory 导了 1,915 行 / 321 篇文档 / 1,594 条原子）。
+- 备份覆盖：`cloud-backup.sh` 从只备 `ops/*.sh` 改为 `ops/*.sh` + `ops/*.py`——
+  `export-*` / `probe-*` 这类只在机器上的脚本，重装或恢复演练会直接丢。文档写清
+  「不含 `data/files` 媒体缓存、`ops/*.log|state|ops.env`」，并注明备份含 `keys.json`、
+  本地副本按密件保管。
+- 本地拉取闭环：`sync-from-cloud.ps1` 拉取成功后在云端写 `ops/.local-pull-ts`；
+  `cloud-healthcheck.sh` 发现超过 8 天没更新就告警「本地备份超过 8 天没拉取」——
+  异地副本断了不再只能靠人想起来。
+- CI 加两条守门（正是本轮两次踩坑的根因）：`.ps1` 必须带 UTF-8 BOM（PS 5.1 按 GBK
+  解析中文会整段语法错）；`ops/*.sh` 必须有可执行位（手工 scp 丢 x 位让 cron 静默
+  停摆一天）。
+- 顺手修掉 `tts.py` / `asr.py` 里同款 `mkstemp` fd 泄漏（每合成/转码一次泄漏一个 fd，
+  和早先 `image_provider` 的问题一致）。
+- 组件级真机验证（云端）：cogview-4 出图 145,120 字节；DeepSeek TTS → silk 9,081 字节；
+  `probe-budget` 满载 prompt 3,724 tokens ≈ 0.00745 元/轮；`probe-recall` 用生产数据
+  复核 0.25/0.35/0.30 三档阈值跑通。
+- 验证：CI 绿；云端 `ops/verify.sh` 五件套全过。
+
 ## 2026-11-15 · 双盲审查修复：语音记账重复 / 画图 fd 泄漏 / 发送静默
 
 - 两个视角盲审 `34e7253..528f970`（表达单元 / Part 协议、语音、画图），主审逐条核实后修 8 处。
@@ -39,6 +63,189 @@
 - 发现本地「开机拉备份」脚本 `ops/sync-from-cloud.ps1` 在 `ccd5090` 之后丢了 UTF-8 BOM：
   PowerShell 5.1 按 GBK 解析中文 → 整段语法错误，**备份拉取也静默失败**（和 AGENTS.md
   11-11 事故同根）。补 BOM 后实测拉回 `cloud-20261115-205920.tgz`，本地 9 份连续。
+
+## 2026-11-15 · 语音链路：TTS→PCM→silk，换全家桶，真的发出去
+
+- 换家底座 + 429 退避：智谱高峰连续 429，会让「写记忆失败、水位不动」和「voice 空
+  转写」——一次失败就放弃太脆。`memory_embed.embed` 与 `asr.transcribe` 对 429/5xx
+  退避 3 次（1.5s 递增）；新增 `embed_provider.py` 把 api/model/维度/重试收一处，
+  内置 zhipu(2048) / siliconflow(1024)，换家只改配置；维度不符直接抛，而不是召回
+  静默退化成 recent。721/721、memory-port 37/37、39/39、lint PASS。
+- TTS 出 silk：智谱 `/audio/speech`（cogtts）返回 PCM 24k mono，`pilk.encode` 写
+  silk。实测 text → silk 7861 字节 → 解码 3.4 秒 24000Hz 单声道。失败返回 None
+  不抛（一条语音合成失败不该让整轮崩），429/5xx 退避 2 次。
+- ASR/TTS 换到 DeepSeek 全家桶：智谱欠费那晚语音和记忆一起挂，而 DeepSeek 的
+  `/v1/tools/asr` 与 `/v1/tools/tts` 格式正好兼容。ASR 用 multipart 传 wav、返回
+  `{text, duration_ms}`（原 `{text, error}` 契约不变）；TTS `format=pcm` 直接拿
+  16-bit mono 24k，`pilk.encode` 不用改。闭环实测：TTS「明天下午三点开会，别迟到。」
+  → 2.6s silk → ASR 转回一字不差；同句 2.6s vs 智谱 3.3s。
+- 发语音：只做两个触发、不做概率策略（实测语音比文字更容易让人烦）——他这条是
+  语音（`[语音]` 前缀）就回语音，他明确说「用语音」「读给我听」也回。
+  `Channel.send_voice` 原语 → QQ 用 `MessageSegment.record(bytes)`（和表情包同理，
+  不走 file://）；后台合成分段只读最后一段（几段拼起来像播报）；失败静默——文字
+  已经发出去了，语音是补充不是替代。
+
+## 2026-11-15 · CI 长期假红：清单循环依赖 / 两个 JSON / 跨平台换行，外加预搜索三次接线
+
+- 预搜索换全家桶：自建 Search API 要清 HTML、去站点模板、截 240 字，本质是补偿
+  「拿到的是脏摘要」。`web.search_via_model` 走服务端检索，返回模型消化后的正文 +
+  annotations 来源，截 1600 字，超时 5s → 25s。实测深圳天气给出具体数据
+  （27-34℃、高温黄色预警），8 秒返回、不用清 HTML。
+- 但接线连续触发基线红且拿不到 CI 侧失败原文，按「红即阻塞」回滚（18:34），19:14
+  重接、19:17 再回滚，19:21 才落地。落地前提是清单在本地 git 工作区（天然 LF）上
+  签：此前在 `/tmp/ci-repo` 签，那里有 26 个 scp 覆盖的 CRLF 脏文件，hash 和 git
+  的 LF 版天生不同。桩也要同时覆盖 `web.search` 与 `web.search_via_model`，否则
+  基线真的调网络（sha 差异且不可复现）。
+- 清单假红的三个根因：baseline 自身 hash 被一起校验，重签/换行后必变 → 循环依赖
+  导致重签后假红（18:44）；`_manifest.sha256` 里两个 JSON 对象被拼在一起
+  （Windows 3.12.14 一份 + Linux 3.12.3 一份），`json.loads` 整份报错 →
+  `_check_manifest` 返回「读不动」→ CI 永久 exit 4（18:58），读写都改成 `unlink`
+  后再写、读用 `raw_decode` 取第一个对象并打印尾部残留字节；`ops/fixtures/seed.py`
+  在 Windows 是 CRLF（9cf21465）、Linux 是 LF（5cbf6ad8），`_manifest` /
+  `_check_manifest` 统一改成换行规范化后再算 hash（基线语义是内容一致、不是字节
+  一致）。
+- 最后在 git 原文上重签：用 `gh.py` 从 git 拉四个清单文件覆盖旧副本，seed.py 的
+  hash 从 5cbf6ad8（旧副本）变成 9cf21465（git 版）；重签清单（基线内容未变，仅
+  工具 hash 更新，18:36）。
+- 过程：ops 回滚到 `33472d7` 做 bisect 定位红点（18:39），两次整体回滚等 CI 侧
+  FATAL 明细（18:48、18:59）——这次的可观测性缺口直接催生了 `gh.py`（见下一条）。
+
+## 2026-11-15 · 图注：OCR 接一晚回滚两次、认人、自检标签不再泄漏
+
+- 图注接 OCR：DeepSeek `/v1/tools/ocr`（multipart，purpose=rich_layout_recognition）
+  实测截图三行报错全读对，而视觉模型只读到 2-3 行；返回体带 `<｜ref｜>…<｜box｜>
+  [[x,y]]<｜/box｜>` 布局标记，正则清掉；图注变成「场景 + ｜文字：OCR 全文」，OCR
+  失败退回视觉自己读。
+- 接入后 c16/c18/c23 的 caption 期望不符（OCR 拼接会让 caption 槽变空），先回滚
+  （19:29）。红提交 5cd87bd 的真相是另一个：`caption_images` 里 `if ocr_text` 用了
+  变量，但赋值那行没进去（edit 静默失败）→ NameError 被 except 吞掉 → 图注变空 →
+  CI 报「图注生成走通」失败。19:44 补上赋值、OCR 失败退回视觉，并给基线工具加
+  `_stub_ocr`（图注走真实网络 sha 不可复现）；回滚期间撤掉的 golden OCR 桩也随之
+  恢复（19:31）。
+- 先认 IP/角色再描述：线上反馈蓝发女仆装被描述成「蓝色头发的女仆」，实际是某个
+  IP 的二创形象——原 prompt 只要求「说这是什么场景」，按指令给出的合格答案就停在
+  那层。加「认得出的角色/IP/梗/软件界面直接说名字」「别猜名字」（IP 猜错会变成
+  历史里的假事实，比「认不出」更糟）；字数 60 → 80。
+- 按类型覆盖：上一版把「认得出结论」放在句首，而它是最低频的一类——大部分图是
+  截图/表情包/照片。先判类型（截图/表情包/照片/商品/软件界面）再逼答「主体是谁或
+  什么」，IP 降为「主体」的一个可选值；字数 80 → 100，历史成本 +20 字/图。
+- 自检标签不再泄漏：线上第 413 条整条标签被当正文发出
+  「=接梗 次=看 置信=高 依据=有 来源=图片行吧，…」——`_SRC` 缺「图片」→ 三条正则
+  全不匹配 → 流式扣到 200 字符放弃 → 整段当正文发；`_SRC` 补图/视频等来源值、
+  长值排前（「记忆+搜索」不再被吃成「记忆」+ 正文「+搜索…」）。枚举式白名单的失败
+  模式是「不在列表里 → 整条标签当正文发」（11-13/11-14/11-15 三次），改三层兜底：
+  残片主类 7 类枚举 → 任意 1-4 中文字；兜底 1 扩已知来源值、值后只吃空白；兜底 2
+  任意来源值（会吞 1-4 字但保证不泄漏）。五个用例实测通过。
+
+## 2026-11-15 · 静默失败可见 + 同会话串行 + 摘要不截断 + CI 日志自取
+
+- 统一告警面：项目里的失败分支几乎全是 `log.debug`，生产看不到、也没人翻
+  journalctl——2026-11-15 凌晨欠费，写记忆失败一整晚，直到用户发语音才发现。新增
+  `alerts.py`：`alerts.jsonl`，同一 code 60 秒限流、超 1MB 轮转（保留最后 500 条）、
+  永不抛异常；接入写记忆失败、kb 索引、跟催清理、wiki 归档、即时记忆、图注写回。
+- 告警并入 `/status`：原来要看 6 个出口（alerts / turn_stats / shadow / parse_log /
+  journalctl / 影子日志），现在 `/status` 一行显示 24h 告警计数；BM25 影子标记为
+  「已停止」——判据 11-14 被证伪、代码已关，状态页还显示「第 1 天 / 继续攒样本」，
+  会让人以为实验还在跑。
+- 同会话串行：并发轮次会各自 prepare，覆盖 `turn.memories` / mood / followup 状态。
+  模块级 `_SESSION_LOCKS` 按 session 取锁，上一轮没结束时排队并记一条 info；
+  「一句一句回」在真人聊天里是正确行为，不是延迟缺陷。没做「单事务写」——用户消息
+  在 chat.db、记忆在 livingmemory.db，跨库事务不可能，替代是 range_key 幂等 + 失败
+  写 alert。`TurnQueue` 至今只有定义没有使用点，注释补上说明（18:16）。
+- 摘要不再被截断：根因不是 flash 能力，是 `max_tokens=800` 对 500-700 字输出太紧
+  （实测 448 字输出已用近 600 token，长对话必截）。`LLM.complete` 支持
+  `response_format`，summarize 加 `json_mode`，max_tokens 800 → 1600；实测 flash
+  448 字、尾部完整、7 字段解析成功。
+- `ops/gh.py`：今天 CI 红了 6 次，每次都要人工截图才看得到 FATAL 行。token 从
+  `keys.json` 的 github 字段读（600 权限，不进仓库）；`runs` 看最近几次 run、
+  `logs <sha>` 拉失败 job 日志并筛 FATAL/Error/FAIL 附近行、`file <path>@<rev>` 读
+  任意 commit 的文件。踩坑：job logs 会 302 到 S3，带 Authorization 去请求会 403
+  （签名冲突）→ 用不跟随重定向的 opener，S3 那跳不带 header。
+
+## 2026-11-15 · 没接线的维护机制全部接上（月维护 / 遗忘 / 索引 / 清理）
+
+- 月度维护接线：自审推翻了「删死模块」——`purge` / `maintenance` 不是死代码，是
+  设计好但没接线，备份轮转、JSONL 截断、WAL checkpoint、VACUUM 都没跑过。
+  `maintenance.run()` 接进月锁（原来只被 `review` 读状态、从不执行）；
+  `purge.rotate` / `prune_old_packs` 一起跑；`purge_knowledge` 保留手动（物理删除
+  不自动）。顺带给 insight 块加仲裁：与「此刻」或画像冲突时，此刻 > 画像。
+- 知识库索引接每日触发：`kb.index` 原来 0 调用点，`learn/*.md` 之后新增的永远进
+  不了检索。实测新建「关键参数」笔记相似度 0.566（阈值 0.42）却一块都查不到；手动
+  `kb.index()` 后 4/4 命中且是 top-1。接在每日清理的同一把锁里（每天最多一次），
+  增量只处理改动过的文件。
+- 遗忘机制接定时：`cleanup()` 原来只有 `/cleanup` 命令能触发，记忆只增不减。每次
+  成功总结后顺带跑一次，用 locks 表做「每天最多一次」（ttl 21.6h，不 release，让锁
+  自然过期）；条件不变（≥0.8 保留 180 天 / 0.5-0.8 90 天 / <0.5 30 天），总量
+  >3000 才兜底。当前库 266 条 active、才 15 天，archived=0 是正常的。
+- 跟催过期 + wiki 归档接上：`followup_store.expire` 原来 0 调用点——60 天没结果的
+  事不会被取消、主动消息越问越旧，接每日清理；`wiki.archive_stale` 原来 0 调用点、
+  wiki 无限增长，接每周锁（自身限量 5 页/次，每天跑会下架太快）。
+- 检索两路合并 + 去全表反查：`kb.search_meta` 原来是「先只查 curated，非空就
+  return」——放 `learn/` 根目录的笔记只要有一条 curated 命中就永远看不到（实测新
+  笔记相似度 0.566 却 0 返回）；改成两路都查、合并去重、curated 排前。原来每轮
+  全表拉 822 行 + 前 40 字前缀反查（3288 次比较），同前缀的块还会标错出处；召回加
+  `with_path`，直接拿 `(text, path)`，返回结构不变。
+
+## 2026-11-15 · 运维脚本：凭证不进代码、路径不按 GBK 猜
+
+- `ops/deploy.sh` 不再写默认私钥路径，`QQBOT_KEY` 必填；主机也走环境变量——密钥
+  扫描会把 `.pem` 默认路径和公网 IP 判成泄漏，lint job 直接红。
+- 备份脚本显式按 UTF-8 读配置：`sync-config.json` 是 UTF-8 无 BOM，PS 5.1 的
+  `Get-Content` 默认按 ANSI/GBK 解码，「备份/云端」被读成「澶囦唤/浜戠」，11-12~11-14
+  三份备份写进了一个乱码目录（正常目录看起来停在 11-11）。
+- 实测对照：带 `-Encoding UTF8` → 目录存在；不带 → 目录不存在。三份备份归并回
+  `备份/云端`（重叠的 11-10/11-11 逐字节比对 IDENTICAL 后删冗余副本），本地
+  11-07~11-14 连续 8 份无缺口。
+
+## 2026-11-15 · 记忆与理解：即时写入、反思、可被否定、画像字段级过期
+
+- 即时写入：原来记忆要等「8 轮 / 40 条 / 闲置 30 分钟」才总结——上午说「我下周三
+  面试」之后不再说话，这句要等 30 分钟后的下一条消息才进记忆，延迟是静默的。
+  `memory_instant.pick` 只认明确自述（住哪/叫什么/做什么/家人/计划/年龄），感慨和
+  观点不写；走 `MemoryPort.remember`，importance 0.35 可被 cleanup 清，`range_key`
+  按消息 id 幂等；保留逗号内完整语义（「我住在上海，但下个月搬走」整句写入）。
+- 反思机制 + 事实与洞察分开：原来只有 fact（他说过什么），没有把 294 条事实想成
+  「他为什么这样」。周度反思读最近 40 条 fact 归纳 1-3 条 insight，校验 sources
+  ≥2 条且指向真实 doc_id，没出处直接丢弃，素材排除已有 insight 防自我强化；实测
+  产出 3 条，例如「他把能力当唯一可控变量，是自我保护——承认能力不足比承认市场
+  随机更容易消化」。渲染拆两块：相关记忆（fact）与我对他的理解（insight，带「这是
+  推断，别当事实复述」）——混在一起会把解读当「他说过的话」复述；空 insight 时与
+  原来一致，39 条基线不受影响。
+- 用户否定推翻洞察：`Turn.injected_insights` + `correction.looks_like_correction`
+  检测到否定后逐条 supersede（`by=user_correction`），只标 insight、不动 fact。
+  没有它，一个错的理解会一直影响后续对话，而用户否定了也没人知道。
+- 反思读画像 + 负面清单 + 召回唯一入口：画像里已有的判断不再重复生成，被 supersede
+  的 insight 文本进「不要再提」名单（字符二元组 Jaccard ≥0.55，只会漏过、不会误
+  杀）；召回删掉旧路径，`port` 成唯一入口——旧路径没有 `type` 字段，洞察会和事实
+  混渲染（36 条基线踩过）；`port` 为 None（`chat.memory_port=false`）时给空记忆 +
+  alert，不再悄悄换一条行为不同的路，二次召回影子也改走 port（`touch=False`）。
+- 画像字段级过期 + 雷区最前：原来所有字段共享 `DROP_AFTER_DAYS=120`——职业该过期，
+  但「明确讨厌」「家庭」没再提不代表变了。改 `_DROP_DAYS`：明确讨厌 3650 天 /
+  家庭·审美 730 / 技术 365 / 职业 180 / 作息 120；`effective_conf` 加 `field` 参数，
+  `update_state` 删除阈值同口径；注入顺序改为「雷区最前、其余保持原序」；过期测试
+  跟着改（「家庭」730 天后不能再拿 121 天测），并验证稳定字段不过期。
+
+## 2026-11-15 · 审查 chat 通道：熔断 / 非本人轮次 / 发送记录
+
+- 非本人轮次：审查 `chat_turn.py` 发现四处缺 `turn.owner` 判断，而 followup /
+  corrections 是**没有 session 列**的全局表。群友回一句「是」「对」（≤12 字）就会
+  把本人的待办置 done、此后不再提醒；外人说「不对，应该是 X」会把结论写进本人的
+  fact 记忆和全局 corrections，再注入本人 prompt；本人的待办原文可能进外人 prompt；
+  `relation_notes` 无条件注入，外人能拿到称呼、梗、雷区。另 `set_slot` 补 key 校验：
+  拼错的槽位原先被静默丢弃，而 lint 和 slot-contract 都只遍历 SLOTS 自身，CI 不会
+  红。721/721。
+- 总结熔断真正生效：失败计数用 `fail_id == target`，而 target 随每条新消息后移，
+  代号永远对不上、same 恒为 1，`SUMMARY_MAX_FAILS` 永远数不到，毒批次每轮重跑完整
+  总结；改用不移动的 `last_id` 做基准。写记忆失败路径合并到同一出口；
+  `catch_up_summary` 改按水位是否前进判断（原来无条件报 ran=True）；
+  `prompt_log.chars` 从 UTF-8 字节改存字符（与 prompt_blocks 展示差约 3 倍）；图注
+  调用加 8 秒上限（原来同步 await 会吃掉整个 45 秒预算）。721/721。
+- 四条独立修复：`on_sentence` 返回 bool，发失败不记 `sent_parts`（原来无条件
+  append，让「一个字都没发才重试」判断失效）；locks 加 owner 列，`_release` 只删
+  自己的（原来无条件 DELETE，锁过期被抢后原持有者会删掉别人的锁）；search/weather
+  超时写进 `fetch_metrics`（原来只有 ok/error/cancelled，分不清「没走」和「走了但
+  超时」）；已发一半时的元叙述泄漏记 `meta_leak_partial`，不改发送行为。
+  721/721、39/39、lint 全绿。
 
 ## 2026-11-14 · 分享轮档位（默认关）+ 测量台
 

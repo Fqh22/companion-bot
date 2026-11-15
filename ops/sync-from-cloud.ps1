@@ -81,5 +81,12 @@ Get-ChildItem $LocalDir -Filter "cloud-*.tgz" |
     Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-$KeepDays) } |
     ForEach-Object { Write-Log "清理过期 $($_.Name)"; Remove-Item $_.FullName -Force }
 
+# 在云端写「本地最近一次拉取成功」的时间戳：云端 healthcheck 用它判断异地副本
+# 是否连续多天没人拉（本地不是常开，不能只看 offsite.state）。
+$epoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+& ssh -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SshHost `
+    "echo $epoch > /opt/nonebot/ops/.local-pull-ts" 2>$null
+if ($LASTEXITCODE -ne 0) { Write-Log "写本地拉取时间戳失败（不影响本次备份）" }
+
 $total = (Get-ChildItem $LocalDir -Filter "cloud-*.tgz" | Measure-Object).Count
 Write-Log "=== pull done：新增 $pulled，本地共 $total 份 ==="

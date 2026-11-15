@@ -46,6 +46,8 @@ tar -C /opt/qqbot-data -cf - \
     . | tar -C "$STAGE/qqbot-data" -xf - || die "tar qqbot-data"
 
 # 3) nonebot data（排除 db）
+# data/files 是消息里的媒体缓存（2026-11-15 实测 1.7MB/15 个，可重放、会长大），
+# 不进备份；要留原文就删掉下面的 --exclude='files'。
 tar -C /opt/nonebot/data -cf - \
     --exclude='*.db' --exclude='*.db-wal' --exclude='*.db-shm' \
     --exclude='files' . | tar -C "$STAGE/nonebot-data" -xf - || die "tar nonebot-data"
@@ -56,7 +58,9 @@ tar -C /opt/nonebot -cf - \
     bot.py .env config.yaml app_core plugins 2>/dev/null \
     | tar -C "$STAGE/code" -xf - || log "warn: code tar"
 cp /etc/systemd/system/nonebot.service "$STAGE/nonebot.service" 2>/dev/null || true
-cp -a /opt/nonebot/ops/*.sh "$STAGE/ops/" 2>/dev/null || true
+# ops 下的入口脚本与运维 python 都进备份：云端有些 .py 只在机器上（export-*/probe-*），
+# 不备份的话重装/恢复演练会丢。日志、state、ops.env（含 webhook 等配置）明确不备。
+cp -a /opt/nonebot/ops/*.sh /opt/nonebot/ops/*.py "$STAGE/ops/" 2>/dev/null || true
 
 # 5) 打包 + 校验 + 轮转
 tar -C "$STAGE" -czf "$OUT" . || die "tar pack"

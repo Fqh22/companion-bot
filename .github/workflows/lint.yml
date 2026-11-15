@@ -18,6 +18,23 @@ jobs:
         run: python ops/lint-layers.py
       - name: 密钥扫描
         run: python ops/scan-secrets.py
+      # 2026-11-15 两次踩坑：.ps1 丢 BOM 后 PS 5.1 按 GBK 解析中文直接语法错；
+      # 手工 scp 又让云端 ops/*.sh 丢了 +x，cron 静默停摆一天。两条都用 CI 守住。
+      - name: PowerShell 脚本必须带 UTF-8 BOM
+        run: |
+          python - <<'PY'
+          import subprocess, sys
+          files = subprocess.check_output(["git", "ls-files", "*.ps1"], text=True).split()
+          bad = [f for f in files if open(f, "rb").read(3) != b"\xef\xbb\xbf"]
+          print("ps1 脚本:", len(files), "缺 BOM:", bad)
+          sys.exit(1 if bad else 0)
+          PY
+      - name: ops 入口脚本必须有可执行位
+        run: |
+          for f in $(git ls-files 'ops/*.sh'); do
+            if [ ! -x "$f" ]; then echo "缺可执行位: $f"; exit 1; fi
+          done
+          echo "ok: $(git ls-files 'ops/*.sh' | wc -l) 个脚本"
 
   test:
     runs-on: ubuntu-latest

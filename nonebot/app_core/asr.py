@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -74,7 +75,10 @@ def _silk_to_wav(src: Path, dst: Path) -> bool:
 
 def to_wav(src: Path) -> Path | None:
     """任意音频 → 16k 单声道 wav；失败返回 None（格式不支持/文件损坏）。"""
-    dst = Path(tempfile.mkstemp(prefix="asr-", suffix=".wav")[1])
+    # 接管 mkstemp 的 fd 并立刻关掉：丢掉的话每转一次泄漏一个 fd。
+    fd, name = tempfile.mkstemp(prefix="asr-", suffix=".wav")
+    os.close(fd)
+    dst = Path(name)
     try:
         r = subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-i", str(src),

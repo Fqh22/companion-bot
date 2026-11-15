@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 from pathlib import Path
 
@@ -68,9 +69,14 @@ async def synth(text: str, *, voice: str = VOICE_ID,
     try:
         import pilk
 
-        out = Path(tempfile.mkstemp(prefix="tts-", suffix=".silk")[1])
-        raw = Path(tempfile.mkstemp(prefix="tts-", suffix=".pcm")[1])
-        raw.write_bytes(pcm)
+        # mkstemp 的 fd 必须显式接管：丢掉会每合成一条泄漏一个 fd（最终 EMFILE）。
+        out_fd, out_name = tempfile.mkstemp(prefix="tts-", suffix=".silk")
+        raw_fd, raw_name = tempfile.mkstemp(prefix="tts-", suffix=".pcm")
+        os.close(out_fd)
+        out = Path(out_name)
+        raw = Path(raw_name)
+        with os.fdopen(raw_fd, "wb") as f:
+            f.write(pcm)
         pilk.encode(str(raw), str(out), pcm_rate=PCM_RATE)
         raw.unlink(missing_ok=True)
         return out if out.exists() and out.stat().st_size > 0 else None

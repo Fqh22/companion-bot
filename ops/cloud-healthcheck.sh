@@ -172,6 +172,27 @@ esac
 noexec=$(find /opt/nonebot/ops -maxdepth 1 -name '*.sh' ! -perm -u+x -printf '%f ' 2>/dev/null)
 [ -n "${noexec:-}" ] && probs+=("运维脚本丢失可执行位：$noexec")
 
+# 本地拉取：家里机器不是常开，靠登录时拉。sync-from-cloud.ps1 拉成功后会在
+# 云端写 .local-pull-ts；超过 8 天没更新，说明「异地那份」断了，只剩同机备份。
+lp=$("$PY" - /opt/nonebot/ops/.local-pull-ts 2>/dev/null <<'PY'
+import os, sys, time
+p = sys.argv[1]
+if not os.path.exists(p):
+    print("missing"); raise SystemExit
+try:
+    ts = float(open(p, encoding="utf-8").read().strip())
+except Exception:
+    print("bad"); raise SystemExit
+age = time.time() - ts
+print("stale:%.0fd" % (age / 86400) if age > 8 * 86400 else "ok")
+PY
+)
+case "$lp" in
+    bad)     probs+=("本地拉取时间戳损坏") ;;
+    stale:*) probs+=("本地备份超过 8 天没拉取（${lp#stale:}）") ;;
+    # missing 不告警：还没跑过本地拉取时不该每 5 分钟响一次
+esac
+
 now=$(date +%s)
 fail_count=0; last_alert=0
 if [ -f "$STATE" ]; then
