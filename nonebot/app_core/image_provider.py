@@ -8,6 +8,7 @@ DeepSeek 没有图像生成接口（2026-11-15 核对 70 页文档，vision 是�
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -53,9 +54,13 @@ async def generate(prompt: str, size: str = SIZE, timeout: float = 90.0) -> Path
                 return None
     except Exception:  # noqa: BLE001
         return None
-    out = Path(tempfile.mkstemp(prefix="draw-", suffix=".png")[1])
+    # mkstemp 的 fd 必须显式接管：直接丢掉，Windows 上文件会被本进程锁住、
+    # Linux 上每画一张泄漏一个 fd（长跑最终 EMFILE，日志和库都打不开）。
+    fd, name = tempfile.mkstemp(prefix="draw-", suffix=".png")
+    out = Path(name)
     try:
-        out.write_bytes(img.content)
+        with os.fdopen(fd, "wb") as f:
+            f.write(img.content)
     except Exception:  # noqa: BLE001
         return None
     return out
@@ -66,7 +71,10 @@ def _cleanup(path: Path, ttl: float = 3600.0) -> None:
     try:
         now = time.time()
         for q in Path(path).parent.glob("draw-*.png"):
-            if now - q.stat().st_mtime > ttl:
-                q.unlink(missing_ok=True)
+            try:
+                if now - q.stat().st_mtime > ttl:
+                    q.unlink(missing_ok=True)
+            except OSError:
+                continue      # 单个文件删不掉，不该中止整轮清理
     except Exception:  # noqa: BLE001
         pass

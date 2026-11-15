@@ -2,6 +2,21 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-15 · 双盲审查修复：语音记账重复 / 画图 fd 泄漏 / 发送静默
+
+- 两个视角盲审 `34e7253..528f970`（表达单元 / Part 协议、语音、画图），主审逐条核实后修 8 处。
+- `turn.compose`：语音转写会被后面的「补充」块再拼一遍，历史摘要变成
+  「[语音] X 补充：X」；文件 + 语音同轮还会覆盖文件摘要。改为语音只记一份、补充只服务文件轮。
+- `image_provider`：`mkstemp` 返回的 fd 被直接丢弃（Windows 锁文件、Linux 每画一张
+  泄漏一个 fd），改为 `os.fdopen` 接管；`_cleanup` 单个文件删不掉不再中止整轮。
+- 语音/画图失败不再静默：`_speak_later`、`_draw_later` 失败补一句文字；
+  `runner._send_part` 对「声明支持但发送失败」的 voice 也降级；出站 `audio` 接进 runner。
+- 画图改走 `Part("image")`：通道 `forms` 本来就没有 drawing，docstring 也写「画出来就是一张图」。
+- 入站语音转写的 `Part` 改回 `form="text"` + `meta={"voice": true}`，`parts_text` 不再丢转写。
+- 修掉两个「假测试」：`smoke-all` 的空 form 断言恒真；`test-runner` 桩通道声明 voice 却从不记录。
+  新增：语音摘要只记一份、语音三种发送路径（会发 / 不支持 / 发送失败）的断言。
+- 验证：CI 绿；云端 `ops/verify.sh` 五件套全过。
+
 ## 2026-11-15 · 部署硬化：脚本权限位 / 验证门 / 备份与健康检查停摆一天
 
 - **事故**：手工 scp 覆盖 `ops/` 时丢了可执行位（云端全变 644）。cron 直接执行

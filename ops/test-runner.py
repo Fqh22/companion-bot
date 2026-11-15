@@ -37,6 +37,7 @@ class FakeChannel:
     def __init__(self) -> None:
         self.texts: list[str] = []
         self.images: list[str] = []
+        self.voices: list[str] = []
         self.typing_on = 0
         self.typing_off = 0
 
@@ -48,6 +49,8 @@ class FakeChannel:
             return await self.send_text(session, part.content)
         if part.form == "image":
             return await self.send_image(session, part.content)
+        if part.form == "voice":
+            return await self.send_voice(session, part.content)
         return False
 
     async def send_text(self, session: str, text: str) -> bool:
@@ -56,6 +59,10 @@ class FakeChannel:
 
     async def send_image(self, session: str, path: str) -> bool:
         self.images.append(path)
+        return True
+
+    async def send_voice(self, session: str, path: str) -> bool:
+        self.voices.append(path)
         return True
 
     async def typing(self, session: str, on: bool) -> None:
@@ -111,6 +118,29 @@ async def main() -> None:
     await TurnRunner(FakeEngine(["a。"], OutboundMessage(chunks=["b。"])),
                      ch3, deadline=5).run(InboundMessage(session="private:3", text="hi"))
     check("发送失败不抛异常", ch3.texts == [], str(ch3.texts))
+
+    # 4. 语音：通道会发就照发；不支持 / 发送失败都降级成文字，不静默丢
+    ch4 = FakeChannel()
+    await TurnRunner(FakeEngine([], OutboundMessage(audio=["v.silk"])), ch4, deadline=5).run(
+        InboundMessage(session="private:4", text="hi"))
+    check("语音 Part 走 send_part", ch4.voices == ["v.silk"], str(ch4.voices))
+
+    class NoVoiceChannel(FakeChannel):
+        forms = {"text", "image"}
+    ch5 = NoVoiceChannel()
+    await TurnRunner(FakeEngine([], OutboundMessage(audio=["v.silk"])), ch5, deadline=5).run(
+        InboundMessage(session="private:5", text="hi"))
+    check("通道不支持语音时降级成文字",
+          any("本来是语音" in t for t in ch5.texts), str(ch5.texts))
+
+    class VoiceFailChannel(FakeChannel):
+        async def send_voice(self, session, path):
+            return False
+    ch6 = VoiceFailChannel()
+    await TurnRunner(FakeEngine([], OutboundMessage(audio=["v.silk"])), ch6, deadline=5).run(
+        InboundMessage(session="private:6", text="hi"))
+    check("语音发送失败也降级成文字",
+          any("本来是语音" in t for t in ch6.texts), str(ch6.texts))
 
     passed = sum(1 for r in RESULTS if r)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")

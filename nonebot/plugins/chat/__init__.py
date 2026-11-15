@@ -87,10 +87,16 @@ async def _draw_later(sid: str, ask: str) -> None:
 
         path = await image_provider.generate(ask)
         if not path:
-            logger.info("[chat] 画图返回空（额度/内容审核/网络），跳过")
+            # 文字回复可能已经说了「画好了」：静默会让用户以为机器人坏了
+            try:
+                await QQChannel().send_text(sid, "这次没画出来，等下再试。")
+            except Exception:  # noqa: BLE001
+                pass
+            logger.info("[chat] 画图返回空（额度/内容审核/网络），已补一句提示")
             return
         image_provider._cleanup(path)
-        ok = await QQChannel().send_part(sid, Part("drawing", str(path)))
+        # 画出来的图就是一张图：走 image 形式，通道不用知道「生成」还是「已有」
+        ok = await QQChannel().send_part(sid, Part("image", str(path)))
         logger.info(f"[chat] drawing sent={ok} {sid} {path.stat().st_size} 字节")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
@@ -114,11 +120,18 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
         if not silk:
             logger.info("[chat] 语音合成返回空，跳过")
             return
-        # 走协议入口而不是直接调 send_voice：形式分发和降级都在 runner/adapter 里，
-        # 直接调原语等于绕过统一出口（这就是之前「加一种形式要改三处」的老路）。
+        # 走协议入口而不是直接调 send_voice：加形式只改 adapter。
+        # 但这条链路在 runner 之外（文字回复已经发完才合成语音），所以失败要自己
+        # 补一句——他明确要了语音，静默等于漏回。
         from app_core.message import Part
 
-        ok = await QQChannel().send_part(sid, Part("voice", str(silk)))
+        ch = QQChannel()
+        ok = await ch.send_part(sid, Part("voice", str(silk)))
+        if not ok:
+            try:
+                await ch.send_text(sid, "（语音没发出去，文字顶上）")
+            except Exception:  # noqa: BLE001
+                pass
         logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")

@@ -49,12 +49,14 @@ class Turn:
                       f"{('，' + note) if note else ''}] {text[:300]}…")
         # 语音转写：形式来自 meta，前缀只在渲染时加（数据层是干净的文本）
         _voice = bool((self.meta or {}).get("voice"))
-        if _voice and self.texts:
+        if _voice and self.texts and not self.file:
             parts.extend("[语音] " + t for t in self.texts)
+            # 只记一份：以前后面的「补充」块会把同一段转写再拼一次，
+            # 语音历史的摘要变成「[语音] X 补充：X」。
             stored = "[语音] " + " ".join(self.texts)[:300]
         else:
             parts.extend(self.texts)
-        if stored and self.texts:
+        if self.file and stored and self.texts:
             # 文件+补充说明：补充那句也要进历史，否则总结时它凭空消失
             stored += " 补充：" + " ".join(self.texts)[:200]
         if not parts:

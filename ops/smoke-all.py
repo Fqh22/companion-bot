@@ -546,6 +546,9 @@ async def main() -> None:
         _t = tq.take("g1")
         check("turn.take 取走并清空", not tq.has("g1") and not _t.empty())
         check("turn.compose 出正文", isinstance(_t.compose()[0], str))
+        _tv = turn_mod.Turn(texts=["明天几点开会"], meta={"voice": True})
+        _vp, _vs = _tv.compose()
+        check("turn.compose 语音不重复记账", _vs == "[语音] 明天几点开会", str(_vs))
         _t2 = turn_mod.Turn()
         _t2.merge(turn_mod.Turn(texts=["补充"]))
         check("turn.empty", not _t2.empty())
@@ -609,9 +612,12 @@ async def main() -> None:
               message_mod.Part("voice", "/tmp/v.silk").form == "voice")
         check("message: text 拼接",
               message_mod.parts_text(message_mod.text_parts(["甲", "乙"])) == "甲乙")
-        check("message: 空 form 会被拒",
-              (lambda: [message_mod.Part("") for _ in range(1)] and False)()
-              if False else True)
+        _empty_form_rejected = False
+        try:
+            message_mod.Part("")
+        except ValueError:
+            _empty_form_rejected = True
+        check("message: 空 form 会被拒", _empty_form_rejected)
         check("ocr: 布局标记被清掉",
               ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "hello")
         check("ocr: 接口地址", ocr_mod.OCR_API.endswith("/v1/tools/ocr"))

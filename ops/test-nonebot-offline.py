@@ -2395,6 +2395,12 @@ async def main() -> None:
           stored_f is not None and "帮我看看" in stored_f and len(stored_f) < 500,
           str(stored_f)[:60])
 
+    v1 = turn_mod.Turn(texts=["明天几点开会"], meta={"voice": True})
+    vp, vs = v1.compose()
+    check("语音轮：正文带 [语音] 前缀", vp == "[语音] 明天几点开会", vp)
+    check("语音轮：摘要只记一份（不再追加「补充」）",
+          vs == "[语音] 明天几点开会", str(vs))
+
     check("只有图片时给占位正文",
           turn_mod.Turn(images=["/tmp/a.jpg"]).compose()[0] == "[发了图片]")
 

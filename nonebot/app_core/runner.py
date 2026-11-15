@@ -77,10 +77,15 @@ class TurnRunner:
         forms = getattr(self.channel, "forms", None) or {"text", "image"}
         if part.form in forms:
             try:
-                return bool(await self.channel.send_part(session, part))
+                ok = bool(await self.channel.send_part(session, part))
             except Exception as e:  # noqa: BLE001
                 log.warning("[runner] 发送 %s 失败：%s", part.form, e)
-                return False
+                ok = False
+            if not ok and part.form == "voice":
+                # 声明支持 != 发得出去：合成/上传失败时也要有文字兜底
+                return await self._send_part(
+                    session, _Part("text", "（这条本来是语音，这里发不了）"))
+            return ok
         if part.form == "voice":
             # 语音发不了就说一句，不要静默丢——用户会以为漏回了
             return await self._send_part(session, _Part("text", "（这条本来是语音，这里发不了）"))
@@ -163,6 +168,11 @@ class TurnRunner:
         for path in out.images:
             try:
                 await self._send_part(msg.session, _Part("image", path))
+            except Exception:  # noqa: BLE001
+                pass
+        for path in out.audio:
+            try:
+                await self._send_part(msg.session, _Part("voice", path))
             except Exception:  # noqa: BLE001
                 pass
         return out
