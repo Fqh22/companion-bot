@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import tempfile
 import time
 from datetime import datetime
@@ -83,9 +84,9 @@ async def _speak_later(sid: str, text: str, parts: int) -> None:
     try:
         from app_core import tts
 
+        # 读完整回复（截 300 字），不再只取最后一段——
+        # 实测 85 字的回复最后一段只有 10 字，听上去像被掐断。
         say = (text or "").strip()
-        if parts > 1:
-            say = say.split("。")[-2] + "。" if "。" in say else say[:120]
         if len(say) > 300:
             say = say[:300]
         silk = await tts.synth(say)
@@ -193,10 +194,11 @@ class QQChannel:
             if not p.exists():
                 logger.warning(f"[chat] 语音文件不存在：{p}")
                 return False
-            # 和表情包同理：传 bytes，适配器编成 base64；
-            # 传 Path 会变 file:// 宿主机路径，OneBot 跑在容器里看不到。
+            # image(bytes) 会自动转 base64，但 record 不一定——实测直接把
+            # bytes 传进去 QQ 播不了。这里显式编成 base64:// 前缀。
             data = await asyncio.to_thread(p.read_bytes)
-            await chat.send(MessageSegment.record(data))
+            b64 = base64.b64encode(data).decode("ascii")
+            await chat.send(MessageSegment.record(f"base64://{b64}"))
             return True
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 语音发送失败：{type(e).__name__}: {e}")
