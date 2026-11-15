@@ -133,7 +133,7 @@ from app_core import (  # noqa: E402
     intent as intent_mod, kb as kb_mod, learn as learn_mod,
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     memory_common as memory_common_mod, memory_embed as memory_embed_mod,
-    memory_instant as memory_instant_mod,
+    memory_instant as memory_instant_mod, insight as insight_mod,
     memory_index as memory_index_mod, memory_store as memory_store_mod,
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
     remind as remind_mod, retrieval as retrieval_mod,
@@ -601,6 +601,7 @@ async def main() -> None:
         # ---------- prompt / pacing / proactive / summarize / tool_loop / config / llm ----------
         # 这七个模块以前只被间接调用（经 chat），没有直接体检项——
         # link-check 现在会查「每个模块都进了 smoke-all」，所以补上。
+        check("insight: 提示词要求引用来源", "sources" in insight_mod.INSIGHT_SYSTEM)
         from app_core import alerts as alerts_mod
         check("alerts: 计数函数不抛", isinstance(alerts_mod.recent(1.0), dict))
         check("alerts: 记录不抛", alerts_mod.record("info", "smoke_test", "自检") is None)

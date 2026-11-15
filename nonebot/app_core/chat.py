@@ -1082,6 +1082,16 @@ class ChatCore(ChatTurnMixin):
                         _w = _wiki.archive_stale()
                         if _w:
                             log.info("wiki 归档：%d 页", len(_w))
+                        # 周度反思：把最近记忆压成「理解」（type=insight）。
+                        # 必须有 sources，没出处的判断直接丢弃（insight.py 里校验）。
+                        try:
+                            from app_core import insight as _insight
+                            _ins = await _insight.generate(self.memory, self)
+                            if _ins:
+                                log.info("周度反思：写入 %d 条", len(_ins))
+                        except Exception as e:  # noqa: BLE001
+                            log.debug("周度反思失败：%s", e)
+                            alerts.record("warn", "insight_failed", str(e)[:200])
                 except Exception as e:  # noqa: BLE001
                     log.debug("wiki 归档失败：%s", e)
                     alerts.record("warn", "wiki_archive_failed", str(e)[:200])

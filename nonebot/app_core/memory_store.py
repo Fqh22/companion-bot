@@ -109,6 +109,8 @@ class StoreMixin:
         vec: list[float] | None = None,
         followups: list[str] | None = None,
         range_key: str = "",
+        mtype: str = "fact",          # fact / insight：区分「他说过什么」和「我理解他怎样」
+        sources: list[str] | None = None,   # insight 的来源 doc_id；空 = 无出处，不允许
     ) -> str:
         # 幂等：同一段对话重复固化时直接返回已有 doc_id，不写第二条
         if range_key:
@@ -144,6 +146,10 @@ class StoreMixin:
             "followups": followups or [],
             # 来源可追溯：哪段对话、哪个水位区间产生的
             "source_range": range_key,
+            # 记忆类型：fact 是「他说过什么」，insight 是「我理解他怎样」。
+            # insight 必须有 sources——没有出处的理解就是幻觉。
+            "type": mtype,
+            "sources": list(sources or []),
         }
         c = self._conn()
         with c:
