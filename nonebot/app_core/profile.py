@@ -28,6 +28,10 @@ FIELDS = ("职业与求职", "家庭", "技术与项目", "审美与偏好", "�
 # 每个字段一句话，太长就截。注入时总共控制在 200 字内。
 FIELD_MAX = 46
 COMPACT_MAX = 200
+# 注入顺序 ≠ 字段定义顺序。compact 超长时从尾部丢，而「明确讨厌」是雷区，
+# 丢它比丢「作息与身体」严重得多——前五个字段各 46 字就 230 > 200，
+# 按 FIELDS 原顺序拼时雷区永远进不去（自审发现，2026-11-15）。
+_INJECT_ORDER = ("明确讨厌",) + tuple(k for k in FIELDS if k != "明确讨厌")
 # 低于这个置信度的字段不注入：画像是每轮常驻的，错一条会一直错。
 MIN_CONF = 0.6
 # 画像会过期：这么久没有**新证据**，就不信了，也不再注入、并从库里删掉。
@@ -129,7 +133,7 @@ def compact(fields: dict[str, str], conf: dict[str, float] | None = None,
     置信度不够的字段直接不注入——宁可少说一句，也不要每轮都念错一条。
     """
     parts = []
-    for k in FIELDS:
+    for k in _INJECT_ORDER:
         v = fields.get(k)
         if not v:
             continue
