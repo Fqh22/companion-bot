@@ -69,7 +69,10 @@ from app_core import memory as memory_mod      # noqa: E402
 from app_core import retrieval as retrieval_mod  # noqa: E402
 
 from app_core import mood as mood_mod          # noqa: E402
+from app_core import mood_store as mood_store_mod  # noqa: E402
+from app_core import followup_store as followup_store_mod  # noqa: E402
 from app_core import remind as remind_mod      # noqa: E402
+from app_core.scheduling import remind as remind_store_mod  # noqa: E402
 from app_core import summarize as summarize_mod  # noqa: E402
 from app_core import tools as tools_module    # noqa: E402
 
@@ -82,13 +85,13 @@ chat_mod.DB = TMP / "chat.db"
 chat_mod.DATA = TMP           # 只在 init_db 里用来建目录，Windows 上跑测试也不会碰 /opt
 memory_mod.DB = TMP / "livingmemory.db"
 kb_mod.DB = TMP / "chat.db"
-mood_mod.STATE_DIR = TMP / "mood"
-mood_mod.STATE = TMP / "mood" / "state.json"
-mood_mod.CHAT_DB = TMP / "chat.db"
+mood_store_mod.STATE_DIR = TMP / "mood"
+mood_store_mod.STATE = TMP / "mood" / "state.json"
+mood_store_mod.CHAT_DB = TMP / "chat.db"
 learn_mod.RAW = TMP / "raw"
 learn_mod.CHAT_DB = TMP / "chat.db"
-remind_mod.DB = TMP / "chat.db"
-followup_mod.DB = TMP / "chat.db"
+remind_store_mod.DB = TMP / "chat.db"
+followup_store_mod.DB = TMP / "chat.db"
 files_mod.SAVE_DIR = TMP
 files_mod.IMAGE_DIR = TMP / "images"
 files_mod.PENDING_JSON = TMP / "last-file.json"

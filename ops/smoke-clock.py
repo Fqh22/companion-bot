@@ -32,7 +32,7 @@ except Exception:  # noqa: BLE001
 TMP = Path(tempfile.mkdtemp(prefix="clock-smoke-"))
 os.environ.setdefault("QQBOT_ROOT", str(TMP))
 
-from app_core import mood, profile, scheduler  # noqa: E402
+from app_core import mood, mood_store, profile, scheduler  # noqa: E402
 
 FAIL = 0
 
@@ -46,7 +46,7 @@ def check(name: str, cond: bool, extra: str = "") -> None:
 
 def main() -> int:
     tmp = TMP
-    mood.STATE_DIR, mood.STATE = tmp, tmp / "state.json"
+    mood_store.STATE_DIR, mood_store.STATE = tmp, tmp / "state.json"
     now = time.time()
 
     st = dict(mood.load())

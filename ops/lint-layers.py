@@ -239,6 +239,44 @@ def check_adapters(core: Path) -> None:
                     "（只走 engine / runner / commands / delivery 门面）")
 
 
+# 已知循环依赖基线：只许减少，不许新增。拆掉一组就删一条（会 WARN 提醒）。
+CYCLE_BASELINE = {
+    ("learn.py", "review.py"),
+    ("learn.py", "wiki.py"),
+}
+
+
+def check_cycles(mods: dict[Path, str], core: Path) -> None:
+    """模块间不允许新增循环依赖；存量基线里的可以继续存在，但删掉要同步收线。"""
+    graph: dict[str, set[str]] = {}
+    for p in mods:
+        rel = p.relative_to(core).as_posix()
+        deps: set[str] = set()
+        for t in _imports_of(p):
+            key = t[len("app_core."):] if t.startswith("app_core.") else t
+            q = core / (key.replace(".", "/") + ".py")
+            if q in mods:
+                deps.add(q.relative_to(core).as_posix())
+        graph[rel] = deps
+    found: set[tuple[str, ...]] = set()
+    def dfs(start: str, node: str, path: list[str], seen: set[str]) -> None:
+        for nxt in graph.get(node, ()):
+            if nxt == start and len(path) > 1:
+                found.add(tuple(sorted(set(path))))
+            elif nxt not in seen and len(path) <= 4:
+                dfs(start, nxt, path + [nxt], seen | {nxt})
+    for start in graph:
+        dfs(start, start, [start], {start})
+    for group in sorted(found):
+        if group not in CYCLE_BASELINE:
+            FAILS.append(
+                f"新增循环依赖：{' <-> '.join(group)}"
+                "（拆成单向；基线见 lint-layers.py 的 CYCLE_BASELINE）")
+    for group in sorted(CYCLE_BASELINE - found):
+        WARNS.append(
+            f"循环基线里这组已经不存在：{' <-> '.join(group)}（删掉 CYCLE_BASELINE 里这行，收紧）")
+
+
 OUTSOURCED = frozenset({"web", "asr", "llm"})
 OUTSOURCED_ALLOWED = frozenset({
     "chat", "chat_turn", "memory", "tools", "engine", "group", "__init__", "perception",
@@ -276,6 +314,7 @@ def main() -> int:
     check_kernel(mods, core)
     check_plugins(core)
     check_adapters(core)
+    check_cycles(mods, core)
     check_outsourced(core)
     for x in WARNS:
         print("WARN", x)

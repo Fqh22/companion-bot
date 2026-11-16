@@ -20,8 +20,7 @@ MAX_TEXT = 200
 
 
 def _db():
-    from app_core import remind
-    return remind.DB
+    return DB
 
 
 def _conn() -> sqlite3.Connection:

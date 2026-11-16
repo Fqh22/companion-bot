@@ -132,6 +132,9 @@ class FakeClient:
 
 
 # ---------- 路径重定向 ----------
+from app_core.scheduling import remind as remind_store_mod  # noqa: E402
+from app_core.scheduling import scheduler as sched_store_mod  # noqa: E402
+
 from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod, engine as engine_mod,
     approval as approval_mod, delivery as delivery_mod,
@@ -241,15 +244,15 @@ check("identity 有 IdentityResolver", hasattr(identity_mod, "IdentityResolver")
 check("delivery 有 plan_delivery", hasattr(delivery_mod, "plan_delivery"))
 check("approval 有 ApprovalRequest", hasattr(approval_mod, "ApprovalRequest"))
 check("followup_store 有 _conn", hasattr(fu_store_mod, "_conn"))
-remind_mod.DB = TMP / "chat.db"
-mood_mod.STATE_DIR, mood_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
-mood_mod.CHAT_DB = TMP / "chat.db"
+remind_store_mod.DB = TMP / "chat.db"
+mood_store_mod.STATE_DIR, mood_store_mod.STATE = TMP / "mood", TMP / "mood" / "state.json"
+mood_store_mod.CHAT_DB = TMP / "chat.db"
 check("mood_domain 有 settle", hasattr(mood_domain_mod, "settle"))
 check("mood_store 有 load", hasattr(mood_store_mod, "load"))
 files_mod.SAVE_DIR, files_mod.IMAGE_DIR = TMP / "files", TMP / "files" / "images"
 files_mod.PENDING_JSON = TMP / "last-file.json"
-sched_mod.CHAT_DB = str(TMP / "chat.db")
-sched_mod.CLEANUP_LOG = str(TMP / "cleanup.log")
+sched_store_mod.CHAT_DB = str(TMP / "chat.db")
+sched_store_mod.CLEANUP_LOG = str(TMP / "cleanup.log")
 
 con = sqlite3.connect(memory_mod.DB)
 con.executescript((CODE / "app_core" / "memory_schema.sql").read_text(encoding="utf-8"))

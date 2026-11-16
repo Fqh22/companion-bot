@@ -34,9 +34,6 @@ from app_core.mood_domain import (  # noqa: F401
     settle, task_cost,
 )
 from app_core.mood_store import (  # noqa: F401
-    apply_progress, apply_task, load, recent, save, snapshot, summary,
+    CHAT_DB, STATE, STATE_DIR, apply_progress, apply_task, load, recent, save,
+    snapshot, summary,
 )
-
-STATE_DIR = _paths.DATA / "plugin_data/mood"
-STATE = STATE_DIR / "state.json"
-CHAT_DB = _paths.DATA / "chat.db"

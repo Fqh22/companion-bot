@@ -1,10 +1,11 @@
-"""[orchestration] followup 的 SQLite 读写；DB 通过 app_core.followup 动态读取。"""
+"""[orchestration] followup 的 SQLite 读写；DB 路径在模块内定义（测试直接补本模块）。"""
 from __future__ import annotations
 
 import logging
 import sqlite3
 import time
 
+from app_core import paths as _paths
 from app_core import textsim
 from app_core.followup_domain import (  # noqa: F401
     ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS, KEEP_MAX_OPEN,
@@ -14,10 +15,11 @@ from app_core.followup_domain import (  # noqa: F401
 
 log = logging.getLogger("qqbot.followup")
 
+DB = _paths.DATA / "chat.db"
+
 
 def _conn() -> sqlite3.Connection:
-    from app_core import followup
-    c = sqlite3.connect(followup.DB, timeout=15)
+    c = sqlite3.connect(DB, timeout=15)
     c.execute("PRAGMA journal_mode=WAL")
     return c
 

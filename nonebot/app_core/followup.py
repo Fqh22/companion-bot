@@ -25,9 +25,7 @@ from app_core.followup_domain import (  # noqa: F401
     _overlap, _signal_hit, askable, resolve_from,
 )
 from app_core.followup_store import (  # noqa: F401
-    _candidates, _conn, add, add_many, apply, cancel_ref, confirm_pending,
+    DB, _candidates, _conn, add, add_many, apply, cancel_ref, confirm_pending,
     describe_statuses, due_for_asking, expire, init, last_asked, mark_asked,
     mark_done, pending, resolve, set_status, stats, texts_for,
 )
-
-DB = _paths.DATA / "chat.db"

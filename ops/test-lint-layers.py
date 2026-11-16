@@ -89,6 +89,14 @@ def main() -> int:
     check("adapters -> chat -> FAIL", rc == 1 and "adapters" in out, out[-400:])
     (tmp / "adapters" / "bad.py").unlink()
 
+    # 反例 6b：新增循环依赖
+    write(core, "cyc_a.py", '"""[domain] a"""\nfrom app_core import cyc_b\n')
+    write(core, "cyc_b.py", '"""[orchestration] b"""\nfrom app_core import cyc_a\n')
+    rc, out = run(core)
+    check("新增循环依赖 -> FAIL", rc == 1 and "循环依赖" in out and "cyc_a.py" in out, out[-400:])
+    (core / "cyc_a.py").unlink()
+    (core / "cyc_b.py").unlink()
+
     # 反例 7：插件直接 import 业务实现（不在冻结白名单里）
     write(tmp, "plugins/newplug/__init__.py", '"""plugin"""\nfrom app_core import learn\n')
     rc, out = run(core)

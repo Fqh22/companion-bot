@@ -29,13 +29,11 @@ CLEANUP_LOG = _paths.DATA / "memory-cleanup.log"
 
 
 def _chat_db():
-    from app_core import scheduler
-    return scheduler.CHAT_DB
+    return CHAT_DB
 
 
 def _cleanup_log():
-    from app_core import scheduler
-    return scheduler.CLEANUP_LOG
+    return CLEANUP_LOG
 
 # 定时任务表：(名字, 时, 分, 补跑窗口分钟)。
 # 为什么要有窗口：主循环是「跑一轮 → sleep 60s」，任务本身也会拖时间，

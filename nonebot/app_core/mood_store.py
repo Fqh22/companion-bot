@@ -1,6 +1,6 @@
 """[orchestration] mood 的状态文件与历史表读写。
 
-路径通过 app_core.mood 动态读取，测试对 mood.STATE / CHAT_DB 的补丁仍然有效。
+路径在模块内定义（派生自 paths.DATA），测试直接补本模块常量即可隔离。
 """
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import sqlite3
 import time
 from datetime import datetime, timedelta
 
+from app_core import paths as _paths
 from app_core.mood_domain import (  # noqa: F401
     DEFAULT, ENERGY_REST, PROGRESS_DELTA, PROGRESS_ENERGY,
     _bump, _note, describe, settle, task_cost,
@@ -16,20 +17,21 @@ from app_core.mood_domain import (  # noqa: F401
 
 HISTORY_KEEP_DAYS = 400
 
+STATE_DIR = _paths.DATA / "plugin_data/mood"
+STATE = STATE_DIR / "state.json"
+CHAT_DB = _paths.DATA / "chat.db"
+
 
 def _state():
-    from app_core import mood
-    return mood.STATE
+    return STATE
 
 
 def _state_dir():
-    from app_core import mood
-    return mood.STATE_DIR
+    return STATE_DIR
 
 
 def _chat_db():
-    from app_core import mood
-    return mood.CHAT_DB
+    return CHAT_DB
 
 
 def load() -> dict:
