@@ -65,6 +65,7 @@ from app_core import files as files_mod        # noqa: E402
 from app_core import followup as followup_mod  # noqa: E402
 from app_core import kb as kb_mod              # noqa: E402
 from app_core import learn as learn_mod        # noqa: E402
+from app_core import learn_store as learn_store_mod  # noqa: E402
 from app_core import memory as memory_mod      # noqa: E402
 from app_core import retrieval as retrieval_mod  # noqa: E402
 
@@ -1792,8 +1793,8 @@ async def main() -> None:
     finally:
         core.complete_raw = _old_raw
     check("提不出的事实进 pending", _cp == "pending", _cp)
-    _corr_txt = (learn_mod.CORRECTIONS.read_text(encoding="utf-8")
-                 if learn_mod.CORRECTIONS.exists() else "")
+    _corr_txt = (learn_store_mod.CORRECTIONS.read_text(encoding="utf-8")
+                 if learn_store_mod.CORRECTIONS.exists() else "")
     check("pending 不进行为清单", "我在深圳" not in _corr_txt)
     async def _fake_fact2(msgs, tools_arg=None, **kw):
         return {"content": json.dumps({"is_correction": True, "kind": "fact",
@@ -3149,10 +3150,10 @@ async def main() -> None:
         wiki_arch.DB = _saved_wdb
 
     # ---- 纠正回流：以前只写文件，聊天时看不见，等于没学到 ----
-    _saved_corr = learn_mod.CORRECTIONS
-    learn_mod.CORRECTIONS = _P(TMP) / "corrections.md"
+    _saved_corr = learn_store_mod.CORRECTIONS
+    learn_store_mod.CORRECTIONS = _P(TMP) / "corrections.md"
     try:
-        learn_mod.write_list(learn_mod.CORRECTIONS, "他纠正过我的",
+        learn_mod.write_list(learn_store_mod.CORRECTIONS, "他纠正过我的",
                              ["[图片] 别瞎猜糊图", "[文字] 别一口气发太长",
                               "[通用] 别只顺着说", "没标签的老条目"])
         got = learn_mod.recent_corrections(6)
@@ -3178,20 +3179,20 @@ async def main() -> None:
               any("没标签" in x for x in img_c) and any("没标签" in x for x in txt_c))
 
         # ---- 写入端：复盘写进来的纠正必须带标签，否则分流会退化 ----
-        _saved_w = (learn_mod.LEARN, learn_mod.CORRECTIONS,
-                    learn_mod.CURIOUS, learn_mod.PROFILE)
-        learn_mod.LEARN = _P(TMP) / "learn_w"
-        learn_mod.LEARN.mkdir(parents=True, exist_ok=True)
-        learn_mod.CORRECTIONS = learn_mod.LEARN / "corrections.md"
-        learn_mod.CURIOUS = learn_mod.LEARN / "curious.md"
-        learn_mod.PROFILE = learn_mod.LEARN / "self_profile.md"
+        _saved_w = (learn_store_mod.LEARN, learn_store_mod.CORRECTIONS,
+                    learn_store_mod.CURIOUS, learn_store_mod.PROFILE)
+        learn_store_mod.LEARN = _P(TMP) / "learn_w"
+        learn_store_mod.LEARN.mkdir(parents=True, exist_ok=True)
+        learn_store_mod.CORRECTIONS = learn_store_mod.LEARN / "corrections.md"
+        learn_store_mod.CURIOUS = learn_store_mod.LEARN / "curious.md"
+        learn_store_mod.PROFILE = learn_store_mod.LEARN / "self_profile.md"
         try:
             res_w = learn_mod.apply_review({
                 "learned": "当…时，做…", "profile": "我是他手机里的熟人",
                 "corrections": ["[图片] 别瞎猜糊图", "别一口气发太长", "[文字] 别催我"],
                 "curious": ["还没搞懂 X"], "resolved_curious": []},
                 day="2026-11-03")
-            raw_corr = learn_mod.CORRECTIONS.read_text(encoding="utf-8")
+            raw_corr = learn_store_mod.CORRECTIONS.read_text(encoding="utf-8")
             check("复盘写入的纠正保留原标签", "[图片] 别瞎猜糊图" in raw_corr, raw_corr[:40])
             check("没标签的纠正被补成通用", "[通用] 别一口气发太长" in raw_corr, raw_corr[-30:])
             check("apply_review 返回纠正条数", res_w["corrections"] == 3, str(res_w))
@@ -3199,9 +3200,9 @@ async def main() -> None:
                   not learn_mod.curious_ok("他的家庭情况还没提过"))
             check("真正的技术疑问保留",
                   learn_mod.curious_ok("跨库 join 和 livingmemory 会话语义搜索怎么解决的"))
-            check("复盘日记被写出", (learn_mod.LEARN / "2026-11-03.md").exists())
+            check("复盘日记被写出", (learn_store_mod.LEARN / "2026-11-03.md").exists())
             check("自我认知被更新",
-                  "熟人" in learn_mod.PROFILE.read_text(encoding="utf-8"))
+                  "熟人" in learn_store_mod.PROFILE.read_text(encoding="utf-8"))
             _img_after = learn_mod.recent_corrections(9, scene="image")
             _txt_after = learn_mod.recent_corrections(9, scene="text")
             check("写进去之后图片轮只带图片+通用",
@@ -3217,9 +3218,9 @@ async def main() -> None:
                      "缓存", "预算", "超时", "重试", "并发", "冷启动"]
             _seed = [f"[通用] 遇到{t}相关的问题时先看日志再动手，编号{i}"
                      for i, t in enumerate(_tops)]
-            learn_mod.write_list(learn_mod.CORRECTIONS, "他纠正过我的", _seed)
+            learn_mod.write_list(learn_store_mod.CORRECTIONS, "他纠正过我的", _seed)
             _kept = learn_mod.merge_list(
-                learn_mod.CORRECTIONS, "他纠正过我的", ["[通用] 全新的一条完全不同的规则"])
+                learn_store_mod.CORRECTIONS, "他纠正过我的", ["[通用] 全新的一条完全不同的规则"])
             check("合并去重后不超过上限，且保留最新那条",
                   len(_kept) <= 24 and _kept[-1].endswith("不同的规则"), str(len(_kept)))
 
@@ -3241,10 +3242,10 @@ async def main() -> None:
             _after_merge = learn_mod.read_list(_lp)
             check("写入时并掉近似重复", len(_after_merge) == 2, str(_after_merge))
         finally:
-            (learn_mod.LEARN, learn_mod.CORRECTIONS,
-             learn_mod.CURIOUS, learn_mod.PROFILE) = _saved_w
+            (learn_store_mod.LEARN, learn_store_mod.CORRECTIONS,
+             learn_store_mod.CURIOUS, learn_store_mod.PROFILE) = _saved_w
     finally:
-        learn_mod.CORRECTIONS = _saved_corr
+        learn_store_mod.CORRECTIONS = _saved_corr
 
     # ---- 图片图注：追加到原消息，下一轮就能看到 ----
     _rid = await core.remember("private:imgtest", "user", "[发了图片]（附了 1 张图）")
