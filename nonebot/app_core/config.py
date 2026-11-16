@@ -81,6 +81,10 @@ DEFAULTS = {
         # 2026-11-10 用户决定常开思考：清空会话也走思考，不再按「短句/无问号」关。
     # 分流逻辑保留在 _thinking_for 里，把这里改回 True 即可恢复。
     "thinking_casual": False,
+        # 取数并发（S2）：默认全 false = 与改造前完全一致。打开后 search/weather 并发跑，
+        # 受首字预算与总闸约束。读的是 llm.prepare_parallel（chat_turn.py），
+        # 不是 chat 段——此前 yaml 写在 llm 下、代码读 chat 下，两边都以为对方有。
+        "prepare_parallel": {"search": False, "weather": False},
     },
     "summary": {
         "model": "deepseek-chat",
@@ -96,6 +100,11 @@ DEFAULTS = {
         "api": "https://open.bigmodel.cn/api/paas/v4/embeddings",
         "model": "embedding-3",
         "dim": 2048,
+    },
+    "weather": {
+        # 留空 = 不查天气；填城市名（如 深圳）才会在「天气/下雨/出门」类消息里查一次。
+        "city": "",
+        "cache_minutes": 30,
     },
     "meme": {
         # 按 valence 正负分档；缺省时回落到 mood_threshold（见 ChatCore.__init__）

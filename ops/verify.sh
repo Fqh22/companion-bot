@@ -99,17 +99,20 @@ case "$MODE" in
     quick)
         run_suite "规范检查" "$OPS/lint-plugins.py"
         run_suite "分层依赖" "$OPS/lint-layers.py"
+        run_suite "配置同步" "$OPS/check-config-sync.py"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     pre)
         run_suite "规范检查" "$OPS/lint-plugins.py"
         run_suite "分层依赖" "$OPS/lint-layers.py"
+        run_suite "配置同步" "$OPS/check-config-sync.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     *)
         run_suite "规范检查" "$OPS/lint-plugins.py"
         run_suite "分层依赖" "$OPS/lint-layers.py"
+        run_suite "配置同步" "$OPS/check-config-sync.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         run_suite "全链路"   "$OPS/smoke-all.py"

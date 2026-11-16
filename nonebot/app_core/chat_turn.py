@@ -40,7 +40,9 @@ class ChatTurnMixin(CommitMixin):
         2. 总闸 = min(max(各路超时), 剩余预算)；剩余 <= 0.5s 时全降级，不把负数交给 wait；
         3. 每路独立降级（空结果），异常不抛出；指标区分 budget_exhausted / cancelled / error。
         """
-        cfg = (config.load().get("chat") or {}).get("prepare_parallel") or {}
+        # yaml 里 prepare_parallel 在 llm 段；旧代码读 chat 段，等于这个开关从来没生效过
+        # （默认全 false 恰好与串行一致，所以没人发现）。2026-11-16 对齐到 llm。
+        cfg = (config.load().get("llm") or {}).get("prepare_parallel") or {}
         want = {k: bool(cfg.get(k)) for k in ("weather", "search")}
         if not any(want.values()):
             await self._prepare_search(turn, user_text)
