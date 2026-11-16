@@ -15,12 +15,7 @@ except Exception:  # noqa: BLE001
 
 from app_core.web import clean_summary  # noqa: E402
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 def main() -> None:
@@ -41,10 +36,8 @@ def main() -> None:
     long = "字" * 400
     check("截断到 240", len(clean_summary(long)) == 240, str(len(clean_summary(long))))
 
-    passed = sum(1 for x in RESULTS if x)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -26,12 +26,7 @@ from app_core.runner import TurnRunner  # noqa: E402
 pacing.pace_seconds = lambda *a, **k: 0.0
 pacing.gap_seconds = lambda *a, **k: 0.0
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 class FakeChannel:
@@ -191,10 +186,8 @@ async def main() -> None:
     check("总上限默认放宽（不再是 45）", r_def.deadline >= 60, str(r_def.deadline))
     check("默认带无进展超时", r_def.stall_seconds > 0, str(r_def.stall_seconds))
 
-    passed = sum(1 for r in RESULTS if r)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))

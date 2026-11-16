@@ -15,12 +15,7 @@ except Exception:  # noqa: BLE001
 
 from app_core.self_check import looks_like_tag, parse  # noqa: E402
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 def main() -> None:
@@ -38,10 +33,8 @@ def main() -> None:
     check("流式判断像标签", looks_like_tag("[自检] 主="))
     check("流式判断不像", not looks_like_tag("我觉得"))
 
-    passed = sum(1 for x in RESULTS if x)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

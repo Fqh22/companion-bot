@@ -18,12 +18,7 @@ except Exception:  # noqa: BLE001
 from app_core import mood, paths  # noqa: E402
 from app_core.affect_port import CoreAffectPort  # noqa: E402
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 def main() -> None:
@@ -49,10 +44,8 @@ def main() -> None:
     check("observe 返回新状态", isinstance(out, dict) and "valence" in out)
     check("observe 后状态可读", bool(out) and "energy" in out)
 
-    passed = sum(1 for x in RESULTS if x)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

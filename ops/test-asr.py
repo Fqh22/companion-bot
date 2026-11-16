@@ -19,12 +19,7 @@ except Exception:  # noqa: BLE001
 
 from app_core import asr  # noqa: E402
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 def main() -> None:
@@ -55,10 +50,8 @@ def main() -> None:
     check("坏文件转码失败", asr.to_wav(bad) is None)
     bad.unlink(missing_ok=True)
 
-    passed = sum(1 for x in RESULTS if x)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

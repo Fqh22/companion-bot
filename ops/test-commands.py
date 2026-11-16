@@ -22,12 +22,7 @@ except Exception:  # noqa: BLE001
 from app_core.commands import (  # noqa: E402
     CommandContext, CommandRegistry, CommandSpec, default_registry)
 
-RESULTS: list[bool] = []
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    RESULTS.append(bool(cond))
-    print(("PASS " if cond else "FAIL ") + name + (f" | {extra}" if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 async def main() -> None:
@@ -70,10 +65,8 @@ async def main() -> None:
     out = await reg.dispatch("/ping", CommandContext(session="s", is_owner=True))
     check("ping 可用", bool(out) and out.startswith("pong"), str(out)[:40])
 
-    passed = sum(1 for x in RESULTS if x)
-    print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")
-    sys.exit(0 if passed == len(RESULTS) else 1)
+    return report()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(asyncio.run(main()))
