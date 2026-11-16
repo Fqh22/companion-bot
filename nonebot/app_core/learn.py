@@ -13,6 +13,9 @@ from pathlib import Path
 from app_core import paths as _paths
 
 from app_core import profile as profile_mod
+from app_core.learn_constants import (  # noqa: F401
+    SYSTEM_PROFILE, SYSTEM_RECALL, SYSTEM_REVIEW, SYSTEM_WEEKLY, _PROFILE_SPEC,
+)
 from app_core.notes_meta import (  # noqa: F401
     META_KEYS, _meta_field, note_label, note_meta, note_project,
     page_label, page_meta, parse_ts, set_meta,
@@ -32,27 +35,7 @@ RAW = LEARN / "raw"          # 对话原文（原始材料，不加工）
 MEM_DB = _paths.MEM_DB
 CHAT_DB = _paths.DATA / "chat.db"
 
-SYSTEM_REVIEW = (
-    "你在给自己记事。读今天真实发生过的对话，记下你真正会记住的东西："
-    "他的偏好、正在忙的事、约好的事、你该怎么对他。"
-    "另外挑出「他明确纠正过我、或者明确不喜欢我那样做」的，一条一句、能直接照着改。"
-    "再记下「他提到过、但当时没讲清楚或你没搞懂的事」，一条一句，以后聊到再问。"
-    "第一人称，像人记事，不要写「我是 AI 助手」这类身份说明；不确定的不编，寒暄和一次性闲聊不记。"
-)
-SYSTEM_PROFILE = (
-    "你在维护一份「自我认知档案」，按固定字段记录他。"
-    "只写长期有效的信息（他的处境、关系、项目、偏好、雷区），不写情绪表演、不写套话。"
-    "每个字段一句话、不超过 40 字；确实不知道的字段给空字符串，不要编。"
-    "不要用 QQ 号或数字称呼他，直接写「他」。字段是："
-    + "、".join(profile_mod.FIELDS) + "。"
-)
-
 # 给模型看的字段模板：从 FIELDS 生成，避免两边写死两处、改一处漏一处
-_PROFILE_SPEC = "{" + ",".join(
-    f'"{k}":{{"text":"一句话，不超过 40 字；不知道就空字符串",'
-    f'"confidence":0.0,"evidence":"今天对话里支撑它的原话片段",'
-    f'"changed":false}}'
-    for k in profile_mod.FIELDS) + "}"
 # confidence 用 0~1：你从这几天的对话里**确实知道**才给 0.8 以上；
 # 只是印象、或者从旧画像抄下来的，给 0.5 左右。低于 0.6 的字段不会被念出去。
 # evidence 只写**今天这段对话里**他亲口说过的话。今天没聊到这个字段就写空字符串——
@@ -62,21 +45,6 @@ _PROFILE_SPEC = "{" + ",".join(
 #   true  = 新信息、或者和旧画像不一致（换工作、搬家、改了偏好）；
 #   false = 只是在复述旧画像里已有的结论，措辞变了不算。
 # 判 false 时程序会**保留旧文本**，只按你给的 confidence 记账——所以别为了凑数改措辞。
-SYSTEM_WEEKLY = (
-    "你是一个长期陪伴用户的 AI 助手，每周给主人写一份简短的「记忆周报」。"
-    "基于这一周真实发生的记忆，用第一人称写，像朋友复盘：我这周记住了什么、"
-    "你最近在意什么、我打算跟进什么、我这周有什么变化。"
-    "另外必须单独检查一件事：对照【他纠正过我、不能再犯的】，看这周我有没有再犯；"
-    "再犯了就具体说哪次，没犯就一句带过，不要报喜不报忧。"
-    "不要罗列流水账，不要编造；450 字以内，分 3-4 个小段落，语气自然、带点幽默但不油腻。"
-)
-SYSTEM_RECALL = (
-    "你翻到几段很久没想起的记忆。用第一人称写一段短短的回忆，2-4 句，"
-    "像突然想起来那样：先说你想起什么，再说它为什么还留着。"
-    "不要罗列条目、不要标题、不要 Markdown、不要编造细节。只输出这段回忆。"
-)
-
-
 # ---------- 清单读写 ----------
 def profile_fields() -> dict[str, str]:
     """当前结构化画像。文件不在（还没跑过复盘）就返回空。"""
