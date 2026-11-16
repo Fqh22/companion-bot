@@ -15,15 +15,29 @@ import time
 
 import aiosqlite
 
-from app_core import (alerts, config, contradict, followup_store, insight,
-                      learn, maintenance, purge, summarize, wiki)
+from app_core import (alerts, config, contradict, followup, followup_store,
+                      insight, kb, learn, maintenance, mood, purge, summarize, wiki)
 from app_core import paths as _paths
+from app_core import vocab as vocab_mod
 
 log = logging.getLogger("qqbot.chat")
 
 # 与 chat.py 同源：测试改了这个常量就要一起改（见 test-nonebot-offline 的重定向段）。
-DB = _paths.DATA / "chat.db"
-SUMMARY_EVERY = 8
+DATA = _paths.DATA
+DB = DATA / "chat.db"
+SUMMARY_EVERY = 8          # 每 8 轮触发一次总结
+SUMMARY_BATCH = 40         # 每次最多总结多少条
+SUMMARY_MAX_FAILS = 3      # 连续失败几次后不再重试
+DIGEST_MAX = 600           # 滚动纪要的字数上限
+CATCHUP_MIN_IDLE = 600     # 追赶总结：距上次至少闲置 10 分钟
+CATCHUP_MIN_ROUNDS = 4     # 追赶总结：至少攒了 4 轮
+
+DIGEST_SYSTEM = (
+    "你在维护一段对话的「滚动纪要」，供之后的对话接着聊。"
+    "把旧纪要和这段新对话合成一段 200-300 字的纪要：保留在做什么、已经定下的结论、"
+    "悬而未决的问题、他的偏好和约定；删掉寒暄、重复和已经过时的细节。"
+    "用陈述句，不要第一人称，不要 Markdown，不要标题。只输出纪要正文。"
+)
 
 
 class SummaryMixin:

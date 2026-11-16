@@ -143,28 +143,6 @@ def _lock_owner() -> str:
     return f"{os.getpid()}@{socket.gethostname()}"
 
 
-def prompt_blocks(msgs: list[dict]) -> list[dict]:
-    """把一份 messages 拆成「块账」：每块是什么、占多少字符。
-
-    块边界就是 message 边界——prompt.py 里每个注入块都是一条独立 system，
-    所以不用改组装逻辑，也不用给每块加标记。label 取首行前 16 字：
-    现有块都以 [方括号] 或 【全角】 开头，够辨认。
-    """
-    out: list[dict] = []
-    for i, m in enumerate(msgs or []):
-        c = m.get("content")
-        if isinstance(c, str):
-            chars = len(c)
-            label = " ".join(c.split())[:16]
-        else:
-            # 多模态：content 是 [{type:text,...}, {type:image_url,...}]
-            chars = len(json.dumps(c, ensure_ascii=False))
-            label = "[多模态]"
-        out.append({"i": i, "role": str(m.get("role") or ""),
-                    "chars": chars, "label": label or "(空)"})
-    return out
-
-
 class ChatCore(HistoryMixin, SummaryMixin, ChatTurnMixin):
     """聊天编排器。**插件只许调下面列出的成员**（ops/lint-plugins.py 会查）。
 

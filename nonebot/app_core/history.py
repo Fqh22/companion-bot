@@ -15,10 +15,32 @@ import time
 import aiosqlite
 
 from app_core import paths as _paths
+from app_core import prompt as prompt_mod
 
 log = logging.getLogger("qqbot.chat")
 
 DB = _paths.DATA / "chat.db"
+_clip = prompt_mod.clip
+
+
+def prompt_blocks(msgs: list[dict]) -> list[dict]:
+    """把一份 messages 拆成「块账」：每块是什么、占多少字符。
+
+    从 chat.py 搬来（只被 _log_prompt 用）：块边界就是 message 边界——
+    prompt.py 里每个注入块都是一条独立 system。label 取首行前 16 字。
+    """
+    out: list[dict] = []
+    for i, m in enumerate(msgs or []):
+        c = m.get("content")
+        if isinstance(c, str):
+            chars = len(c)
+            label = " ".join(c.split())[:16]
+        else:
+            chars = len(json.dumps(c, ensure_ascii=False))
+            label = "[多模态]"
+        out.append({"i": i, "role": str(m.get("role") or ""),
+                    "chars": chars, "label": label or "(空)"})
+    return out
 
 
 class HistoryMixin:
