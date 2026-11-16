@@ -37,7 +37,9 @@
   `node --check app.js` 通过。云端**不重启预检**：全量 `verify.sh` **5/5**、
   `test-config-ui` 48/48、`test-batch3-guards` 24/24、
   **`test-prompt-golden --offline` 39/39**（legacy 字节未变）。
-- **部署**：本次为批次 3 首次部署，逐项结果见 `docs/05-改动台账.md` #5。
+- **部署**：一次通过（`4bea4c6`）：`verify.sh --pre` 3/3 → 重启 `active` → 全量 5/5；
+  `.deployed_sha=4bea4c6`，回滚点 `/opt/backup/code-20261116-164654.tgz`。
+  逐项结果见 `docs/05-改动台账.md` #5。面板是回环只读页，界面渲染需人工验收。
 
 ## 2026-11-16 · 批次 2：A 主体连续性（超时语义、检索门控、原文指针、确定性裁决）
 
