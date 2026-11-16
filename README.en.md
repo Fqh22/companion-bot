@@ -1,189 +1,225 @@
-> This English version may lag behind the Chinese [README.md](README.md); the Chinese one is authoritative.
-
 <div align="center">
 
-# companion · a portable continuing subject
+# companion
 
-**Self-hosted and continuous across months: it remembers, knows when not to, and can finish small things you authorize.**
-Memory is a resource, not its identity; channels, models and memory engines are replaceable.
+**It serves exactly one person. It remembers you across months — and knows when to say nothing.**
+
+Self-hosted · single process · local SQLite · swap the model, the channel or the memory engine — it is still *it*.
 
 [![CI](https://github.com/Fqh22/companion-bot/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/Fqh22/companion-bot/actions/workflows/lint.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](pyproject.toml)
-[![Channels](https://img.shields.io/badge/channels-QQ%20%C2%B7%20Feishu%20%C2%B7%20Terminal-4B8BBE)](#channels)
 
-[Quick start](#quick-start) · [Architecture](#architecture) · [Channels](#channels) · [Docs](docs/README.md)
+[Quick start](#five-minute-quick-start) · [How it works](#how-it-works) · [Add a channel](#add-a-channel) · [Docs](#docs)
+
+> This English version may lag behind the Chinese [README.md](README.md); the Chinese one is authoritative.
 
 </div>
 
-> **Unofficial project.** Not affiliated with Tencent, Feishu/Lark, or any IM platform.
-> The QQ channel relies on third-party OneBot implementations (reverse-engineered protocol,
-> ban risk) — run it on a throwaway account only. Personal WeChat is intentionally unsupported.
+> **Unofficial project**: not affiliated with Tencent, Feishu/Lark or any IM platform.
+> The QQ channel relies on third-party OneBot implementations, which can break or get accounts flagged —
+> use a throwaway account for personal use only. Personal WeChat is not supported.
 
 ---
 
 ## What it is
 
-A **portable, continuing companion subject**, not a chatbot bolted onto an LLM:
+**Not "a chatbot with an LLM bolted on", and not role-play.**
 
-- **Restraint comes first**: did it hear you, did this go somewhere, was the dose right?
-  Real companion traffic needs the past in only ~3.4% of messages; the hard part is knowing
-  when *not* to retrieve, not to follow up, not to speak first.
-- **Memory is a resource**: facts are traceable, contradictions adjudicated, and expression
-  never contaminates what was recorded. It is consulted only when it should be.
-- **The subject is portable**: persona, memories and relationship state export to human-readable,
-  diffable, versionable files. Swap the model, channel or memory engine and it is still the same one.
-- **It can act, with authorization**: short tasks (reminders, lookups, filing, sending) are in scope,
-  but every side effect is traceable, reversible and authorized. No unsupervised planning.
-- **Platforms are adapters**: no `import nonebot` inside `app_core`; self-hosted, secrets stay out of the repo.
+The usual "AI companion" recipe is: retrieve on every turn, stuff ten memories into the prompt,
+make the model sound more like it knows you. Measured on real companion traffic, that is the wrong recipe —
+only about **3.4%** of messages actually need recall, and recall gating performs near chance (AUROC 0.530).
+**Better retrieval does not fix "when not to retrieve".**
 
-It is **not** a multi-tenant platform, a plugin marketplace, a public web UI, or an unsupervised
-multi-step executor. Nor does it chase human-like amnesia or distortion.
-Current definition: [docs/01-定义与决策.md](docs/01-定义与决策.md).
+So judgement is the first pillar, not memory:
 
-## Features
+| | A chatbot | companion |
+|---|---|---|
+| Every turn | retrieve → stuff context → answer | decide first: does this need recall, a follow-up, speaking at all? |
+| Where memory lives | material for the prompt | a resource called when needed; facts traceable, conflicts adjudicated |
+| Talk vs silence | say more | sometimes the right move is not to answer |
 
-| | |
-|---|---|
-| 🧠 **Long-term memory** | Summaries → structured facts → vector recall; explicit self-statements written immediately; archival after a threshold; contradiction detection soft-deletes stale facts; weekly "reflection" compresses facts into falsifiable insights |
-| 🎭 **Mood & persona** | valence / baseline / energy; mood changes tone and length only; persona is a local file, hot-reloadable |
-| 🗣 **Multi-channel** | QQ (OneBot v11), Feishu (self-built app + long connection), terminal; the same memory and persona across channels |
-| 🎙 **Voice** | Two-way voice messages: ASR → turn → TTS (Zhipu primary, DeepSeek fallback); each channel transcodes on its own |
-| 🛠 **Tools & commands** | 14 LLM tools, 17 commands; bounded tool rounds, 45 s hard deadline per turn |
-| ⏰ **Scheduling** | Diary, review, cleanup, weekly reports; catch-up windows and missed-job audit; proactive messages only when there is a follow-up thread |
-| 📈 **Observability** | `/status` aggregates alerts; failures land in `alerts.jsonl`; shadow experiments have criteria and deadlines; 5-minute health checks |
-| 🧪 **Tests** | 735 offline checks, 280 smoke checks, 46 wiring checks, 7 plugins loaded; CI runs all 18 suites on every push |
-| 💾 **Data & backup** | Daily consistent export, restore drills (real unzip + DB checks), pre-deploy code snapshots, checksums and rollback path |
+Three commitments:
 
-## Architecture
+- **Judgement** — did it hear you, is there anything to act on, is the dose right.
+- **Memory** — expression never contaminates recorded facts; it is looked up only when needed.
+- **Presence** — text / voice / image / sticker are *forms*, and form carries intent.
 
-```text
-platform (QQ / Feishu / terminal / …)
-   │  inbound
-   ▼
-adapters/          platform fields → InboundMessage (pure, testable offline)
-   ▼
-app_core/engine    one-turn facade
-   ▼
-app_core/chat      recall → prompt assembly → LLM → tool loop → segmentation → review
-   ▼
-app_core/runner    typing heartbeat, pacing, streaming, 45 s deadline, per-session lock
-   ▼
-Channel            send text / image / voice / typing
-   ▼
-platform
+Plus two engineering constraints:
+
+- **Carryable** — persona, memory and relationship state export to human-readable, diffable files; change the model, channel or memory engine and it is still *it*.
+- **Authorizable** — small tasks (reminders, lookups, tidying up, sending messages) can be completed, but every side effect is traceable, reversible and needs approval. No unsupervised multi-step execution.
+
+It does **not** do: multi-tenant hosting, a plugin marketplace, a public web UI, unsupervised autonomous planning,
+or "more human" silent forgetting and distortion. Full definition and trade-offs: [docs/01-定义与决策.md](docs/01-定义与决策.md) (Chinese).
+
+---
+
+## How it works
+
+### One turn
+
+```mermaid
+flowchart TD
+    P[platform<br/>QQ / Feishu / terminal] --> A[adapters<br/>platform fields → InboundMessage]
+    A --> E[engine<br/>turn facade]
+    E --> T[chat_turn<br/>gather → compose → generate → commit]
+    T --> M[(memory<br/>facts / profile / knowledge)]
+    T --> L[LLM + tool loop]
+    T --> R[runner<br/>typing / streaming / deadlines / pacing]
+    R --> C[Channel<br/>text / image / voice]
+    C --> P
 ```
 
-Inside the kernel there are three layers, enforced by `ops/lint-layers.py`
-(see [docs/02-系统与扩展.md](docs/02-系统与扩展.md)):
+- **Gather**: weather, search, follow-ups and recall run in parallel under a first-token budget.
+- **Compose**: stable prefix (profile) first, history in the middle, background block (memory / notes / corrections) last —
+  for cache hits, and so the prefix does not change every turn.
+- **Generate**: model-first, rules only as fallback; at most 6 tool rounds, budget derived from the first-token budget.
+- **Commit**: write history, side-notes ("I just sent a voice message"), shadow samples, summary watermark — order matters.
 
-| Layer | Responsibility | Examples |
-|---|---|---|
-| **domain** | pure rules, no IO | `prompt` `pacing` `delivery` `intent` `mood_domain` |
-| **orchestration** | one turn, commands, scheduling | `engine` `runner` `chat` `commands` `scheduler` |
-| **infra** | paths, config, files, clock | `paths` `config` `files` `kernel/*` |
+Deadlines are an implementation detail, not the definition: the 90s ceiling only stops "never finishes";
+what you feel is the 10s first-token budget plus the 30s no-progress timeout.
 
-Three hard rules, enforced by lint:
+### Memory
 
-1. `app_core` never imports a platform framework;
-2. a channel only declares capabilities and send primitives; the turn loop lives in `runner`;
-3. plugins may only call whitelisted `CORE_API` facade methods.
+Two write paths: **explicit self-statements land immediately**, batch summaries every 8 turns / 40 messages / 30 idle minutes.
+Facts carry source and time; conflicts **soft-delete the old fact** instead of overwriting. Old items are archived, never hard-deleted.
+A weekly reflection compresses scattered facts into one *understanding* the user can contradict — the only correction path memory has.
 
-## Quick start
+### Channels are an adapter layer
 
-No chat platform needed — talk to it in a terminal in five minutes. **Python 3.12** (CI tests it only).
+There is no `import nonebot` inside `app_core`. A channel declares supported forms and two send primitives;
+turn loop, memory, affect, pacing, deadlines, commands and scheduling are all reused.
+
+---
+
+## Five-minute quick start
+
+No chat platform needed — talk to it in the terminal. **Python 3.12** (CI only tests this).
 
 ```bash
 git clone https://github.com/Fqh22/companion-bot.git
 cd companion-bot
-
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r nonebot/requirements.txt
 
 export QQBOT_CODE_DIR=$PWD/nonebot
 python ops/lint-plugins.py           # layering / style, seconds
-python ops/test-nonebot-offline.py   # offline regression, no network
-python ops/drill-console.py          # terminal channel: one real turn (temporary root)
+python ops/drill-console.py          # terminal channel, temp root, touches no production data
 ```
 
-For long-running deployment see [deploy](#deploy) below; for a new channel see
-[docs/02-系统与扩展.md](docs/02-系统与扩展.md).
+To keep it running, see [Deploy](#deploy); to plug in your own platform, see the next section.
 
-## Channels
+---
 
-| Channel | Status | How | Notes |
-|---|---|---|---|
-| **QQ / OneBot v11** | Works (risky) | Third-party OneBot implementation (SnowLuma / NapCat / Lagrange) | No official API for personal accounts; reverse-engineered; may break anytime |
-| **Feishu / Lark** | Works | Self-built app + long connection (no public IP or domain needed) | Official open platform; owner-only private chat by default |
-| **Terminal** | Built in | `ops/drill-console.py` | Debug/drill; reference implementation for new channels |
-| WeCom / WeChat Official Account | Not supported | — | Official capabilities are too limited for a companion (48 h windows, etc.) |
-| Personal WeChat | **Not supported** | — | No official API; injection/protocol bots violate ToS and get banned |
+## Add a channel
+
+Implement "capability declaration + send primitives", convert platform events into `InboundMessage`,
+and hand the rest to `TurnRunner`:
+
+```python
+class MyChannel:
+    forms = {"text", "image", "voice"}            # what this platform supports
+
+    async def send_part(self, session: str, part) -> bool: ...
+    async def typing(self, session: str, on: bool) -> None: ...
+
+async def on_message(platform_msg):
+    msg = InboundMessage(session=f"myplat:{platform_msg.user_id}",
+                         text=platform_msg.text, images=platform_msg.images,
+                         platform="myplat")
+    await TurnRunner(engine, MyChannel(), deadline=90).run(msg)
+```
+
+QQ (OneBot v11), Feishu (self-built app, long connection) and the terminal all share the same memory and persona.
+Full steps: [docs/02-系统与扩展.md](docs/02-系统与扩展.md); channel setup: [docs/03-运维与通道.md](docs/03-运维与通道.md) (both Chinese).
+
+---
+
+## Changing it
+
+Layering is enforced by `ops/lint-layers.py`, not by discipline:
+
+| Layer | Responsibility | Examples |
+|---|---|---|
+| **domain** | pure rules, no IO | `prompt` `pacing` `delivery` `intent` |
+| **orchestration** | turn loop, commands, scheduling | `engine` `runner` `chat` `chat_turn` |
+| **infra** | paths, config, files, clock | `paths` `config` `files` `kernel/*` |
+
+Four hard constraints, each machine-checked: `app_core` never imports a platform framework;
+domain never depends on orchestration; plugins only call the `core.<ns>.<func>` facade;
+every new module must declare its layer.
+
+There are exactly five extension points: business module, channel, command, LLM tool, scheduled job —
+see [AGENTS.md](AGENTS.md) and [docs/02-系统与扩展.md](docs/02-系统与扩展.md) (Chinese).
+
+---
 
 ## Deploy
 
-Target: a Linux server (the live instance is a 2 vCPU / 4 GB Tencent Cloud VM), systemd +
-local SQLite, no GPU required.
+One Linux box, systemd + local SQLite, no GPU (production runs on 2 vCPU / 4 GB).
 
 ```bash
-ops/verify.sh --pre    # pre-restart: layers + offline + wiring, no production DB
-ops/verify.sh          # full: adds end-to-end + plugin loading
+ops/verify.sh --pre    # pre-restart: style / layering / config sync / offline / review baseline / harness / wiring
+ops/verify.sh          # full: plus end-to-end and plugin boot
 
-# deploy from your machine (exports git HEAD; aborts before restart if verify fails)
 export QQBOT_HOST=ubuntu@<server>
-export QQBOT_KEY=/path/to/private-key.pem
-bash ops/deploy.sh
+export QQBOT_KEY=/path/to/key.pem
+bash ops/deploy.sh     # cloud snapshot → upload → pre-verify gate → restart → full verify
 ```
 
-The script snapshots the cloud code (rollback point), uploads `nonebot/` + `ops/`, restores
-executable bits and writes `.deployed_sha`, runs `verify --pre`, restarts only on success,
-then runs the full suite. Backup, restore drills and troubleshooting:
-[docs/03-运维与通道.md](docs/03-运维与通道.md).
+Secrets are never committed and never transferred by the deploy script. Backup, restore drills and troubleshooting:
+[docs/03-运维与通道.md](docs/03-运维与通道.md) and [SECURITY.md](SECURITY.md).
+
+---
 
 ## Testing
 
-| Suite | What | Size |
+No "feels fine" — only "ran it". CI runs every suite on each push:
+
+| Suite | What it covers | Size |
 |---|---|---|
-| Layering | syntax, dependency direction, command permission gates, new modules covered | seconds |
-| Offline regression | behaviour, fully mocked, no network, no production DB | 735 |
-| Wiring | plugin ↔ kernel call contracts | 46 |
-| End-to-end smoke | every module exercised at least once | 280 |
-| Plugin loading | all plugins really load | 7 |
-| Real-clock smoke | no time mocking: decay, expiry, minute scheduling | separate |
+| style / layering | syntax, dependency direction, plugin facade, config sync | seconds |
+| offline regression | behaviour, fully mocked, no network, no production data | 735 checks |
+| review baseline | byte-level diff of review output | 7 files |
+| wiring check | plugin ↔ kernel call contracts | seconds |
+| end-to-end | every module exercised at least once | 288 checks |
+| plugin boot | really load all plugins | 7 plugins |
 
-```bash
-ops/verify.sh                # the five suites
-python ops/test-runner.py    # channel-agnostic loop: streaming / typing / timeout
-python ops/test-commands.py  # parsing / permissions / registry
-python ops/test-guards.py    # guard self-test: write a violation, expect lint to fail
-```
+`ops/verify.sh` chains them into 9 suites in the cloud; `ops/test-guards.py` proves the guards themselves still fire.
 
-## Documentation
+---
 
-Full map and reading paths: [**docs/README.md**](docs/README.md) (mostly Chinese).
+## Docs
 
-## Known limitations
+Four documents, each answering "what can I do after reading this":
 
-- Single user, single process; concurrency is serialized per session.
-- QQ depends on third-party protocol implementations; it can break at any time.
-- Voice only *speaks*; singing needs a separate singing/music-generation service.
-- Memory retrieval embeddings currently have a single provider (Zhipu); voice already has a dual-provider fallback.
-- Proactive messages currently go to QQ only; on Feishu it only replies.
+| Goal | Read |
+|---|---|
+| What it is, where the boundaries are, why these trade-offs | [01-定义与决策](docs/01-定义与决策.md) |
+| Change code: message flow, three layers, extension points | [02-系统与扩展](docs/02-系统与扩展.md) |
+| Deploy, back up, troubleshoot, add a channel | [03-运维与通道](docs/03-运维与通道.md) |
+| Evaluation: how to know a change helped, shadow experiments | [04-评测与实验](docs/04-评测与实验.md) |
 
-## Contributing
+Map and reading paths: [docs/README.md](docs/README.md). Per-batch history: [CHANGELOG.md](CHANGELOG.md)
+(a log — you are not expected to read it).
 
-Issues and PRs welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md)
-first: tests must be green, new behaviour needs a `check()`, and user-facing changes update
-`docs/` and `CHANGELOG.md`.
+---
 
-## Security
+## Known limits
 
-See [SECURITY.md](SECURITY.md) for the secret inventory, secrets inside backups, and
-third-party protocol risks.
+- Single user, single process: turns are serialized per session by a lock; no multi-tenancy.
+- The QQ channel relies on third-party protocol implementations that may break at any time; personal WeChat is not supported.
+- Voice is spoken only, no singing.
+- Embedding is a single point (Zhipu); voice already has two providers with fallback.
+- Feishu proactive messages work, but only after you have talked to it once (chat id mapping).
 
-## License
+---
+
+## License & notices
 
 [MIT](LICENSE) © companion-bot contributors
 
-- Not affiliated with Tencent, Feishu/Lark or any IM platform; names are used for compatibility only.
-- QQ integrations rely on third-party OneBot implementations; usage risk is yours.
-- Conversations and memories stay on your own server — back them up and restrict access.
+- Not affiliated with Tencent, Feishu/Lark or any IM platform; platform names only describe compatibility.
+- QQ access depends on third-party OneBot implementations; risk and compliance are the user's responsibility.
+- Conversations and memory live on your own server; back them up and control access yourself.
