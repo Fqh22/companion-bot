@@ -139,6 +139,7 @@ from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod,
     chat_turn_base as chat_turn_base_mod,
     chat_turn_commit as chat_turn_commit_mod, chat_reply as chat_reply_mod,
+    outbound as outbound_mod,
     engine as engine_mod,
     approval as approval_mod, delivery as delivery_mod,
     identity as identity_mod,

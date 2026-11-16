@@ -63,7 +63,9 @@ _READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原
 
 
 def _read_aloud_requested(text: str) -> bool:
-    return any(k in (text or "") for k in _READ_ALOUD_KEYS)
+    from app_core import outbound
+
+    return outbound.read_aloud_requested(text)
 
 _client: "lark.Client | None" = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -346,35 +348,18 @@ class FeishuChannel:
 
 async def _speak_later(session: str, chat_id: str, text: str,
                        rewrite: bool = True) -> None:
-    """文字发完后补一条语音（和 QQ 同一策略：只在他要/他发语音时才发）。"""
-    try:
-        from app_core import pacing
+    """文字发完后补一条语音。公共编排在 app_core/outbound.py。"""
+    from app_core import outbound
 
-        say = (text or "").strip()
-        segments = pacing.split_for_voice(say)
-        if not segments:
-            return
-        # 飞书直接吃 opus：走 tts.synth_opus（Breeze 直出，少一次 silk 转码）
-        ch = FeishuChannel(session="", chat_id=chat_id)
-        ok = False
-        for seg in segments:
-            audio = await tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite)
-            if not audio:
-                continue
-            if await ch.send_voice("", str(audio)):
-                ok = True
-            audio.unlink(missing_ok=True)
-        logger.info(f"[feishu] voice sent={ok} {len(segments)} 段")
-        if ok:
-            # 历史里补一条旁注：它得知道"这句话我刚用语音说过"，
-            # 否则被问「你发语音了吗」会答没有。
-            try:
-                await core.record_assistant(
-                    session, "（这句话我也用语音说了一遍）", kind="voice")
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[feishu] 语音链路失败：{e!r}")
+    ch = FeishuChannel(session="", chat_id=chat_id)
+    await outbound.speak_later(
+        text=text,
+        synth=lambda seg: tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite),
+        send_voice=lambda p: ch.send_voice("", p),
+        send_text=lambda t: ch.send_text("", t),
+        record=lambda text, kind: core.record_assistant(session, text, kind=kind),
+        tag="[feishu]",
+    )
 
 
 # 画图触发词：和 QQ 同一套（动词 + 量词组合，避免「画的」「画面」误触发）
@@ -382,68 +367,37 @@ _DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "�
 
 
 async def _draw_later(session: str, chat_id: str, ask: str) -> None:
-    """后台画图并发送；画不出来就补一句文字，不打断主回复。"""
-    try:
-        from app_core import image_provider
+    """后台画图并发送。公共编排在 app_core/outbound.py。"""
+    from app_core import image_provider, outbound
 
-        path = await image_provider.generate(ask)
-        if not path:
-            await asyncio.to_thread(
-                _send_message, chat_id, "text",
-                {"text": "这次没画出来，等下再试。"})
-            logger.info("[feishu] 画图返回空（额度/内容审核/网络），已提示")
-            try:
-                await core.record_assistant(
-                    session, "（这次画图失败了，我跟他说明了）", kind="draw_fail")
-            except Exception:  # noqa: BLE001
-                pass
-            return
-        image_provider._cleanup(path)
-        ch = FeishuChannel(session=session, chat_id=chat_id)
-        ok = await ch.send_image("", str(path))
-        logger.info(f"[feishu] drawing sent={ok}")
-        if ok:
-            # 让它知道画过图（和 QQ 同一套旁注）
-            try:
-                await core.record_assistant(
-                    session, f"（我刚画了一张图发给他了：{ask[:40]}）", kind="draw")
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[feishu] 画图链路失败：{e!r}")
+    ch = FeishuChannel(session=session, chat_id=chat_id)
+    await outbound.draw_later(
+        ask=ask,
+        generate=image_provider.generate,
+        cleanup=image_provider._cleanup,
+        send_image=lambda p: ch.send_image("", p),
+        send_text=lambda t: ch.send_text("", t),
+        record=lambda text, kind: core.record_assistant(session, text, kind=kind),
+        tag="[feishu]",
+    )
 
 
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
                                  rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
-    from app_core import pacing
+    from app_core import outbound
 
     buffered = list(ch.buffered)
     ch.defer_text = False
-    say = "".join(buffered).strip()
-    ok = False
-    try:
-        for seg in pacing.split_for_voice(say):
-            audio = await tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite)
-            if audio:
-                if await ch.send_voice("", str(audio)):
-                    ok = True
-                audio.unlink(missing_ok=True)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[feishu] 语音发送失败，退回文字：{e}")
-    if ok:
-        try:
-            await core.record_assistant(
-                session, "（这句话我也用语音说了一遍）", kind="voice")
-        except Exception:  # noqa: BLE001
-            pass
-    if not ok or VOICE_REPLY_MODE == "voice_then_text":
-        for seg in buffered:
-            try:
-                await ch.send_text("", seg)
-            except Exception:  # noqa: BLE001
-                pass
-    logger.info(f"[feishu] voice_reply mode={VOICE_REPLY_MODE} ok={ok} {session}")
+    await outbound.deliver_voice_reply(
+        buffered=buffered,
+        synth=lambda seg: tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite),
+        send_voice=lambda p: ch.send_voice("", p),
+        send_text=lambda t: ch.send_text("", t),
+        record=lambda text, kind: core.record_assistant(session, text, kind=kind),
+        mode=VOICE_REPLY_MODE,
+        tag="[feishu]",
+    )
 
 
 async def _handle(data) -> None:

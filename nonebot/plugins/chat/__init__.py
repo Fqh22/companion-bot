@@ -70,7 +70,9 @@ _READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原
 
 
 def _read_aloud_requested(text: str) -> bool:
-    return any(k in (text or "") for k in _READ_ALOUD_KEYS)
+    from app_core import outbound
+
+    return outbound.read_aloud_requested(text)
 
 chat = on_message(priority=10, block=False)
 
@@ -93,118 +95,54 @@ _DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "�
 
 
 async def _draw_later(sid: str, ask: str) -> None:
-    """后台画图并发送。画不出来就说一句，不打断主回复。"""
-    try:
-        from app_core import image_provider
-        from app_core.message import Part
+    """后台画图并发送。公共编排在 app_core/outbound.py，这里只提供通道回调。"""
+    from app_core import image_provider, outbound
+    from app_core.message import Part
 
-        path = await image_provider.generate(ask)
-        if not path:
-            # 文字回复可能已经说了「画好了」：静默会让用户以为机器人坏了
-            try:
-                await QQChannel().send_text(sid, "这次没画出来，等下再试。")
-            except Exception:  # noqa: BLE001
-                pass
-            logger.info("[chat] 画图返回空（额度/内容审核/网络），已补一句提示")
-            try:
-                await core.record_assistant(
-                    sid, "（这次画图失败了，我跟他说明了）", kind="draw_fail")
-            except Exception:  # noqa: BLE001
-                pass
-            return
-        image_provider._cleanup(path)
-        # 形式是 drawing（生成图）；通道侧再映射成图片发送
-        ok = await QQChannel().send_part(sid, Part("drawing", str(path)))
-        logger.info(f"[chat] drawing sent={ok} {sid} {path.stat().st_size} 字节")
-        if ok:
-            # 让它知道"我刚画了张图发出去"：否则被问「你刚画了什么」会一脸茫然
-            try:
-                await core.record_assistant(
-                    sid, f"（我刚画了一张图发给他了：{ask[:40]}）", kind="draw")
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] 画图链路失败：{type(e).__name__}: {e}")
+    await outbound.draw_later(
+        ask=ask,
+        generate=image_provider.generate,
+        cleanup=image_provider._cleanup,
+        send_image=lambda p: QQChannel().send_part(sid, Part("drawing", p)),
+        send_text=lambda t: QQChannel().send_text(sid, t),
+        record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
+        tag="[chat]",
+    )
 
 
 async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) -> None:
-    """后台合成语音并发送。
+    """后台合成语音并发送。公共编排在 app_core/outbound.py。"""
+    from app_core import outbound, tts
+    from app_core.message import Part
 
-    只读最后一段：几段拼起来读会像播报，而语音本来就该说一句。
-    失败静默——文字已经发出去了，语音是补充不是替代。
-    """
-    try:
-        from app_core import pacing, tts
-        from app_core.message import Part
-
-        # 长文案按句切成多段，不再截掉 300 字之后的内容（批次 4 #15）。
-        # 单段时 split_for_voice 原样返回一条，旧行为逐字节不变。
-        say = (text or "").strip()
-        segments = pacing.split_for_voice(say)
-        if not segments:
-            return
-        ch = QQChannel()
-        ok = False
-        for seg in segments:
-            silk = await tts.synth(seg, mood=mood.load(), rewrite=rewrite)
-            if not silk:
-                continue
-            # 走协议入口而不是直接调 send_voice：加形式只改 adapter。
-            # 这条链路在 runner 之外（文字回复发完才合成），失败要自己补一句。
-            if await ch.send_part(sid, Part("voice", str(silk))):
-                ok = True
-        logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字 / {len(segments)} 段")
-        if not ok:
-            try:
-                await ch.send_text(sid, "（语音没发出去，文字顶上）")
-                await core.record_assistant(
-                    sid, "（语音没发出去，我补了一句文字）", kind="voice_fail")
-            except Exception:  # noqa: BLE001
-                pass
-        else:
-            # 让它知道"我刚发了语音"：否则历史里只有文字，问起来它会否认。
-            # 单独记一条极短的助手旁注，比改正文安全（不污染回复内容）。
-            try:
-                await core.record_assistant(
-                    sid, "（这句话我也用语音说了一遍）", kind="voice")
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] 语音链路失败：{type(e).__name__}: {e}")
+    ch = QQChannel()
+    await outbound.speak_later(
+        text=text,
+        synth=lambda seg: tts.synth(seg, mood=mood.load(), rewrite=rewrite),
+        send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
+        send_text=lambda t: ch.send_text(sid, t),
+        record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
+        tag="[chat]",
+    )
 
 
 async def _deliver_voice_reply(sid: str, ch: QQChannel,
                              rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
-    from app_core import pacing, tts
+    from app_core import outbound, tts
     from app_core.message import Part
 
     buffered = list(ch.buffered)
     ch.defer_text = False
-    say = "".join(buffered).strip()
-    ok = False
-    try:
-        for seg in pacing.split_for_voice(say):
-            silk = await tts.synth(seg, mood=mood.load(), rewrite=rewrite)
-            if silk:
-                if await ch.send_part(sid, Part("voice", str(silk))):
-                    ok = True
-                silk.unlink(missing_ok=True)
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] 语音发送失败，退回文字：{e}")
-    if ok:
-        try:
-            await core.record_assistant(
-                sid, "（这句话我也用语音说了一遍）", kind="voice")
-        except Exception:  # noqa: BLE001
-            pass
-    if not ok or VOICE_REPLY_MODE == "voice_then_text":
-        for seg in buffered:
-            try:
-                await ch.send_text(sid, seg)
-            except Exception:  # noqa: BLE001
-                pass
-    logger.info(f"[chat] voice_reply mode={VOICE_REPLY_MODE} ok={ok} {sid}")
+    await outbound.deliver_voice_reply(
+        buffered=buffered,
+        synth=lambda seg: tts.synth(seg, mood=mood.load(), rewrite=rewrite),
+        send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
+        send_text=lambda t: ch.send_text(sid, t),
+        record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
+        mode=VOICE_REPLY_MODE,
+        tag="[chat]",
+    )
 
 
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,

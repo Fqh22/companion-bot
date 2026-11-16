@@ -176,7 +176,7 @@ def check_kernel(mods: dict[Path, str], core: Path) -> None:
 # 插件可以直接 import 的 app_core 模块：通道协议与基础设施，不是业务实现。
 PLUGIN_ALLOWED = frozenset({
     "chat", "group",                      # 宿主插件自己实例化 ChatCore / GroupCore
-    "config", "paths", "pacing", "delivery", "message",
+    "config", "paths", "pacing", "delivery", "message", "outbound",
     "engine", "runner", "turn", "files", "asr", "tts", "image_provider",
     "kernel", "adapters",
 })
