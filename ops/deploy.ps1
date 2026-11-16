@@ -64,16 +64,17 @@ if ($LASTEXITCODE -ne 0) { throw "scp ops.tar 失败" }
 
 # 删除清单：tar 解压是覆盖写，不会删掉已从 HEAD 移除的文件（2026-11-16 删 retrieval.py
 # 时云端残留旧文件，link-check 报「模块没进 smoke-all」才发现）。只删真实删除的文件。
-$prevSha = (& ssh @SshOpts $SshHost "cat /opt/nonebot/.deployed_sha 2>/dev/null").Trim()
-if ($prevSha) {
-    & git cat-file -e "$prevSha^{commit}" 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $deleted = @(& git diff --name-only --diff-filter=D $prevSha $Sha -- nonebot ops)
-        foreach ($f in $deleted) {
-            if ($f) { Invoke-Remote "rm -f /opt/nonebot/$f" }
-        }
-        if ($deleted.Count -gt 0) { Write-Host ("== 2.5/6 删除已移除的文件：" + ($deleted -join ", ")) }
+# Invoke-Remote 返回行数组，先取第一行再 Trim（直接 .Trim() 会静默得到空值）
+$prevSha = @(Invoke-Remote "cat /opt/nonebot/.deployed_sha 2>/dev/null")[0]
+if ($prevSha) { $prevSha = $prevSha.Trim() }
+if ($prevSha -and (git rev-parse --verify --quiet ($prevSha + "^{commit}"))) {
+    $deleted = @(git diff --name-only --diff-filter=D $prevSha $Sha -- nonebot ops)
+    foreach ($f in $deleted) {
+        if ($f) { Invoke-Remote "rm -f /opt/nonebot/$f" }
     }
+    if ($deleted.Count -gt 0) { Write-Host ("== 2.5/6 删除已移除的文件：" + ($deleted -join ", ")) }
+} else {
+    Write-Host "WARN 读不到上次部署 sha，跳过删除清单（云端可能残留已删文件）" -ForegroundColor Yellow
 }
 Invoke-Remote "tar -xf /tmp/nonebot-$Ts.tar -C /opt/nonebot && tar -xf /tmp/ops-$Ts.tar -C /opt/nonebot/ops && rm -f /tmp/nonebot-$Ts.tar /tmp/ops-$Ts.tar"
 

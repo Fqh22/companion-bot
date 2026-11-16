@@ -521,6 +521,9 @@ async def main() -> None:
     shadow_mod.POSITIVE_LOG = _probe_dir / "positive.jsonl"
     shadow_mod.GRAPH_LOG = _probe_dir / "graph.jsonl"
     shadow_mod.SECOND_LOG = _probe_dir / "second.jsonl"
+    shadow_mod.LOGS = {"positive": shadow_mod.POSITIVE_LOG,
+                       "graph": shadow_mod.GRAPH_LOG,
+                       "second": shadow_mod.SECOND_LOG}
     shadow_mod.SNAP = TMP / "shadow-weekly.json"
     shadow_mod.record_graph("查询", ["a"], ["b", "c"])
     shadow_mod.record_second_recall("那呢", "这个", [{"doc_id": "abcdef12"}])
