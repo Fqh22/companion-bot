@@ -2,6 +2,18 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 测试数据根唯一清单
+
+- **改了什么**：`ops/harness.py` 新增 `redirect_paths(root)`，把 12 个模块的路径常量
+  （chat/summary/history/followup_store/kb/memory 的 `DB`；learn_store 的 10 个；
+  learn 的 NOTES/SKILLS/RAW；mood_store 的状态与库；scheduling 的库与日志；
+  wiki 的 DB/NOTES/SKILLS；files 的三个目录）统一指到临时根，返回改过的模块清单。
+- **自检**：`ops/test-harness.py` **32 条断言**逐项验证，接入 `verify.sh` 三个模式。
+- **文档**：`CONTRIBUTING.md` 新增 §3「测试的数据根（唯一清单）」，列模块→常量对照表。
+- **为什么**：拆环 / 拆 Mixin 之后同一个路径常量在多个模块里各有一份，
+  2026-11-16 一天里因为漏补丁点踩了三次（apply_review、smoke-all、离线回归各一次）。
+- **验证**：云端 `verify.sh` **9/9**。
+
 ## 2026-11-16 · 重构批次 P4/P5（复盘基线、存储格式设计稿、依赖清单）
 
 - **P4 低成本版**：`chat_turn.py` 新增 `TURN_DEPS`，显式列出 ChatTurnMixin 对 ChatCore
