@@ -1366,7 +1366,8 @@ async def main() -> None:
 
     # ---------- T. 定时任务：同一天只能跑一次 ----------
     from app_core import scheduler as sched_mod
-    sched_mod.CHAT_DB = str(TMP / "chat.db")
+    from app_core.scheduling import scheduler as sched_store_mod
+    sched_store_mod.CHAT_DB = str(TMP / "chat.db")
     sch = sched_mod.Scheduler(core)
     await sch._ensure_schema()      # 启动时会建表
     check("当天首次能抢到执行权", await sch._claim_job("t1", "2026-10-31"))

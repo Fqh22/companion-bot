@@ -18,6 +18,7 @@ python ops/test-commands.py
 python ops/link-check.py          # 联动体检：插件 ↔ 内核接线（不是文档链接）
 python ops/smoke-plugins.py
 python ops/test-guards.py         # 护栏自检：lint 规则必须能抓到反例
+python ops/test-lint-layers.py    # 分层护栏自检：缺标记 / 反向依赖 / 新增环 必须红
 python ops/check-links.py         # 文档守门员：链接 / 路径引用 / 登记表
 python ops/test-check-links.py    # 护栏自检：故意写坏文档，确认上一条会红
 python ops/test-embed-guard.py    # embedding 维度守卫（含反例）
@@ -66,7 +67,8 @@ ops/verify.sh                    # 全量
 
 1. `app_core` 不许 `import nonebot`——平台调用放 `plugins/`。
 2. 运行时路径不许写死 `/opt`——从 `app_core/paths.py` 派生。
-3. 插件只能调 `CORE_API` 清单里的 `core` 成员；新成员先登记。
+3. 插件只能调 `CORE_API` 清单里的 `core` 成员；新成员先登记。插件也不得直接 import 业务实现
+   （`lint-layers` 的 `check_plugins`；存量按文件冻结在 `PLUGIN_LEGACY`，2026-12-31 到期）。
 4. 不许 `core.memory.*` / `core._*` 穿透——用门面方法。
 5. 不许裸 `print`——统一 logger。
 6. domain 不许 import orchestration。
