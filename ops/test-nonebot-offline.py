@@ -3443,8 +3443,13 @@ async def main() -> None:
                                      for i in range(n)]}
             return _R()
 
+    # 这个用例只验「空文本不进请求」，mock 返回的是 2 维假向量。
+    # 写侧维度校验（embedding.dim=2048）是生产要的行为，不该为假向量放宽；
+    # 只在这个实例上置 0，表示本用例不参与维度校验。
+    _m = memory_mod.Memory()
+    _m.dim = 0
     with patch("httpx.AsyncClient", _EmbedClient):
-        res = await memory_mod.Memory().embed(["", "  ", "正常文本"])
+        res = await _m.embed(["", "  ", "正常文本"])
     check("空文本不进 embedding 请求", "" not in sent_inputs and "  " not in sent_inputs,
           str(sent_inputs))
     check("空文本返回空向量", res[0] == [] and res[1] == [] and res[2] == [0.5, 0.5],
