@@ -119,7 +119,7 @@ chat:
   # 引用回复：第一段带「回复你那条」。默认 false——实测每条都挂引用框太重；
   # 想开就改成 true，只有第一段带，流式后续段不带。
   quote_reply: false
-  # 记忆契约（docs/10）：fact 召回、总结写入、画像读写走 MemoryPort。
+  # 记忆契约（docs/01-定义与决策.md）：fact 召回、总结写入、画像读写走 MemoryPort。
   # false 一键退回旧路径（排障用），行为与迁移前一致。
   memory_port: true
   # 分享轮档位（docs/17）：按「他配了几个字 + 东西是什么体裁」算一个读深度上限，

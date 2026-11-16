@@ -34,8 +34,7 @@
 - **平台是适配层**：`app_core` 里没有一行 `import nonebot`；自托管，密钥不进仓库。
 
 它**不是**：多租户平台、插件市场、公开 Web 界面、无人监督的多步任务执行器。
-也**不追求**"更像人"的静默遗忘与失真。现行定义见 [docs/22-项目定义.md](docs/22-项目定义.md)，
-历史定义（记忆体 / 接住）见 [docs/09-设计初衷.md](docs/09-设计初衷.md)。
+也**不追求**"更像人"的静默遗忘与失真。现行定义、五条判据与历史沿革见 [docs/01-定义与决策.md](docs/01-定义与决策.md)。
 
 ## 一段对话
 
@@ -82,7 +81,7 @@ Channel            发文本 / 发图 / 发语音 / typing
 platform
 ```
 
-内核内部再分三层，由 `ops/lint-layers.py` 强制（详见 [docs/06-扩展与移植.md](docs/06-扩展与移植.md)）：
+内核内部再分三层，由 `ops/lint-layers.py` 强制（详见 [docs/02-系统与扩展.md](docs/02-系统与扩展.md)）：
 
 | 层 | 职责 | 例子 |
 |---|---|---|
@@ -144,12 +143,12 @@ async def on_message(platform_msg):
 ```
 
 记忆、情绪、prompt、分段、45 秒硬线、命令、调度全部复用。
-完整步骤与「五条扩展路径」见 [docs/06-扩展与移植.md](docs/06-扩展与移植.md)。
+完整步骤与「五条扩展路径」见 [docs/02-系统与扩展.md](docs/02-系统与扩展.md)。
 
 ## 配置与密钥
 
 - **运行时根**：默认 `/opt`，用 `QQBOT_ROOT` 覆盖（`app_core/paths.py` 统一派生）。
-- **`nonebot/config.yaml`**：模型、阈值、通道开关等；模板见 [nonebot/config.example.yaml](nonebot/config.example.yaml)。可视化编辑见 [docs/05-配置界面.md](docs/05-配置界面.md)。
+- **`nonebot/config.yaml`**：模型、阈值、通道开关等；模板见 [nonebot/config.example.yaml](nonebot/config.example.yaml)。可视化编辑见 [docs/03-运维与通道.md](docs/03-运维与通道.md)。
 - **`<root>/qqbot-data/keys.json`**：DeepSeek / 智谱 / GitHub / 飞书 App 凭证，权限 600，**不入库、不随部署传输**。
 - **`nonebot/.env`**：OneBot access token、SUPERUSERS，**不入库**。
 
@@ -172,7 +171,7 @@ bash ops/deploy.sh
 
 部署脚本会：云端打代码快照（回滚点）→ 上传 `nonebot/` + `ops/` → 恢复脚本可执行位、
 写入 `.deployed_sha` → `verify --pre` 通过才重启 → 重启后跑全量验证。
-备份、恢复演练、排障手册见 [docs/02-运维.md](docs/02-运维.md)。
+备份、恢复演练、排障手册见 [docs/03-运维与通道.md](docs/03-运维与通道.md)。
 
 ## 测试
 
@@ -194,7 +193,7 @@ python ops/test-commands.py  # 命令解析 / 权限 / 注册表
 python ops/test-guards.py    # 护栏自检：故意写违规，确认 lint 真的会红
 ```
 
-"哪条链路坏了会被哪个测试发现"见 [docs/04-联动矩阵.md](docs/04-联动矩阵.md)。
+"哪条链路坏了会被哪个测试发现"见 [docs/02-系统与扩展.md](docs/02-系统与扩展.md)。
 
 ## 项目结构
 
@@ -222,14 +221,11 @@ companion-bot/
 
 | 想了解 | 读 |
 |---|---|
-| 现行项目定义（A+B+C） | [docs/22-项目定义.md](docs/22-项目定义.md) |
-| 逐项改动台账 | [docs/21-改动台账.md](docs/21-改动台账.md) |
-| 历史设计初衷（记忆体 / 接住） | [docs/09-设计初衷.md](docs/09-设计初衷.md) |
-| 系统消息流、数据布局 | [docs/01-系统.md](docs/01-系统.md) |
-| 部署、备份、排障 | [docs/02-运维.md](docs/02-运维.md) |
-| 分层与扩展（加通道/工具/命令） | [docs/06-扩展与移植.md](docs/06-扩展与移植.md) |
-| 已定决策与取舍 | [docs/10-设计决策.md](docs/10-设计决策.md) |
-| 飞书通道 | [docs/20-飞书通道.md](docs/20-飞书通道.md) |
+| 它是什么、边界、五条判据、已定取舍 | [docs/01-定义与决策.md](docs/01-定义与决策.md) |
+| 消息流、三层与红线、扩展路径、测试 | [docs/02-系统与扩展.md](docs/02-系统与扩展.md) |
+| 部署、备份、排障、通道接入 | [docs/03-运维与通道.md](docs/03-运维与通道.md) |
+| 记忆评测、影子实验、未落地设计 | [docs/04-评测与实验.md](docs/04-评测与实验.md) |
+| 逐项改动与验证数字 | [docs/05-改动台账.md](docs/05-改动台账.md) |
 
 ## 已知限制与路线图
 

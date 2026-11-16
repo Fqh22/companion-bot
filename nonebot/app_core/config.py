@@ -161,7 +161,7 @@ DEFAULTS = {
         "shadow_sample": 0.3,
         # 引用回复：第一段带「回复你那条」。默认关——用户实测觉得每条都挂引用框太重。
         "quote_reply": False,
-        # 记忆契约（docs/10）：P1 起 fact 召回走 MemoryPort；false 可退回旧路径。
+        # 记忆契约（docs/01-定义与决策.md）：P1 起 fact 召回走 MemoryPort；false 可退回旧路径。
         "memory_port": True,
         # 情绪契约（docs/11）：mood 的读/写走 AffectPort；false 可退回旧路径。
         "affect_port": True,

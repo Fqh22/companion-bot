@@ -37,7 +37,7 @@ A **portable, continuing companion subject**, not a chatbot bolted onto an LLM:
 
 It is **not** a multi-tenant platform, a plugin marketplace, a public web UI, or an unsupervised
 multi-step executor. Nor does it chase human-like amnesia or distortion.
-Current definition: [docs/22-项目定义.md](docs/22-项目定义.md).
+Current definition: [docs/01-定义与决策.md](docs/01-定义与决策.md).
 
 ## Features
 
@@ -75,7 +75,7 @@ platform
 ```
 
 Inside the kernel there are three layers, enforced by `ops/lint-layers.py`
-(see [docs/06-扩展与移植.md](docs/06-扩展与移植.md)):
+(see [docs/02-系统与扩展.md](docs/02-系统与扩展.md)):
 
 | Layer | Responsibility | Examples |
 |---|---|---|
@@ -107,7 +107,7 @@ python ops/drill-console.py          # terminal channel: one real turn (temporar
 ```
 
 For long-running deployment see [deploy](#deploy) below; for a new channel see
-[docs/06-扩展与移植.md](docs/06-扩展与移植.md).
+[docs/02-系统与扩展.md](docs/02-系统与扩展.md).
 
 ## Channels
 
@@ -137,7 +137,7 @@ bash ops/deploy.sh
 The script snapshots the cloud code (rollback point), uploads `nonebot/` + `ops/`, restores
 executable bits and writes `.deployed_sha`, runs `verify --pre`, restarts only on success,
 then runs the full suite. Backup, restore drills and troubleshooting:
-[docs/02-运维.md](docs/02-运维.md).
+[docs/03-运维与通道.md](docs/03-运维与通道.md).
 
 ## Testing
 

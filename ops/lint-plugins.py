@@ -257,7 +257,7 @@ def check_core_api() -> tuple[list[str], list[str]]:
 
 
 # ---------------- 红线 8：记忆读写只走 MemoryPort ----------------
-# AGENTS 红线 8 / docs/10：入口只认 recall / remember / forget / explain。
+# AGENTS 红线 8 / docs/01-定义与决策.md：入口只认 recall / remember / forget / explain。
 # 存量直连按「文件 -> 模块 -> 允许的符号」冻结：新增文件、新增模块、新增符号一律 FAIL；
 # 迁掉一个符号就从这里删一个（白名单里没人用的条目会 WARN，提醒收紧）。
 _MEM_MODULES = frozenset({"memory", "profile", "wiki", "kb", "diary", "learn"})

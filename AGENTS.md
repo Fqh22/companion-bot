@@ -1,7 +1,7 @@
 # AGENTS.md
 
 > 给接手这个项目的 AI/人看的入口。**先读这份，再读代码。**
-> 项目是一个**可携带、可授权的持续陪伴主体**（现行定义见 `docs/22-项目定义.md`）：判断/克制第一，记忆是资源，平台只是适配层
+> 项目是一个**可携带、可授权的持续陪伴主体**（现行定义见 `docs/01-定义与决策.md`）：判断/克制第一，记忆是资源，平台只是适配层
 > （QQ 与飞书是当前两个通道，终端用于调试）。
 
 ## 1. 先跑什么
@@ -38,9 +38,9 @@ ops/verify.sh                    # 全量
 | `nonebot/plugins/` | 平台胶水 | NoneBot 的 `on_message/on_command` |
 | `nonebot/companion_core/` | 门面包 | `EngineConfig` + `create_engine` |
 | `ops/` | 运维/测试 | 每个脚本可独立跑 |
-| `docs/` | 文档 | 地图见 `docs/README.md`：00 概览、01 系统、02 运维、04 联动、06 扩展、10 决策 |
+| `docs/` | 文档 | 地图见 `docs/README.md`：01 定义与决策 / 02 系统与扩展 / 03 运维与通道 / 04 评测与实验 / 05 改动台账 |
 
-分层规则由 `ops/lint-layers.py` 强制（详见 `docs/06-扩展与移植.md`）：
+分层规则由 `ops/lint-layers.py` 强制（详见 `docs/02-系统与扩展.md`）：
 
 - **domain**（`prompt` `pacing` `delivery` `intent` `mood_domain` …）只做纯规则，不碰 IO，不 import orchestration；
 - **orchestration**（`engine` `runner` `commands` `runtime` `chat` `scheduler` `proactive_runtime` …）负责编排；
@@ -66,7 +66,7 @@ ops/verify.sh                    # 全量
 5. 不许裸 `print`——统一 logger。
 6. domain 不许 import orchestration。
 7. adapters 不许 import `chat` / `chat_turn` / `tool_loop`。
-8. 新代码的记忆读写只走 `MemoryPort`（`docs/10`），不直接 import `memory` / `profile` / `wiki`。
+8. 新代码的记忆读写只走 `MemoryPort`（`docs/01-定义与决策.md`），不直接 import `memory` / `profile` / `wiki`。
    已迁：fact 读写、knowledge 读写、profile 读写、forget、trace；mood/task 未进契约，别硬塞。
    机器检查：`lint-plugins.py` 的 `_MEM_ALLOWED` 按「文件 → 模块 → 符号」冻结存量直连；
    新增文件 / 新模块 / 新符号直接 FAIL，迁掉一个就从白名单删一个（没人用的条目会 WARN）。
@@ -99,7 +99,7 @@ ops/verify.sh                    # 全量
 
 ## 8. 设计判据（加东西之前）
 
-现行定义见 `docs/22-项目定义.md`：**判断/克制是第一支柱，记忆是被调用的资源，主体可携带、可授权**。
+现行定义见 `docs/01-定义与决策.md`：**判断/克制是第一支柱，记忆是被调用的资源，主体可携带、可授权**。
 加任何功能前先回答五问：
 
 1. **会不会让「还是它」更稳？**（连续性）
@@ -108,7 +108,7 @@ ops/verify.sh                    # 全量
 4. **失败时能否降级、说清、回滚？**（可审计）
 5. **会不会让表达污染事实，或让事实压过人？**（保留自 09）
 
-历史定义（记忆体 / 接住）见 `docs/09-设计初衷.md`，已归档，不再作判据。
+历史定义（记忆体 / 接住）的沿革见 `docs/01-定义与决策.md` §12，已归档，不再作判据。
 
 ## 9. 排障入口
 
@@ -118,4 +118,4 @@ ops/verify.sh                    # 全量
 | 记忆不写 | `/ping` 的配置状态；`admin.user_id` 是否配 |
 | 定时任务没跑 | `job_runs` 表；`/debug`；`missing_jobs` |
 | 语气/长度不对 | `data/prompt_log` 的最近一条；`/prompt_last` |
-| 通道断了 | `docs/06-扩展与移植.md` |
+| 通道断了 | `docs/02-系统与扩展.md` |

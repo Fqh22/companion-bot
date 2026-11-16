@@ -588,7 +588,7 @@ async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",
 
 async def _collect_voice(sid: str, seg, text: str,
                          meta: dict | None = None) -> None:
-    """语音：下载 → 转码 → 智谱转写 → 当文本进对话（docs/10）。
+    """语音：下载 → 转码 → 智谱转写 → 当文本进对话（docs/01-定义与决策.md）。
 
     转不出来就明说，不猜内容——一条语音听不清，不该变成一段编出来的话。
     """

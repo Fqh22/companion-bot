@@ -9,8 +9,10 @@
 ## 0. 先读这三份
 
 1. [AGENTS.md](AGENTS.md) —— 分层红线、五条扩展路径、提交前检查
-2. [docs/06-扩展与移植.md](docs/06-扩展与移植.md) —— 三层架构与通道抽象
-3. [docs/10-设计决策.md](docs/10-设计决策.md) —— 已经定下的取舍，别随手推翻
+2. [docs/01-定义与决策.md](docs/01-定义与决策.md) —— 现行定义与已定取舍，别随手推翻
+3. [docs/02-系统与扩展.md](docs/02-系统与扩展.md) —— 三层架构与通道抽象
+
+文档只有 5 篇，完整地图见 [docs/README.md](docs/README.md)。
 
 ## 1. 环境
 
@@ -50,7 +52,7 @@ ops/verify.sh --pre
 5. 不许裸 `print`——统一 logger。
 6. domain 不许 import orchestration。
 7. adapters 不许 import `chat` / `chat_turn` / `tool_loop`。
-8. 新代码的记忆读写只走 `MemoryPort`（docs/10）；不要直接 import `memory` / `profile` / `wiki`。
+8. 新代码的记忆读写只走 `MemoryPort`（docs/01-定义与决策.md）；不要直接 import `memory` / `profile` / `wiki`。
 
 ## 4. 五条扩展路径
 
@@ -81,7 +83,7 @@ ops/verify.sh --pre
 - 不要提交 `config.yaml`、`keys.json`、`.env`、备份包、日志。
 - 不要直接改生产库或在 CI 里联网调真实模型。
 - 不要给个人微信写 hook/协议接入（违规 + 封号，项目明确不支持）。
-- 不要私自改已定决策（`docs/10`）；确实要改，先开 issue 说明理由与代价。
+- 不要私自改已定决策（`docs/01-定义与决策.md`）；确实要改，先开 issue 说明理由与代价。
 
 ## 7. 行为准则
 
@@ -90,7 +92,7 @@ ops/verify.sh --pre
 
 ## 8. 维护者：部署
 
-部署脚本与备份流程见 [docs/02-运维.md](docs/02-运维.md)。简版：
+部署脚本与备份流程见 [docs/03-运维与通道.md](docs/03-运维与通道.md)。简版：
 
 ```bash
 ops/verify.sh --pre        # 本地/云端验证
