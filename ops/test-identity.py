@@ -14,17 +14,7 @@ sys.path.insert(0, str(CODE))
 
 from app_core.identity import IdentityResolver  # noqa: E402
 
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
+from harness import check, report
 
 
 def main():
@@ -46,8 +36,7 @@ def main():
           r.internal("console", "local-2"))
     check("未知身份返回 None", r.internal("qq", "404") is None)
 
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    return 0 if FAIL == 0 else 1
+    return report()
 
 
 if __name__ == "__main__":

@@ -3,29 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CODE = HERE.parent / "nonebot"
-if not (CODE / "app_core").is_dir():
-    CODE = HERE.parent
-sys.path.insert(0, str(CODE))
+from harness import bootstrap, check, report
+
+bootstrap()
 
 from app_core.approval import (  # noqa: E402
     ApprovalRequest, ApprovalResult, CommandApprovalPort)
-
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
 
 
 class FakeApproval:
@@ -61,9 +45,7 @@ async def main():
     check("重复/未知 resolve 返回 False", not port2.resolve("a2", True))
     check("完成后无 pending", port2.pending_ids() == [])
 
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    return 0 if FAIL == 0 else 1
-
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    asyncio.run(main())
+    raise SystemExit(report())

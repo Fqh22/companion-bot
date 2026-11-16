@@ -21,17 +21,7 @@ sys.path.insert(0, str(CODE))
 from app_core.kernel import FakeClock, Settings  # noqa: E402
 from app_core.kernel import db as kdb  # noqa: E402
 
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print(f"PASS {name}" + (f" | {extra}" if extra else ""))
-    else:
-        FAIL += 1
-        print(f"FAIL {name}" + (f" | {extra}" if extra else ""))
+from harness import check, report
 
 
 def main() -> int:
@@ -54,8 +44,7 @@ def main() -> int:
         check("事务提交可见", c.execute("SELECT COUNT(*) FROM x").fetchone()[0] == 1)
     check("WAL 已开启", sqlite3.connect(p).execute("PRAGMA journal_mode").fetchone()[0] == "wal")
 
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    return 0 if FAIL == 0 else 1
+    return report()
 
 
 if __name__ == "__main__":

@@ -17,17 +17,7 @@ sys.path.insert(0, str(CODE))
 from companion_core import EngineConfig, __version__, create_engine  # noqa: E402
 from app_core.engine import Engine  # noqa: E402
 
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
+from harness import check, report
 
 
 class FakeCore:
@@ -58,8 +48,7 @@ def main():
 
     check("memory_schema 在包内", (CODE / "app_core" / "memory_schema.sql").exists())
 
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    return 0 if FAIL == 0 else 1
+    return report()
 
 
 if __name__ == "__main__":

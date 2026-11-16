@@ -3,29 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-CODE = HERE.parent / "nonebot"
-if not (CODE / "app_core").is_dir():
-    CODE = HERE.parent
-sys.path.insert(0, str(CODE))
+from harness import bootstrap, check, report
+
+bootstrap()
 
 from app_core.delivery import Capability, DeliveryPolicy  # noqa: E402
 from app_core.engine import Engine, InboundMessage  # noqa: E402
-
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
 
 
 class FakeCore:
@@ -71,5 +55,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    raise SystemExit(0 if FAIL == 0 else 1)
+    raise SystemExit(report())
