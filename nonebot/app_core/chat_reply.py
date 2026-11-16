@@ -12,7 +12,10 @@ import logging
 import random
 import time
 
-from app_core import config, tool_loop, tools
+import aiosqlite
+
+from app_core import config, shadow, tool_loop, tools
+from app_core.delivery import Capability, DeliveryPolicy, plan_delivery
 from app_core import prompt as prompt_mod
 from app_core.chat_turn_base import _chat
 
