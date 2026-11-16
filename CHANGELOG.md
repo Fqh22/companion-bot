@@ -26,16 +26,18 @@
   `check-links.py` 21 篇 / 92 链接 / 82 处引用 / 5 项登记 PASS；`test-check-links` 6/6；
   `lint-plugins` FAIL 0 / WARN 0；`lint-layers` PASS；`test-guards` 4/4。
   离线回归与全链路本地缺依赖未跑，由云端 `verify.sh` 覆盖。
-- **两次部署都被硬门拦住（均未重启，生产一直跑旧代码）**，两个独立根因：
+- **验证门拦了三轮**，三个独立根因都在测试侧的假向量，**生产写侧维度校验始终保留**：
   1. `verify.sh --pre` 召回 golden 2 条 FAIL：读侧 `check_dim` 误把 `self.dim=2048`
      与调用方传入的低维 `qv` 比较，正常召回被降级成 `recent()`。改为「读侧只比矩阵
      与查询维度，配置维度交给写侧 `embed()`」，并补一条护栏用例。
-  2. 第 2 次离线回归直接抛 `EmbedError`：`test-nonebot-offline.py` 的 mock 返回
-     2 维假向量，新的写侧维度校验（配置 2048）把它拦下。生产校验是对的，
-     改为只在该用例的实例上把 `dim` 置 0（该用例只验空文本过滤）。
-  两次都靠「验证不过就不重启」保住了线上，代价是修了两轮。
-- **部署**：云端原 `.deployed_sha = 1a3c313`；修复后重部署，逐项结果见
-  `docs/05-改动台账.md` #3。
+  2. 离线回归直接抛 `EmbedError`：`test-nonebot-offline.py` 的 mock 返回 2 维假向量。
+     改为只在该用例实例上把 `dim` 置 0（该用例只验空文本过滤）。
+  3. 第 3 次 `--pre` 3/3 通过、服务已重启，但全量 verify 的 `smoke-all.py` 4 项
+     `EmbedError`（HTTP mock 返回 3 维 `VEC`）：改为按 `embedding.dim` 生成同维假向量，
+     `emb[0][:3] == VEC` 的断言不受影响。
+  前两次未重启，第三次重启后全量仍红；每轮都先修再走。修复后云端先跑
+  `verify.sh` 全量 **5/5 通过**，再正式部署。
+- **部署**：云端原 `.deployed_sha = 1a3c313`；逐项结果见 `docs/05-改动台账.md` #3。
 
 ## 2026-11-16 · 文档规则收敛：守门员、登记表、脚本去重
 

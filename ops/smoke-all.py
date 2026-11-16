@@ -117,7 +117,15 @@ class FakeClient:
     async def post(self, url, **kw):
         if "embeddings" in url:
             n = len((kw.get("json") or {}).get("input") or [])
-            return FakeResp(data={"data": [{"index": i, "embedding": VEC} for i in range(n)]})
+            # 写侧会按 embedding.dim 校验维度，所以 HTTP mock 必须返回同维向量；
+            # 前 3 个仍是 VEC，memory.embed 结构那条 emb[0][:3] == VEC 不受影响。
+            try:
+                from app_core import config as _cfg
+                dim = int((_cfg.load().get("embedding") or {}).get("dim") or 0) or len(VEC)
+            except Exception:  # noqa: BLE001
+                dim = len(VEC)
+            full = (VEC * (dim // len(VEC) + 1))[:dim]
+            return FakeResp(data={"data": [{"index": i, "embedding": full} for i in range(n)]})
         if "search" in url:
             return FakeResp(data={"results": [{"title": "T", "url": "http://x", "summary": "S"}]})
         return FakeResp(data={"choices": [{"message": {"content": "好。"}}]})
