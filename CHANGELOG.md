@@ -39,8 +39,10 @@
   `py_compile` 全过。云端**不重启预检**（正式部署前）：全量 `verify.sh` **5/5**、
   `test-runner` 17/17、`test-batch2-guards` 24/24、`test-config-ui` 48/48。
   首次预检曾抓到联动体检 FAIL（新模块 `recall_gate` 未进 smoke-all 覆盖），已修。
-- **部署**：本次为批次 2 首次部署，逐项结果见 `docs/05-改动台账.md` #4。
-  超时体感属对外行为，云端 verify 测不出，**需真机验收**。
+- **部署**：一次通过（`aa82ffc`）：`verify.sh --pre` 3/3 → 重启 `active` → 全量 5/5；
+  `.deployed_sha=aa82ffc`，回滚点 `/opt/backup/code-20261116-162041.tgz`。
+  逐项结果见 `docs/05-改动台账.md` #4。超时体感属对外行为，云端 verify 测不出，
+  **仍需真机验收**（长回复 / 多段语音 / 卡住时的收尾）。
 
 ## 2026-11-16 · 批次 1：embedding 维度守卫、影子收尾、配置对齐
 
