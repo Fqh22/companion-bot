@@ -802,32 +802,18 @@ def archive_raw(day: str = "", session: str = "") -> str:
     return f"已归档 {day}：{kept} 条 → raw/{day}.md"
 
 
-# ---------- 复盘 / 周报（实现已拆到 review.py，这里只保留同名入口） ----------
+# ---------- 复盘 / 周报（实现已拆到 review.py） ----------
+# 2026-11-16：只保留两个公开入口（命令与调度用）。
+# 原本还有 quality_metrics / _extract_json / _documents_since / _day_context 四个透传，
+# 它们是 review 的内部实现，透传出去等于把 review 的结构焊进 learn 的 API；
+# 调用方已改为直接 import review。
 async def review(core) -> str:
     from app_core import review as _review_mod
+
     return await _review_mod.review(core)
 
 
 async def weekly(core) -> str:
     from app_core import review as _review_mod
+
     return await _review_mod.weekly(core)
-
-
-def quality_metrics(days: int = 7, session: str = "") -> dict:
-    from app_core import review as _review_mod
-    return _review_mod.quality_metrics(days, session)
-
-
-def _extract_json(text: str) -> dict:
-    from app_core import review as _review_mod
-    return _review_mod._extract_json(text)
-
-
-def _documents_since(days: float) -> list[str]:
-    from app_core import review as _review_mod
-    return _review_mod._documents_since(days)
-
-
-def _day_context(days: float = 1, session: str = "") -> str:
-    from app_core import review as _review_mod
-    return _review_mod._day_context(days, session)

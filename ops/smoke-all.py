@@ -375,9 +375,9 @@ async def main() -> None:
         learn_mod.merge_list(learn_mod.CURIOUS, "还没搞懂", ["问题三"], cap=5)
         check("learn.merge_list", "问题三" in learn_mod.read_list(learn_mod.CURIOUS))
         check("learn.resolve_curious", learn_mod.resolve_curious(["问题一"]) >= 0)
-        check("learn._extract_json", learn_mod._extract_json('{"a": 1}') == {"a": 1})
-        check("learn._documents_since", isinstance(learn_mod._documents_since(7), list))
-        check("learn._day_context", "情绪" in learn_mod._day_context(1))
+        check("review._extract_json", review_mod._extract_json('{"a": 1}') == {"a": 1})
+        check("review._documents_since", isinstance(review_mod._documents_since(7), list))
+        check("review._day_context", "情绪" in review_mod._day_context(1))
         # 复盘要有「今天的新记忆」才会真的跑，先塞一条
         core.memory.add_document("他今天说要交周报", "private:10001", 0.8, ["工作"],
                                  ["交周报"], vec=VEC)
