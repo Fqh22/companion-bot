@@ -107,7 +107,7 @@ async def _reload(event: MessageEvent):
 @profile_cmd.handle()
 async def _profile():
     """看当前画像：每个字段的置信度、多久没被确认、会不会被注入。"""
-    await profile_cmd.finish(core.introspect.profile_text(learn))
+    await profile_cmd.finish(core.introspect.profile_text(core.learn))
 
 
 @forget_cmd.handle()

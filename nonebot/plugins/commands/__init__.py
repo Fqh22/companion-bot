@@ -45,7 +45,7 @@ def _arg(event: MessageEvent, cmd: str) -> str:
 
 @mood_cmd.handle()
 async def _mood():
-    await mood_cmd.finish(introspect.mood_text())
+    await mood_cmd.finish(core.introspect.mood_text())
 
 
 @mood_hist.handle()
@@ -71,18 +71,18 @@ async def _(event: MessageEvent):
 
 @trace_cmd.handle()
 async def _():
-    await trace_cmd.finish(introspect.trace_text())
+    await trace_cmd.finish(core.introspect.trace_text())
 
 
 @forget_cmd.handle()
 async def _(event: MessageEvent):
     """忘掉一条记忆：先列候选，再按编号真删。"""
-    await forget_cmd.finish(await introspect.forget_text(core, _arg(event, "/forget")))
+    await forget_cmd.finish(await core.introspect.forget_text(core, _arg(event, "/forget")))
 
 
 @remind_list_cmd.handle()
 async def _():
-    await remind_list_cmd.finish(remind.describe_pending())
+    await remind_list_cmd.finish(core.remind.describe_pending())
 
 
 @remind_cancel_cmd.handle()
@@ -92,7 +92,7 @@ async def _(event: MessageEvent):
     if not arg.isdigit():
         await remind_cancel_cmd.finish(
             "用法：/remind_cancel 编号（先 /remind_list 看方括号里的数字）")
-    await remind_cancel_cmd.finish(remind.cancel(int(arg)))
+    await remind_cancel_cmd.finish(core.remind.cancel(int(arg)))
 
 
 @diary_show.handle()
@@ -168,7 +168,7 @@ async def _():
 
 @usage_cmd.handle()
 async def _():
-    await usage_cmd.finish(await introspect.usage_text(core))
+    await usage_cmd.finish(await core.introspect.usage_text(core))
 
 
 @cleanup_cmd.handle()
@@ -231,7 +231,7 @@ async def _(event: MessageEvent):
 async def _():
     """记忆链路健康快照：哪一环静默失败了，先从这几个数看。"""
     try:
-        await mem_status_cmd.finish(introspect.mem_status_text())
+        await mem_status_cmd.finish(core.introspect.mem_status_text())
     except Exception as e:  # noqa: BLE001
         await mem_status_cmd.finish(f"取不到状态：{type(e).__name__}: {e}")
 

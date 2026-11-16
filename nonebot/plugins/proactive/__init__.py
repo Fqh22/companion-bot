@@ -9,6 +9,7 @@ import asyncio
 
 from nonebot import get_bots, get_driver, logger
 
+from app_core import config
 from plugins.chat import core
 
 driver = get_driver()

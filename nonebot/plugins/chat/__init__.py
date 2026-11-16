@@ -37,6 +37,7 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
+from app_core import asr, config, pacing
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
