@@ -136,7 +136,8 @@ from app_core.scheduling import remind as remind_store_mod  # noqa: E402
 from app_core.scheduling import scheduler as sched_store_mod  # noqa: E402
 
 from app_core import (  # noqa: E402
-    chat as chat_mod, chat_turn as chat_turn_mod, engine as engine_mod,
+    chat as chat_mod, chat_turn as chat_turn_mod,
+    chat_turn_base as chat_turn_base_mod, engine as engine_mod,
     approval as approval_mod, delivery as delivery_mod,
     identity as identity_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
