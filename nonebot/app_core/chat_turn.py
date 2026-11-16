@@ -870,8 +870,15 @@ class ChatTurnMixin:
                  (turn.text or turn.buffer)[:60].replace(chr(10), " "))
 
     async def _turn_commit(self, turn: Turn, on_sentence) -> None:
-        """收尾：影子、注意力记账、剪建议、写历史、排下一次总结。"""
+        """收尾：落库 → 记忆 → 观测 → 发送收尾。四段顺序不能换。"""
         turn.stage = POST_WRITE
+        await self._commit_write_user(turn)
+        await self._commit_memory(turn)
+        self._commit_observe(turn)
+        await self._commit_finalize(turn, on_sentence)
+
+    async def _commit_write_user(self, turn: Turn) -> None:
+        """1/4 落库：本轮 user 消息（shield 住取消）、统计行、图注写回。"""
         # 本轮 user 消息在这里才落库：prepare 只取证，写库统一在 POST_WRITE。
         # shield：45 秒硬线取消时也要把这条消息写完，否则历史和图注都会缺。
         try:
@@ -915,6 +922,8 @@ class ChatTurnMixin:
                 log.debug("图注写回失败：%s", e)
                 from app_core import alerts as _alerts
                 _alerts.record("warn", "caption_writeback_failed", str(e)[:200], turn.session)
+    async def _commit_memory(self, turn: Turn) -> None:
+        """2/4 记忆：用户否定推翻洞察、即时记忆落库。"""
         # 用户否定：把本轮注入的洞察标成被推翻。
         # 这是 insight 唯一的纠错入口——没有它，一个错的理解会一直影响后续对话，
         # 而且用户否定了也没人知道（和欠费那晚同类：错了但不响）。
@@ -955,6 +964,8 @@ class ChatTurnMixin:
                 log.debug("即时记忆失败：%s", e)
                 from app_core import alerts as _alerts
                 _alerts.record("warn", "instant_memory_failed", str(e)[:200], turn.session)
+    def _commit_observe(self, turn: Turn) -> None:
+        """3/4 观测：自检标签、影子样本、无来源断言、注意力记账。只记录不改行为。"""
         # 自检标签：剥掉、记一条。P1 只观测，不改回复。
         try:
             _tag, _body = self_check_mod.parse(turn.text or "")
@@ -1013,6 +1024,8 @@ class ChatTurnMixin:
             except Exception as e:  # noqa: BLE001
                 log.debug("注意力记账失败：%s", e)
 
+    async def _commit_finalize(self, turn: Turn, on_sentence) -> None:
+        """4/4 收尾：剪建议 → 写历史 → 现实校验 → 后台纠正 → 排下一次总结。"""
         # 事后硬剪只属于 rules 模式；model 模式让模型自己决定，不再二次加工。
         # **但他在征求意见时不剪**——「该不该/怎么办」的答案本身就是建议。
         _model_first = self._style_mode() == "model"

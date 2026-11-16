@@ -150,7 +150,8 @@ from app_core import (  # noqa: E402
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
     remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
-    shadow as shadow_mod, summarize as summarize_mod,
+    history as history_mod,
+    shadow as shadow_mod, summary as summary_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
     alerts as alerts_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
@@ -194,6 +195,8 @@ for p in (LEARN, LEARN / "notes", LEARN / "skills", LEARN / "raw"):
     p.mkdir(parents=True, exist_ok=True)
 
 chat_mod.DB, chat_mod.DATA = TMP / "chat.db", TMP
+summary_mod.DB = TMP / "chat.db"
+history_mod.DB = TMP / "chat.db"
 parse_log_mod.note("smoke", "x", "test")
 check("parse_fail 能写", (paths_mod.DATA / "parse_fail.jsonl").exists())
 check("现实校验：夜里说早安会记录",
