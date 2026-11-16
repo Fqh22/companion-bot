@@ -8,8 +8,6 @@ import asyncio
 
 import httpx
 
-from app_core.memory_common import EMBED_API, EMBED_MODEL
-
 log = logging.getLogger("qqbot.memory")
 _EMBED_CACHE: dict[str, list[float]] = {}
 EMBED_CACHE_MAX = 256

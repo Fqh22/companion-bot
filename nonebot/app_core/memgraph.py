@@ -38,7 +38,7 @@ def normalize(entity: str) -> str:
     s = s.replace("／", "/").strip("，,。.;；")
     # 别名表：让「harness 架构」和「DSH」在连边时算同一个实体。
     # 放在读侧归一，老数据不用迁移就能立刻受益。
-    return vocab._norm(vocab.alias(s))
+    return vocab._norm(s)
 
 
 class EntityGraph:

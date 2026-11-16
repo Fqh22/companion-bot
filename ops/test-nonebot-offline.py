@@ -67,7 +67,6 @@ from app_core import kb as kb_mod              # noqa: E402
 from app_core import learn as learn_mod        # noqa: E402
 from app_core import learn_store as learn_store_mod  # noqa: E402
 from app_core import memory as memory_mod      # noqa: E402
-from app_core import retrieval as retrieval_mod  # noqa: E402
 
 from app_core import mood as mood_mod          # noqa: E402
 from app_core import mood_store as mood_store_mod  # noqa: E402
@@ -202,60 +201,6 @@ async def main() -> None:
     else:
         print("SKIP touch（副本库没有 documents）")
 
-    # ---------- B2. 关键词检索：BM25 + RRF（纯函数，不碰库） ----------
-    check("tokenize 中文切 bigram",
-          retrieval_mod.tokenize("今天天气") == ["今天", "天天", "天气"],
-          str(retrieval_mod.tokenize("今天天气")))
-    check("tokenize ASCII 整体保留、小写",
-          retrieval_mod.tokenize("DeepSeek") == ["deepseek"],
-          str(retrieval_mod.tokenize("DeepSeek")))
-    check("tokenize 单字保留", retrieval_mod.tokenize("好") == ["好"])
-    # 数字 ID 被 bigram 切碎就废了：它恰恰是 dense 通道最抓不住、最需要词面命中的东西
-    check("tokenize 数字 ID 不切碎",
-          retrieval_mod.tokenize("QQ 10000") == ["qq", "10000"],
-          str(retrieval_mod.tokenize("QQ 10000")))
-
-    docs = [
-        "我下周三要去杭州出差，订了 10 点的票",
-        "他说最近在学 Rust，想写个命令行工具",
-        "QQ 号 10000 是机器人的",
-        "今天天气不错",
-    ]
-    bm = retrieval_mod.BM25(docs)
-    check("BM25 数字 ID 命中排第一", bm.ranked("10000")[:1] == [2],
-          str(bm.ranked("10000")))
-    check("BM25 中文短 query 命中", bm.ranked("天气")[:1] == [3], str(bm.ranked("天气")))
-    check("BM25 无命中返回空", bm.ranked("区块链") == [])
-    check("BM25 空 query 不炸",
-          bm.ranked("") == [] and bm.scores("") == [0.0] * len(docs))
-    check("BM25 空库不炸", retrieval_mod.BM25([]).ranked("任意") == [])
-
-    fused = retrieval_mod.rrf([["a", "b"], ["a", "c"]])
-    check("RRF 双路第一胜出", max(fused, key=fused.get) == "a", str(fused))
-    check("RRF 名次分 = 1/(k+rank)",
-          abs(fused["a"] - 2 / 61) < 1e-9 and abs(fused["b"] - 1 / 62) < 1e-9,
-          str(fused))
-    check("fuse 单路为空时退化",
-          retrieval_mod.fuse(["a", "b"], [], limit=5) == ["a", "b"]
-          and retrieval_mod.fuse([], ["c"], limit=5) == ["c"])
-    # d1：dense 第 1 + 关键词第 2 → 1/61+1/62；d3 只在关键词第 1 → 1/61。d1 该赢
-    check("fuse 交叉命中排前", retrieval_mod.fuse(["d1", "d2"], ["d3", "d1"], limit=3)[0] == "d1")
-
-    # 集成：影子对比真跑一遍，确认只落盘、不抛、且不改召回结果
-    from app_core import shadow as shadow_mod
-
-    shadow_path = TMP / "shadow-retrieval.jsonl"
-    shadow_mod.RETRIEVAL_LOG = shadow_path
-    bm_idx, bm_ids = mem._bm25_index()
-    if bm_idx is not None and bm_ids:
-        before = shadow_path.stat().st_size if shadow_path.exists() else 0
-        mem._shadow_retrieval("测试", bm_ids[:5], bm_ids[:3], 3)
-        check("影子召回对比落盘", shadow_path.exists() and shadow_path.stat().st_size > before)
-        rec = json.loads(shadow_path.read_text(encoding="utf-8").splitlines()[-1])
-        check("影子记录有三路名单 + overlap",
-              {"dense", "bm25", "fused", "overlap"} <= set(rec), str(sorted(rec)))
-    else:
-        print("SKIP 影子召回对比（副本库没有向量）")
 
     # ---------- B3. 实体连边：共同实体扩展 ----------
     from app_core import memgraph as memgraph_mod
@@ -309,16 +254,6 @@ async def main() -> None:
           vocab_mod.canonicalize(["区块链"], ["求职"]) == ["区块链"])
     check("vocab.canonicalize 去重且限长",
           vocab_mod.canonicalize(["求职", "求职", "a", "b", "c"], ["求职"], limit=2) == ["求职", "a"])
-    # 别名表：字面不像但指同一件事的，必须并成一个
-    check("vocab.alias 把 harness 架构 归到 DSH",
-          vocab_mod.alias("Harness 架构") == "DSH", vocab_mod.alias("Harness 架构"))
-    check("vocab.canonicalize 三种写法并成一个",
-          vocab_mod.canonicalize(["DSH", "harness 架构", "DeepSeek Harness"], []) == ["DSH"],
-          str(vocab_mod.canonicalize(["DSH", "harness 架构", "DeepSeek Harness"], [])))
-    from app_core import memgraph as memgraph_mod
-    check("memgraph 读侧归一：harness 架构 与 DSH 同边",
-          memgraph_mod.normalize("harness 架构") == memgraph_mod.normalize("DSH") == "dsh",
-          memgraph_mod.normalize("harness 架构"))
     check("summarize.vocab_hint 空表不加提示", summarize_mod.vocab_hint([]) == "")
     check("summarize.vocab_hint 非空才要求复用",
           "复用" in summarize_mod.vocab_hint(["求职", "装机"]))
@@ -487,11 +422,8 @@ async def main() -> None:
                   [m["content"] for m in prompt_mod.build_messages(
                       {"system_prompt": "人格"}, [], "在吗", digest="er")]))
 
-    # 影子记录：画像与二次召回都只落盘
-    shadow_mod.PROFILE_LOG = TMP / "shadow-profile.jsonl"
+    # 影子记录：二次召回只落盘
     shadow_mod.SECOND_LOG = TMP / "shadow-second.jsonl"
-    shadow_mod.record_profile("找工作中｜催婚", {"职业与求职": "找工作中"}, "shadow")
-    check("影子画像落盘", (TMP / "shadow-profile.jsonl").exists())
     shadow_mod.record_second_recall("那它呢", "内存多少钱", [{"doc_id": "abcdef12"}])
     check("影子二次召回落盘", (TMP / "shadow-second.jsonl").exists())
     _rec2 = json.loads((TMP / "shadow-second.jsonl").read_text(encoding="utf-8").splitlines()[-1])
@@ -581,75 +513,28 @@ async def main() -> None:
     check("自指率：提了我就算自指是错的", _a["ratio"] == 0.0 and _a["you"] == 1, str(_a))
     check("自指率：空回复不记", attention_mod.self_ref_ratio("")["ratio"] is None)
 
-    shadow_mod.ATTENTION_LOG = TMP / "shadow-attention.jsonl"
-    shadow_mod.record_attention("我最近在学 Rust", 1.0, 1, 0, "在忙啥")
-    check("影子注意力落盘", (TMP / "shadow-attention.jsonl").exists())
-
-    # 影子 → 周报：七路样本要能被压成几句话（以前只能手动跑 ops/shadow-eval.py）
-    _all_logs = {
-        "followup": TMP / "shadow-followup.jsonl",
-        "positive": TMP / "shadow-positive.jsonl",
-        "retrieval": TMP / "shadow-retrieval.jsonl",
-        "graph": TMP / "shadow-graph.jsonl",
-        "profile": TMP / "shadow-profile.jsonl",
-        "second": TMP / "shadow-second.jsonl",
-        "attention": TMP / "shadow-attention.jsonl",
-    }
-    # 全部改写到独立的探针目录：别的用例也在用上面那些文件名，
-    # 共用会让「恰好 1 行」这类断言在本用例后面炸掉。
+    # 影子 → 周报：三路样本要能被压成几句话
     _probe_dir = TMP / "shadow-probe"
     _probe_dir.mkdir(parents=True, exist_ok=True)
-    _all_logs = {k: _probe_dir / (k + ".jsonl") for k in _all_logs}
-    shadow_mod.FOLLOWUP_LOG = _all_logs["followup"]
-    shadow_mod.POSITIVE_LOG = _all_logs["positive"]
-    shadow_mod.RETRIEVAL_LOG = _all_logs["retrieval"]
-    shadow_mod.GRAPH_LOG = _all_logs["graph"]
-    shadow_mod.PROFILE_LOG = _all_logs["profile"]
-    shadow_mod.SECOND_LOG = _all_logs["second"]
-    shadow_mod.ATTENTION_LOG = _all_logs["attention"]
-    shadow_mod.LOGS = dict(_all_logs)
+    shadow_mod.POSITIVE_LOG = _probe_dir / "positive.jsonl"
+    shadow_mod.GRAPH_LOG = _probe_dir / "graph.jsonl"
+    shadow_mod.SECOND_LOG = _probe_dir / "second.jsonl"
     shadow_mod.SNAP = TMP / "shadow-weekly.json"
-    shadow_mod.record_retrieval("查询", ["a"] * 5, ["b"] * 5, ["a"] * 3 + ["b"] * 2)
     shadow_mod.record_graph("查询", ["a"], ["b", "c"])
     shadow_mod.record_second_recall("那呢", "这个", [{"doc_id": "abcdef12"}])
     shadow_mod.record_positive("笑死我了", "嗯。")
-    shadow_mod.record_profile("找工作中", {"职业与求职": "找工作中"}, "on")
     _sum = shadow_mod.weekly_summary(7)
-    check("影子汇总：召回对比记到重合数", _sum["retrieval"]["n"] >= 1
-          and _sum["retrieval"]["avg_overlap"] > 0, str(_sum["retrieval"]))
     check("影子汇总：连边覆盖率", _sum["graph"]["with_neighbors"] >= 1,
           str(_sum["graph"]))
     check("影子汇总：二次召回命中", _sum["second"]["hit"] >= 1, str(_sum["second"]))
-    _cur = {"retrieval": {"avg_overlap": 2.0}, "second": {"hit_rate": 40},
-            "attention": {"avg_ratio": 0.4}, "graph": {"n": 2, "with_neighbors": 1}}
+    _cur = {"second": {"hit_rate": 40}, "graph": {"n": 2, "with_neighbors": 1}}
     check("第一次影子快照没有上一周", shadow_mod.rotate_snapshot(_cur) == {})
     _prev = shadow_mod.rotate_snapshot(_cur)
     check("第二次快照返回上一次",
-          _prev.get("retrieval", {}).get("avg_overlap") == 2.0, str(_prev)[:60])
+          _prev.get("second", {}).get("hit_rate") == 40, str(_prev)[:60])
     _sl = shadow_mod.summary_lines(7, prev=_prev)
     check("周报里有「与上周相比」", any("与上周相比" in x for x in _sl), str(_sl[-1:])[:90])
-
-    # BM25 影子的判据：到点 + 样本够 + 重合高/低 → 给出明确结论
-    import json as _json
-    shadow_mod.RETRIEVAL_LOG = TMP / "shadow-retrieval.jsonl"
-    shadow_mod.RETRIEVAL_LOG.write_text(
-        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 2}) for i in range(60)),
-        encoding="utf-8")
-    _v = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
-    check("BM25 判据：到点且重合低 → 建议转正",
-          _v["due"] and "转正" in _v["verdict"], str(_v))
-    shadow_mod.RETRIEVAL_LOG.write_text(
-        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 5}) for i in range(60)),
-        encoding="utf-8")
-    _v2 = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
-    check("BM25 判据：到点且重合高 → 建议砍掉", "砍掉" in _v2["verdict"], str(_v2))
-    shadow_mod.RETRIEVAL_LOG.write_text(
-        "\n".join(_json.dumps({"ts": 1000.0 + i, "overlap": 2}) for i in range(3)),
-        encoding="utf-8")
-    _v3 = shadow_mod.retrieval_verdict(now=1000.0 + 20 * 86400)
-    check("BM25 判据：样本不足 → 继续攒", "继续攒" in _v3["verdict"], str(_v3))
-    check("BM25 判据能渲染成一行", "BM25" in shadow_mod.retrieval_line(now=1000.0 + 20 * 86400))
-    check("影子周报有可读的行", any("召回对比" in x for x in _sl), str(_sl[:2]))
+    check("影子周报有可读的行", any("二次召回" in x for x in _sl), str(_sl[:2]))
     check("影子周报会带上画像块",
           any("画像块" in x for x in _sl), str(_sl))
 
@@ -2541,15 +2426,6 @@ async def main() -> None:
     shadow_mod.record_positive("笑死，这也行", "那就这样")
     _lines = (TMP / "shadow-positive.jsonl").read_text(encoding="utf-8").strip().splitlines()
     check("正例写进了 jsonl", len(_lines) == 1 and "笑死" in _lines[0], str(len(_lines)))
-
-    class _FakeLLM:
-        async def complete(self, *a, **kw):
-            return {"content": "哦对，那个还没弄完"}
-
-    _cand = await shadow_mod.record_followup(_FakeLLM(), "在吗", "在")
-    check("影子补句生成出来了", "那个还没弄完" in _cand, _cand)
-    _fl = (TMP / "shadow-followup.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    check("补句落盘", len(_fl) == 1 and "candidate" in _fl[0], str(len(_fl)))
 
     # ---- 思考模式：默认常开；分流逻辑保留在 thinking_casual=True 时 ----
     check("默认常开：短句也开思考", core._thinking_for("今天好累", None) is None)

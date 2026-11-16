@@ -72,7 +72,6 @@ for _sub in ("nonebot/data", "qqbot-data", "backup"):
     "  model: 'fake-sum'\n"
     "chat:\n"
     "  share_tier: false\n"
-    "  shadow_followup: false\n"
     "  shadow_sample: 0.0\n"
     "context:\n"
     "  history_max_chars: 6000\n"

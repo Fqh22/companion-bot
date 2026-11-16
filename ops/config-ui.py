@@ -107,8 +107,6 @@ F = {
     "context.recall_query_items": ("召回拼接条数", "召回 query 额外拼最近几条用户消息。", {"min": 1, "max": 10}),
     "context.summary_idle_minutes": ("空闲总结（分钟）", "距上次总结这么久且有新消息，再触发一次。", {"min": 5, "max": 240}),
     "chat.media_settle_seconds": ("媒体等待（秒）", "图片/文件后等他补一句说明的窗口。", {"min": 0, "max": 10, "step": 0.1}),
-    "chat.shadow_followup": ("影子补句", "只记日志、不发消息，用来量「本来可以补的话」。", {}),
-    "chat.shadow_sample": ("影子抽样", "0–1，默认 0.3。", {"min": 0, "max": 1, "step": 0.05}),
     "chat.budget_mode": ("背景块预算", "legacy = 旧行为（prompt 基线）；tiered = fact / insight 各自配额。默认 legacy，可一键回退。", {"options": ["legacy", "tiered"]}),
     "group.enabled": ("启用群聊", "独立链路，无记忆无情绪。", {}),
     "group.whitelist": ("群白名单", "群号列表，一行一个；空 = 任何群都不回。", {"list": "int", "max_items": 20}),
@@ -147,7 +145,6 @@ F = {
     "embedding.provider": ("向量服务商", "只取默认 api/model/dim；显式值会覆盖它。", {"options": ["zhipu", "siliconflow"]}),
     "embedding.dim": ("向量维度", "换家必须一起改，并跑 ops/rebuild-vectors.py --apply 重建。", {"min": 1, "max": 8192}),
     "memory.contradiction_check": ("矛盾检测", "off 不查；shadow 只记；on 真的标取代。", {"options": ["off", "shadow", "on"]}),
-    "memory.shadow_retrieval": ("BM25 影子", "已停用：判据 11-14 被证伪，2026-11-19 到期移除。默认 false。", {}),
     "memory.recall_gate": ("检索门控", "off 不判不记；shadow 只落盘判断；on 跳过不需要的召回。影子截止 2026-11-30。", {"options": ["off", "shadow", "on"]}),
     "profile.inject": ("画像注入", "off 不注入；shadow 只落盘；on 真拼进 prompt。", {"options": ["off", "shadow", "on"]}),
     "pricing.deepseek-flash.in": ("Flash 输入（未命中）", "元 / 百万 token。", {"min": 0, "max": 1000, "step": 0.1}),
@@ -165,7 +162,7 @@ F = {
 BASIC_FIELDS = {
     "llm.temperature", "llm.max_tokens", "llm.thinking", "llm.thinking_casual",
     "context.history_max_chars", "context.history_max_items",
-    "chat.media_settle_seconds", "chat.shadow_followup", "chat.shadow_sample",
+    "chat.media_settle_seconds",
     "meme.threshold_positive", "meme.threshold_neutral", "meme.threshold_negative",
     "image.max_side", "image.quality",
 }

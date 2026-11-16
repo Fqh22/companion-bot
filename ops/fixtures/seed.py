@@ -71,7 +71,6 @@ def write_files(root: Path, case: dict) -> None:
         "chat:",
         "  share_tier: %s" % ("true" if cfg.get("share_tier") else "false"),
         "  style_mode: %s" % (cfg.get("style_mode") or "model"),
-        "  shadow_followup: false",
         "profile:",
         "  inject: %s" % (cfg.get("profile_inject") or "shadow"),
         "  shadow_sample: 0.0",

@@ -152,7 +152,7 @@ from app_core import (  # noqa: E402
     message as message_mod, image_provider as image_mod,
     memory_index as memory_index_mod, memory_store as memory_store_mod,
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
-    remind as remind_mod, retrieval as retrieval_mod,
+    remind as remind_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     history as history_mod, learn_constants as learn_constants_mod,
     learn_store as learn_store_mod, plugin_api as plugin_api_mod,
@@ -433,20 +433,6 @@ async def main() -> None:
               textsim_mod.similar("买牛奶", "准备面试材料") < 0.2)
         check("textsim.similar 空串为 0", textsim_mod.similar("", "x") == 0.0)
 
-        # ---------- retrieval（BM25 关键词通道 / RRF 融合） ----------
-        check("retrieval.tokenize 中文 bigram",
-              retrieval_mod.tokenize("天气") == ["天气"])
-        bm = retrieval_mod.BM25(["杭州出差", "在学 Rust", "今天天气不错"])
-        check("retrieval.BM25 能排出一名",
-              bm.ranked("天气") == [2], str(bm.ranked("天气")))
-        check("retrieval.BM25 空库不炸", retrieval_mod.BM25([]).ranked("x") == [])
-        check("retrieval.rrf 融合两路",
-              max(retrieval_mod.rrf([["a"], ["a"]]), key=lambda k: k) == "a")
-        check("retrieval.fuse 单路退化",
-              retrieval_mod.fuse([], ["z"], limit=3) == ["z"])
-        shadow_mod.record_retrieval("天气怎么样", dense=["a1b2c3d4"],
-                                    bm25=["e5f6a7b8"], fused=["e5f6a7b8", "a1b2c3d4"])
-        check("shadow 召回对比落盘", (TMP / "smoke-shadow-retrieval.jsonl").exists())
 
         # ---------- memgraph（共现实体连边） ----------
         shadow_mod.GRAPH_LOG = TMP / "smoke-shadow-graph.jsonl"
@@ -546,19 +532,12 @@ async def main() -> None:
 
         _pm = prompt_mod.build_messages({"system_prompt": "x"}, [], "在", profile="催婚")
         check("prompt 带画像块", any("[关于他]" in m["content"] for m in _pm))
-        shadow_mod.PROFILE_LOG = TMP / "smoke-shadow-profile.jsonl"
         shadow_mod.SECOND_LOG = TMP / "smoke-shadow-second.jsonl"
-        shadow_mod.record_profile("催婚", {"家庭": "催婚"})
         shadow_mod.record_second_recall("那呢", "这个", [{"doc_id": "aaaa1111"}])
-        check("影子画像/二次召回落盘",
-              (TMP / "smoke-shadow-profile.jsonl").exists()
-              and (TMP / "smoke-shadow-second.jsonl").exists())
+        check("影子二次召回落盘", (TMP / "smoke-shadow-second.jsonl").exists())
         check("relational 还在聊", "还在聊" in relational_mod.describe({}, 0.5))
         check("relational 有话头", "还没说透" in relational_mod.describe({}, 8, 1, "那个 bug"))
         check("attention 自指率", attention_mod.self_ref_ratio("你吃了吗")["ratio"] == 0.0)
-        shadow_mod.ATTENTION_LOG = TMP / "smoke-attention.jsonl"
-        shadow_mod.record_attention("我最近在学 Rust", 1.0, 1, 0, "?")
-        check("影子注意力落盘", (TMP / "smoke-attention.jsonl").exists())
         check("纠正去重按罕见短语合并",
               len(learn_mod.dedupe_items([
                   "[文字] 我谎称记着了但实际没存，别装。",

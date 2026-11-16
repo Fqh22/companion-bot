@@ -127,9 +127,6 @@ DEFAULTS = {
         # 原来只在 memory.py 里 get 兜底，没进 DEFAULTS，面板当未知键、改不了。
         "recall_repeat_window_min": 30,
         "recall_repeat_penalty": 0.35,
-        # BM25+RRF 影子：2026-11-14 判据被证伪（重合度只是代理指标），
-        # 到期 2026-11-19 按「影子实验必须有截止时间」关闭。代码保留，默认不再跑。
-        "shadow_retrieval": False,
         # 检索门控：先判断「这轮要不要动用记忆」再召回。
         # off=不判不记；shadow=只落盘判断与实召回条数；on=判不需要时跳过 fact 召回。
         # 影子实验，截止 2026-11-30，见 docs/04-评测与实验.md。
@@ -191,9 +188,6 @@ DEFAULTS = {
         # 只在「他发语音 / 明确要语音」时生效；普通文字聊天不受影响。
         "voice_reply_mode": "voice",
         "media_settle_seconds": 1.5,
-        # 影子模式：原来同样只在 ChatCore 里用 get 兜底，没进 DEFAULTS。
-        "shadow_followup": True,
-        "shadow_sample": 0.3,
         # 引用回复：第一段带「回复你那条」。默认关——用户实测觉得每条都挂引用框太重。
         "quote_reply": False,
         # 记忆契约（docs/01-定义与决策.md）：P1 起 fact 召回走 MemoryPort；false 可退回旧路径。

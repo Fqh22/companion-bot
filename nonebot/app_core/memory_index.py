@@ -105,49 +105,6 @@ class IndexMixin:
             out[doc_id] = {"doc_id": doc_id, "text": text, "meta": m}
         return out
 
-    def _bm25_index(self):
-        """建／取关键词索引，与 `_matrix` 同频失效（库条数一变就重建）。
-
-        索引顺序是 `memory_vectors JOIN documents` 的自然顺序，跟 dense 的
-        `_ids` 不一定一一对应（维度不一致的向量会被 `_matrix` 跳过），
-        所以两边只按 doc_id 对齐，绝不按下标。
-        """
-        from app_core import retrieval
-
-        c = self._conn()
-        n = c.execute("SELECT COUNT(*) FROM memory_vectors").fetchone()[0]
-        if self._bm25 is not None and self._bm25_n == n:
-            c.close()
-            return self._bm25, self._bm25_ids
-        rows = c.execute(
-            "SELECT v.doc_id, d.text FROM memory_vectors v "
-            "LEFT JOIN documents d ON d.doc_id = v.doc_id"
-        ).fetchall()
-        c.close()
-        if not rows:
-            self._bm25, self._bm25_ids, self._bm25_n = None, [], 0
-            return None, []
-        self._bm25_ids = [r[0] for r in rows]
-        self._bm25 = retrieval.BM25([r[1] or "" for r in rows])
-        self._bm25_n = n
-        return self._bm25, self._bm25_ids
-
-    def _shadow_retrieval(self, query: str, dense_ids: list[str],
-                          top_ids: list[str], k: int) -> None:
-        """算一遍 BM25+RRF，跟 dense 的 top-k 比一比，只落盘。
-
-        真要切过去之前必须有数据回答两个问题：提升的是哪类 query、
-        有没有把原本对的挤掉。所以记的是两路各自的名单，不是只记个差异数。
-        """
-        from app_core import retrieval, shadow
-
-        bm25, b_ids = self._bm25_index()
-        if bm25 is None or not b_ids:
-            return
-        b_rank = [b_ids[i] for i in bm25.ranked(query, limit=20)]
-        fused = retrieval.fuse(dense_ids[:20], b_rank, limit=k)
-        shadow.record_retrieval(query, dense=top_ids, bm25=b_rank[:k], fused=fused)
-
     def topic_vocab(self, limit: int = 50, ttl: float = 600.0) -> list[str]:
         """已有主题词的高频表，给摘要 prompt 用（复用而不是再造新词）。
 

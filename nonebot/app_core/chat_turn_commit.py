@@ -10,7 +10,7 @@ import asyncio
 import json
 import time
 
-from app_core import attention, correction, memory_instant, shadow
+from app_core import correction, memory_instant, shadow
 from app_core import prompt as prompt_mod
 from app_core import self_check as self_check_mod
 from app_core.chat_turn_base import POST_WRITE, log
@@ -164,16 +164,6 @@ class CommitMixin:
                         }, ensure_ascii=False) + "\n")
             except Exception as e:  # noqa: BLE001
                 log.debug("事实检查记录失败：%s", e)
-
-        # 注意力记账：这条回复有多少在说他、多少在说自己。
-        # 不评判好坏，只看两周后的趋势——自指率往上走，就是开始表演了。
-        if turn.owner:
-            try:
-                _ar = attention.self_ref_ratio(turn.text or turn.buffer)
-                shadow.record_attention(turn.text or turn.buffer, _ar["ratio"],
-                                        _ar["self"], _ar["you"], turn.user_text)
-            except Exception as e:  # noqa: BLE001
-                log.debug("注意力记账失败：%s", e)
 
     async def _commit_finalize(self, turn: Turn, on_sentence) -> None:
         """4/4 收尾：剪建议 → 写历史 → 现实校验 → 后台纠正 → 排下一次总结。"""

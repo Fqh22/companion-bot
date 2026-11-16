@@ -456,8 +456,6 @@ class ChatTurnMixin(CommitMixin):
                 _pmode = "on" if _pm is True else ("off" if _pm is False else str(_pm))
                 if _pmode == "on":
                     turn.profile_block = _ptext
-                if _pmode in ("on", "shadow"):
-                    shadow.record_profile(_ptext, _pfields, _pmode)
         except Exception as e:  # noqa: BLE001
             log.debug("画像注入准备失败：%s", e)
 

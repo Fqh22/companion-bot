@@ -143,11 +143,8 @@ chat:
   #   tiered = 两类各按自己的配额取，推断不挤占「他说过的话」的名额
   # 默认 legacy，一键可回退；转正前先跑 prompt A/B（docs/04-评测与实验.md）。
   budget_mode: "legacy"
-  # 影子模式：只记日志、不发消息，用来在真改行为前先量收益。
-  #   shadow-followup.jsonl  每轮生成一句「本来可以补的话」，看有多少真值得发
+  # 影子模式：只记日志、不发消息。
   #   shadow-positive.jsonl  他说「哈哈/笑死/懂了」时记一条正例（之前只有纠错闭环）
-  shadow_followup: true
-  shadow_sample: 0.3        # 抽样比例，省 token
 
 group:
   # 群聊是独立链路（无长期记忆、无情绪、无工具），见 app_core/group.py。
@@ -242,10 +239,6 @@ memory:
   #   on     = 真的标记取代
   # 四道闸：相似度 >=0.5 才问、>=0.6 才改、每次最多 2 条、必须给理由。
   contradiction_check: on
-  # 关键词通道（BM25+RRF）的影子对比：2026-11-14 判据被证伪（重合度只是代理指标，
-  # 人工抽检否决），2026-11-19 到期关闭。默认 false，不再每轮多算一遍召回。
-  # 重开前先重写判据，别再拿重合度当依据（docs/04-评测与实验.md）。
-  shadow_retrieval: false
   # 检索门控：先判断「这轮要不要动用记忆」。真实陪伴流量里只有约 3.4% 的消息
   # 真的需要回忆（RealCompanion 2026-10），瓶颈是「什么时候不检索」。
   #   off    = 不判不记（默认）

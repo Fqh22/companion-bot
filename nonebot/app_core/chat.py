@@ -184,10 +184,7 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         # 而且它会吞掉 temperature（推理模型不采样原温度），等于 token 层没有随机性。
         # 只对**闲聊**关：有问号、够长、带技术词、带图求助的轮次仍然开。
         self.thinking_casual = bool(llm.get("thinking_casual", False))
-        # 影子模式：只记日志不发消息。见 app_core/shadow.py
         chat_cfg = cfg.get("chat") or {}
-        self.shadow_followup = bool(chat_cfg.get("shadow_followup", True))
-        self.shadow_sample = float(chat_cfg.get("shadow_sample", 0.3))
         # 真正的调用逻辑在 llm.py；上面这些属性保留给配置检查和测试用
         self.llm = llm_mod.LLM(
             DB, api=self.api, model=self.model, temperature=self.temperature,

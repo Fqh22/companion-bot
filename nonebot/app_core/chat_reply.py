@@ -301,29 +301,15 @@ class ReplyMixin:
         return 25
 
     def _schedule_shadow(self, user_text: str, reply: str) -> None:
-        """影子模式：只记日志，不发消息。用来在真改行为前先量收益。
+        """只记一条正例样本：他这句是笑/认同就记（之前只有纠错，正例全丢了）。
 
-        - 补一句：生成「本来可以再补的那句」，落盘
-        - 正例：他这句是笑/认同就记一条（之前只有纠错，正例全丢了）
-        抽样：不是每轮都跑，默认 30%，省 token。
+        「补一句」的影子（record_followup）已删除：从未产生样本、也没人消费。
+        这里只写一行本地日志，无成本、不调模型。
         """
         try:
-            shadow.record_positive(user_text, reply)        # 纯本地，无成本
-            if not self.shadow_followup:
-                return
-            if random.random() > self.shadow_sample:
-                return
+            shadow.record_positive(user_text, reply)
         except Exception as e:  # noqa: BLE001
-            log.debug("影子记录失败：%s", e)
-            return
-
-        async def _run() -> None:
-            try:
-                await shadow.record_followup(self.llm, user_text, reply)
-            except Exception as e:  # noqa: BLE001
-                log.debug("影子补句失败：%s", e)
-
-        asyncio.create_task(_run())
+            log.debug("正例记录失败：%s", e)
 
     def _schedule_summary(self, session: str) -> None:
         """把记忆总结丢到后台，不拖慢回复。同一会话不并发总结。"""

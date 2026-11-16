@@ -202,7 +202,6 @@ class StoreMixin:
                 )
         c.close()
         self._mat = None          # 向量变了，下次召回重建矩阵
-        self._bm25_n = -1         # 同一 doc_id 覆盖写不会改变条数，关键词索引也得作废
         return doc_id
 
     def recent(self, n: int = 3, touch: bool = True) -> list[dict]:
@@ -342,7 +341,6 @@ class StoreMixin:
                         done += 1
             c.close()
         self._mat = None      # 补过向量，缓存作废
-        self._bm25_n = -1
         return done
 
     def find_by_prefix(self, prefix: str, limit: int = 5) -> list[str]:

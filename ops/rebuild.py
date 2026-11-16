@@ -132,7 +132,6 @@ async def write_back(core, did: int, doc_id: str, old_text: str, meta: dict,
                       (doc_id, memory_mod._pack(vec), time.time()))
     c.close()
     core.memory._mat = None
-    core.memory._bm25_n = -1
 
 
 def rollback(doc_id: str) -> None:

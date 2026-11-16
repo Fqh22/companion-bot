@@ -84,14 +84,6 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         self.time_w = float(mem_cfg.get("recall_time_weight", 0.3))
         self.imp_w = float(mem_cfg.get("recall_importance_weight", 0.1))
         self.keep_important = float(mem_cfg.get("recall_keep_important", 0.8))
-        # 关键词通道（BM25+RRF）目前只跑影子：算完 dense 结果再算一遍，
-        # 落盘对比，**不改召回结果**。攒够样本再决定要不要真的切过去。
-        # 2026-11-14：影子实验判据被证伪（333 次/2.97 低于转正阈值但人工抽检否决），
-        # 按「到期即关」关闭。要重开请先重写判据，别再拿重合度当代理指标。
-        self.shadow_recall = bool(mem_cfg.get("shadow_retrieval", False))
-        self._bm25 = None
-        self._bm25_ids: list[str] = []
-        self._bm25_n = -1
         # 实体连边（共现实体），同样只跑影子
         self._graph = None
         self._graph_n = -1
@@ -246,11 +238,8 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
                 log.info("召回 %r → %s", (query or "")[:14], " | ".join(parts))
             except Exception:
                 pass
-        if self.shadow_recall:
-            try:
-                self._shadow_retrieval(
-                    query, [ids[i] for i in order], [d["doc_id"] for d in out], k)
-                self._shadow_graph(query, [d["doc_id"] for d in out])
-            except Exception as e:  # noqa: BLE001
-                log.debug("召回影子对比失败：%s", e)
+        try:
+            self._shadow_graph(query, [d["doc_id"] for d in out])
+        except Exception as e:  # noqa: BLE001
+            log.debug("连边影子失败：%s", e)
         return out

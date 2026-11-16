@@ -259,10 +259,4 @@ def render(s: dict) -> str:
     if _al:
         _top = sorted(_al.items(), key=lambda x: -x[1])[:4]
         lines.append("24h 告警 " + "｜".join(f"{k}×{v}" for k, v in _top))
-    try:
-        from app_core import shadow as shadow_mod
-
-        lines.append(shadow_mod.retrieval_line(now))
-    except Exception:  # noqa: BLE001
-        pass
     return chr(10).join(lines)
