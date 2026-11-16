@@ -66,12 +66,9 @@ if PROVIDER not in PROVIDERS:
 
 
 def _key(name: str) -> str:
-    from app_core import paths
-    try:
-        data = json.loads(paths.KEYS.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return ""
-    return str(data.get(name) or "").strip()
+    from app_core.kernel import keys
+
+    return keys.get(name).strip()
 
 
 def voice_for(provider: str) -> str:

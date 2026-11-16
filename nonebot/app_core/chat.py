@@ -34,7 +34,6 @@ PERSONA = DATA / "persona.json"
 # 别人来聊时用的人格。见 personas/stranger.json：主人那份写满了「你和他」的关系，
 # 给外人看到会莫名其妙（它会把陌生人当成他）。
 STRANGER_PERSONA = DATA / "persona-stranger.json"
-KEYS = _paths.KEYS
 
 DEFAULT_API = "https://api.deepseek.com/v1/chat/completions"
 MAX_TOKENS = 1000            # 兜底默认值，与 config.py 的 DEFAULTS 保持一致

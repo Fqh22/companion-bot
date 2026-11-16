@@ -24,7 +24,6 @@ from app_core.vec import pack as _pack
 from app_core.vec import unpack as _unpack
 
 DB = _paths.MEM_DB
-KEYS = _paths.KEYS
 
 log = logging.getLogger("qqbot.memory")
 
@@ -37,10 +36,9 @@ SHADOW_DEDUP_COS = 0.85
 
 
 def _zhipu_key() -> str:
-    try:
-        return json.loads(KEYS.read_text(encoding="utf-8")).get("zhipu", "")
-    except Exception:
-        return ""
+    from app_core.kernel import keys
+
+    return keys.get("zhipu")
 
 
 # embedding 结果缓存：同一条文本不重复调外部接口。

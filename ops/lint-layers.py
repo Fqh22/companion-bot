@@ -156,13 +156,17 @@ def check_domain_io(mods: dict[Path, str], core: Path) -> None:
 
 
 def check_kernel(mods: dict[Path, str], core: Path) -> None:
+    """kernel 只能依赖 infra / kernel；依赖 domain 或 orchestration 就是反向依赖。"""
+    layers = {_key_of(p, core): t for p, t in mods.items()}
     for p in mods:
         if p.parent != core / "kernel":
             continue
         for t in _imports_of(p):
-            if not t.startswith("app_core.kernel") and t != "app_core":
+            other = _layer_of_target(t, layers)
+            if other in ("domain", "orchestration"):
                 FAILS.append(
-                    f"{p.relative_to(core.parent)}: kernel 不得 import 业务包：{t}")
+                    f"{p.relative_to(core.parent)}: kernel 不得 import 业务层：{t}"
+                    "（kernel 只放基础设施，依赖方向是业务 -> kernel）")
 
 
 def check_adapters(core: Path) -> None:

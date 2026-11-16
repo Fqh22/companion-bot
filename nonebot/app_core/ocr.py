@@ -19,11 +19,9 @@ MAX_BYTES = 20 * 1024 * 1024
 
 
 def _key() -> str:
-    from app_core import paths
-    try:
-        return str(json.loads(paths.KEYS.read_text(encoding="utf-8")).get("deepseek") or "")
-    except Exception:  # noqa: BLE001
-        return ""
+    from app_core.kernel import keys
+
+    return keys.get("deepseek")
 
 
 def _collect(node, out: list[str], depth: int = 0) -> None:

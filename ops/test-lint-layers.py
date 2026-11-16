@@ -80,7 +80,7 @@ def main() -> int:
     # 反例 5：kernel import 业务包
     write(core, "kernel/db.py", '"""[infra] kernel"""\nfrom app_core import prompt\n')
     rc, out = run(core)
-    check("kernel -> 业务包 -> FAIL", rc == 1 and "kernel" in out and "业务包" in out, out[-400:])
+    check("kernel -> 业务层 -> FAIL", rc == 1 and "kernel" in out and "业务层" in out, out[-400:])
     (core / "kernel" / "db.py").unlink()
 
     # 反例 6：adapters 越过门面

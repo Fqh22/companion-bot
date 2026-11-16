@@ -119,11 +119,9 @@ async def _send_proactive(text: str) -> bool:
 
 def _creds() -> tuple[str, str]:
     """从 keys.json 的 feishu 字段读 app_id/app_secret（不进仓库）。"""
-    try:
-        data = json.loads(paths.KEYS.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return "", ""
-    feishu = data.get("feishu") if isinstance(data.get("feishu"), dict) else {}
+    from app_core.kernel import keys
+
+    feishu = keys.section("feishu")
     return (str(feishu.get("app_id") or "").strip(),
             str(feishu.get("app_secret") or "").strip())
 

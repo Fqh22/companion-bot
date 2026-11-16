@@ -22,12 +22,9 @@ _model = MODEL                  # 测试可替换
 
 
 def _key() -> str:
-    from app_core import paths
+    from app_core.kernel import keys
 
-    try:
-        return str(json.loads(paths.KEYS.read_text(encoding="utf-8")).get("zhipu") or "")
-    except Exception:  # noqa: BLE001
-        return ""
+    return keys.get("zhipu")
 
 
 async def generate(prompt: str, size: str = SIZE, timeout: float = 90.0) -> Path | None:

@@ -22,17 +22,10 @@ MAX_SECONDS = 30.0          # 智谱限制：≤30 秒、≤25MB
 MAX_BYTES = 25 * 1024 * 1024
 
 
-def _keys_file() -> Path:
-    from app_core import paths
-
-    return paths.KEYS
-
-
 def _key() -> str:
-    try:
-        return str(json.loads(_keys_file().read_text(encoding="utf-8")).get("deepseek") or "")
-    except Exception:  # noqa: BLE001
-        return ""
+    from app_core.kernel import keys
+
+    return keys.get("deepseek")
 
 
 def duration(path: Path) -> float:

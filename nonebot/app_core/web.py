@@ -15,7 +15,6 @@ import httpx
 
 from app_core.files import sanitize
 
-KEYS = _paths.KEYS
 SEARCH_API = "https://api.deepseek.com/v1/tools/search"
 # 全家桶能力挂在 chat/completions 上（tools 里声明 deepseek_web_search）
 CHAT_API = "https://api.deepseek.com/chat/completions"
@@ -38,10 +37,9 @@ SYSTEM = (
 
 
 def _deepseek_key() -> str:
-    try:
-        return json.loads(KEYS.read_text(encoding="utf-8")).get("deepseek", "")
-    except Exception:
-        return ""
+    from app_core.kernel import keys
+
+    return keys.get("deepseek")
 
 
 _client = None
