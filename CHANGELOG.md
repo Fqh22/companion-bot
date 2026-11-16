@@ -39,6 +39,11 @@
 - **顺手修**：`test-memory-port` 的 FakeMemory 缺 `source_msg_ids`（批次 4 加原文指针后
   没同步假实现，云端专项跑出来）；`test-package` 在部署目录找不到仓库根的
   `pyproject.toml`，改为存在才检查（CI 仍覆盖）。
+- **事故与恢复**：`test-dialog` 没有临时根隔离，直接 `unlink` 生产的
+  `data/relation.md`。核对备份发现这份 250 字的关系小抄 **11-14 15:51 起就已经是
+  0 字节**（不是本批弄丢的），已从 `cloud-20261114-031701.tgz` 恢复并核对内容；
+  `test-dialog` 现在把 `paths.DATA` / `followup_store.DB` / `mood_store.STATE`
+  全部指向临时目录，不再触碰生产文件。
 - **没做的**：B2 拆入口（TurnContext + 四段物理切片）、B1b 拆 learn、B3b 配置生成
   与通道胶水上移——按计划在下一批，本轮不碰 `chat.py` / `chat_turn.py`。
 

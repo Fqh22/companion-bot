@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
@@ -39,7 +40,20 @@ def main() -> None:
     check("陈述不触发", not looks_analytical("我真想找个工作"))
     check("语气词不触发", not looks_analytical("还在学增删改查呢"))
 
-    from app_core import situation
+    from app_core import followup_store, mood_store, paths, situation
+
+    # 隔离（2026-11-16）：situation 读 paths.CHAT_DB、relation_notes 读 paths.DATA；
+    # 拆环后 followup/mood 的库路径在 store 里（不再动态读壳），也要一起指向临时目录。
+    # 之前没做隔离，云端直接跑这个脚本会读生产库、并 unlink 生产的 relation.md——
+    # 11-14 那份 250 字的小抄就是这样丢的，11-16 从备份恢复。
+    tmp = Path(tempfile.mkdtemp(prefix="dialog-test-"))
+    paths.DATA = tmp
+    paths.CHAT_DB = tmp / "chat.db"
+    followup_store.DB = tmp / "chat.db"
+    mood_store.CHAT_DB = tmp / "chat.db"
+    mood_store.STATE_DIR = tmp / "mood"
+    mood_store.STATE = tmp / "mood" / "state.json"
+
     check("空库时此刻为空", situation.describe("no-such-session") == "")
     check("空库时没有话题", situation.recent_topics("no-such-session") == [])
 
