@@ -78,6 +78,10 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/smoke-all.py
+      - name: 复盘产出基线（apply_review 逐字节 diff）
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/ab-review.py
       - name: 配置三处同步（DEFAULTS / example.yaml / 面板）
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
