@@ -1,4 +1,4 @@
-"""chat 核心：人格、LLM、会话、记忆、情绪、知识库、工具循环、分段。"""
+"""[orchestration] chat 核心：人格、LLM、会话、记忆、情绪、知识库、工具循环、分段。"""
 from __future__ import annotations
 
 import asyncio

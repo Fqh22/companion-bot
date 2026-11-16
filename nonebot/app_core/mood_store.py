@@ -1,4 +1,4 @@
-"""mood 的状态文件与历史表读写。
+"""[orchestration] mood 的状态文件与历史表读写。
 
 路径通过 app_core.mood 动态读取，测试对 mood.STATE / CHAT_DB 的补丁仍然有效。
 """

@@ -1,4 +1,4 @@
-"""学习层：复盘、周报、间隔重复、技能、笔记、好奇/纠正清单。"""
+"""[orchestration] 学习层：复盘、周报、间隔重复、技能、笔记、好奇/纠正清单。"""
 from __future__ import annotations
 
 import json

@@ -1,159 +1,191 @@
 #!/usr/bin/env python3
-"""分层依赖检查：给 P0-P7 重构用的护栏。
+"""[infra] 分层依赖检查：层由每个模块 docstring 首行的 [domain] / [orchestration] / [infra] 标记声明。
 
-规则只在目标包存在时生效，所以可以先上线、再逐个模块迁移。
+规则（全部可机器验证，不靠自觉）：
+- app_core 下每个 .py 必须有层标记，缺了直接 FAIL —— 新模块无法绕过分类。
+- domain 只能依赖 domain / infra：不得 import 编排层，也不得直接 import IO 库。
+- infra 不得 import 编排层（地基不能反过来依赖业务编排；依赖 domain 常量只 WARN）。
+- kernel 不依赖业务包；adapters 不越过门面；plugins 的 import 收口在 B0b 单独开。
+- 外包模块（web/asr/llm）只允许装配点与热路径 import，其余 WARN。
+
+用法：
+  python ops/lint-layers.py                 # 检查仓库里的 nonebot/app_core
+  python ops/lint-layers.py --core DIR      # 检查指定目录（给反例自检用）
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import re
 import sys
 from pathlib import Path
 
-try:
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-except Exception:
-    pass
-
 HERE = Path(__file__).resolve().parent
-CORE = HERE.parent / "nonebot" / "app_core"
-if not CORE.is_dir():
-    CORE = HERE.parent / "app_core"
-
 IO_MODULES = {"sqlite3", "aiosqlite", "httpx", "requests", "nonebot", "websockets"}
+TAGS = {"[domain]": "domain", "[orchestration]": "orchestration", "[infra]": "infra"}
 FAILS: list[str] = []
 WARNS: list[str] = []
 
-# 三层（见 docs/02-系统与扩展.md）：
-#   domain        纯规则：可以被任意层依赖，自己只能依赖 domain / infra
-#   orchestration 编排：调多个领域模块、碰 IO，可以被 adapters/plugins 依赖
-#   infra         基础设施：paths/config/files/kernel，谁都能用
-DOMAIN = frozenset({
-    "delivery", "pacing", "prompt", "intent", "textsim", "vec",
-    "memory_score", "mood_domain", "followup_domain", "memory_common",
-})
-ORCH = frozenset({
-    "engine", "runner", "commands", "runtime", "introspect", "proactive_runtime",
-    "chat", "chat_turn", "tool_loop", "scheduler", "proactive",
-    "learn", "review", "memory", "memory_store", "memory_index",
-    "wiki", "kb", "diary", "followup", "followup_store",
-    "mood", "mood_store", "profile", "contradict", "summarize",
-    "status", "watch", "meme", "web", "purge", "maintenance",
-    "relational", "attention", "retrieval", "memgraph", "vocab",
-    "identity", "approval",
-})
+
+def _core_dir(arg: str | None) -> Path:
+    if arg:
+        return Path(arg).resolve()
+    p = HERE.parent / "nonebot" / "app_core"
+    if p.is_dir():
+        return p
+    return HERE.parent / "app_core"
 
 
-def _targets(path: Path) -> list[str]:
-    """把 import 归一成 `app_core.xxx` 形式，含 from app_core import xxx。"""
-    out: list[str] = []
+def _tag_of(path: Path) -> str | None:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except Exception:
-        return out
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001 - 语法错误由 lint-plugins 报，这里不重复
+        return None
+    doc = ast.get_docstring(tree) or ""
+    first = doc.strip().splitlines()[0].strip() if doc.strip() else ""
+    for tag, layer in TAGS.items():
+        if first.startswith(tag):
+            return layer
+    return None
+
+
+def _key_of(path: Path, core: Path) -> str:
+    rel = path.relative_to(core).with_suffix("")
+    return ".".join(rel.parts)
+
+
+def _imports_of(path: Path) -> list[str]:
+    """把 import 归一成 app_core.xxx 形式；相对导入按所在包解析。"""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    pkg = path.parent.name
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             out.extend(a.name for a in node.names if a.name.startswith("app_core"))
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            if node.module == "app_core":
-                out.extend(f"app_core.{a.name}" for a in node.names)
-            elif node.module.startswith("app_core."):
-                out.append(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                base = [pkg] if pkg != "app_core" else []
+                for _ in range(node.level - 1):
+                    base = base[:-1]
+                mod = ".".join(base + ([node.module] if node.module else []))
+                targets = [f"app_core.{mod}.{a.name}" for a in node.names] if mod else [
+                    f"app_core.{a.name}" for a in node.names]
+                out.extend(targets)
+            elif node.module and node.module.startswith("app_core"):
+                if node.module == "app_core":
+                    out.extend(f"app_core.{a.name}" for a in node.names)
+                else:
+                    out.append(node.module)
     return out
 
 
-def check_domain_layers():
-    """domain 不得反向依赖编排层：否则纯规则就绑上了 IO/会话状态。"""
-    for name in sorted(DOMAIN):
-        p = CORE / f"{name}.py"
-        if not p.is_file():
+def _io_imports(path: Path) -> list[str]:
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return []
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found |= {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            found.add(node.module.split(".")[0])
+    return sorted(found & IO_MODULES)
+
+
+def scan(core: Path) -> dict[Path, str]:
+    """返回 {文件: 层}，缺标记的直接记 FAIL。"""
+    mods: dict[Path, str] = {}
+    for p in sorted(core.rglob("*.py")):
+        if "__pycache__" in p.parts:
             continue
-        for t in _targets(p):
-            mod = t.split(".")[1] if t.count(".") >= 1 else ""
-            if mod in ORCH:
-                FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}"
-                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/02-系统与扩展.md）")
+        tag = _tag_of(p)
+        if tag is None:
+            FAILS.append(
+                f"{p.relative_to(core.parent)}: 缺层标记 —— docstring 首行必须写 "
+                f"[domain] / [orchestration] / [infra]（新模块不许绕过分类）")
+            continue
+        mods[p] = tag
+    return mods
 
 
-def check_adapters():
-    """适配层只走门面：engine / runner / commands / delivery，不碰内部实现。"""
-    adapters = CORE.parent / "adapters"
+def _layer_of_target(target: str, layers: dict[str, str]) -> str | None:
+    """app_core.foo.bar -> 找到最近的已声明模块。"""
+    if not target.startswith("app_core"):
+        return None
+    rest = target[len("app_core"):].lstrip(".")
+    parts = rest.split(".") if rest else []
+    for i in range(len(parts), 0, -1):
+        key = ".".join(parts[:i])
+        if key in layers:
+            return layers[key]
+    return None
+
+
+def check_direction(mods: dict[Path, str], core: Path) -> None:
+    layers = {_key_of(p, core): t for p, t in mods.items()}
+    for p, tag in mods.items():
+        name = p.relative_to(core.parent)
+        for target in _imports_of(p):
+            other = _layer_of_target(target, layers)
+            if other is None:
+                continue
+            if tag == "domain" and other == "orchestration":
+                FAILS.append(
+                    f"{name}: domain 不得 import 编排层：{target}"
+                    "（纯规则留在 domain；编排放 orchestration，见 docs/02-系统与扩展.md）")
+            if tag == "infra" and other == "orchestration":
+                FAILS.append(
+                    f"{name}: infra 不得 import 编排层：{target}（地基不能反向依赖业务）")
+            if tag == "infra" and other == "domain":
+                WARNS.append(f"{name}: infra 依赖 domain：{target}（常量可接受，逻辑请下沉）")
+
+
+def check_domain_io(mods: dict[Path, str], core: Path) -> None:
+    for p, tag in mods.items():
+        if tag != "domain":
+            continue
+        bad = _io_imports(p)
+        if bad:
+            FAILS.append(
+                f"{p.relative_to(core.parent)}: domain 里出现 IO import：{', '.join(bad)}"
+                "（读写/网络放 orchestration 或 infra，domain 只做纯规则）")
+
+
+def check_kernel(mods: dict[Path, str], core: Path) -> None:
+    for p in mods:
+        if p.parent != core / "kernel":
+            continue
+        for t in _imports_of(p):
+            if not t.startswith("app_core.kernel") and t != "app_core":
+                FAILS.append(
+                    f"{p.relative_to(core.parent)}: kernel 不得 import 业务包：{t}")
+
+
+def check_adapters(core: Path) -> None:
+    adapters = core.parent / "adapters"
     if not adapters.is_dir():
         return
     banned = {"app_core.chat", "app_core.chat_turn", "app_core.tool_loop"}
     for p in adapters.rglob("*.py"):
-        for t in _targets(p):
+        for t in _imports_of(p):
             if t in banned:
-                FAILS.append(f"{p.relative_to(CORE.parent)}: 适配层不得 import 内部实现：{t}"
-                             "（只走 engine / runner / commands / delivery 门面）")
+                FAILS.append(
+                    f"{p.relative_to(core.parent)}: 适配层不得 import 内部实现：{t}"
+                    "（只走 engine / runner / commands / delivery 门面）")
 
 
-def imports(path: Path) -> list[str]:
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        FAILS.append(f"{path}: 解析失败 {e}")
-        return []
-    out = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            out.extend(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            out.append(node.module)
-    return out
-
-
-def check_domain():
-    """domain.py 只做纯规则：不碰数据库/网络/框架。"""
-    for p in CORE.glob("*/domain.py"):
-        bad = sorted(set(imports(p)) & IO_MODULES)
-        if bad:
-            FAILS.append(f"{p.relative_to(CORE.parent)}: domain 里出现 IO import：{', '.join(bad)}"
-                         "（读写/网络放 orchestration，domain 只做纯规则）")
-
-
-def check_kernel():
-    """kernel 不反向依赖业务包。"""
-    kernel = CORE / "kernel"
-    if not kernel.is_dir():
-        return
-    for p in kernel.glob("*.py"):
-        bad = sorted(m for m in imports(p)
-                     if m == "app_core"
-                     or (m.startswith("app_core.") and not m.startswith("app_core.kernel")))
-        if bad:
-            FAILS.append(f"{p.relative_to(CORE.parent)}: kernel 不得 import 业务包：{', '.join(bad)}"
-                         "（kernel 只放基础设施，业务依赖反过来）")
-
-
-def check_plugins():
-    """插件只能通过门面拿 core，不能 import 业务子模块。
-
-    迁移期间先只查新包；老插件等 P3/P4 再纳入。
-    """
-    plugins = CORE.parent / "plugins"
-    if not plugins.is_dir():
-        return
-    for p in plugins.rglob("*.py"):
-        mods = imports(p)
-        if any(m == "app_core" for m in mods) and "from plugins.chat import core" not in p.read_text(encoding="utf-8"):
-            # 现有插件大量 import app_core.diary 等，先不 FAIL；只标记新包
-            pass
-
-
-# 外包模块（docs/01-定义与决策.md）：只做「一次调用 → 一个结果」，不持有跨轮状态。
-# 只有装配点和热路径可以 import；其它模块要外部能力，走这些模块的接口。
 OUTSOURCED = frozenset({"web", "asr", "llm"})
 OUTSOURCED_ALLOWED = frozenset({
-    "chat", "chat_turn", "memory", "tools", "engine", "group", "__init__",
-    # 感知层本身就是外包入口：天气源失败时退到 web.search，属于装配逻辑
-    "perception",
+    "chat", "chat_turn", "memory", "tools", "engine", "group", "__init__", "perception",
 })
 
 
-def check_outsourced() -> None:
-    """非装配点/热路径 import 外包模块 → WARN（先观察，不阻断）。"""
-    for p in sorted(CORE.glob("*.py")):
+def check_outsourced(core: Path) -> None:
+    for p in sorted(core.glob("*.py")):
         name = p.stem
         if name in OUTSOURCED or name in OUTSOURCED_ALLOWED:
             continue
@@ -170,21 +202,27 @@ def check_outsourced() -> None:
 
 
 def main() -> int:
-    check_kernel()
-    check_domain()
-    check_domain_layers()
-    check_adapters()
-    check_plugins()
-    check_outsourced()
-    if WARNS:
-        for x in WARNS:
-            print("WARN", x)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--core", default=None, help="app_core 目录（默认仓库内路径）")
+    args = ap.parse_args()
+    core = _core_dir(args.core)
+    if not core.is_dir():
+        print(f"FATAL 找不到 app_core：{core}")
+        return 2
+    mods = scan(core)
+    check_direction(mods, core)
+    check_domain_io(mods, core)
+    check_kernel(mods, core)
+    check_adapters(core)
+    check_outsourced(core)
+    for x in WARNS:
+        print("WARN", x)
     if FAILS:
         print("=== 分层失败 ===")
         for x in FAILS:
             print("FAIL", x)
         return 1
-    print("分层依赖：PASS（没有发现反向依赖）")
+    print(f"分层依赖：PASS（{len(mods)} 个模块都有层标记，没有反向依赖）")
     return 0
 
 

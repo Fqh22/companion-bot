@@ -1,4 +1,4 @@
-"""followup 的 SQLite 读写；DB 通过 app_core.followup 动态读取。"""
+"""[orchestration] followup 的 SQLite 读写；DB 通过 app_core.followup 动态读取。"""
 from __future__ import annotations
 
 import logging

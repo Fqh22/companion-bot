@@ -1,4 +1,4 @@
-"""memory 的召回索引：矩阵 / BM25 / 实体图缓存。"""
+"""[orchestration] memory 的召回索引：矩阵 / BM25 / 实体图缓存。"""
 from __future__ import annotations
 
 import json

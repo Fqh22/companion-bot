@@ -1,4 +1,4 @@
-"""文件解析：把常见格式读成文本。"""
+"""[infra] 文件解析：把常见格式读成文本。"""
 from __future__ import annotations
 
 import base64

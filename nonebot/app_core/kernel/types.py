@@ -1,4 +1,4 @@
-"""跨模块的纯数据类型：不依赖 sqlite / httpx / nonebot。"""
+"""[infra] 跨模块的纯数据类型：不依赖 sqlite / httpx / nonebot。"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

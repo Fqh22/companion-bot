@@ -1,4 +1,4 @@
-"""时间来源：业务代码不要直接 time.time()，方便测试注入。"""
+"""[infra] 时间来源：业务代码不要直接 time.time()，方便测试注入。"""
 from __future__ import annotations
 
 import time

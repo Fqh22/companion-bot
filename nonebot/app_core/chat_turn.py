@@ -1,4 +1,4 @@
-"""chat 的一轮流水线：prepare / compose / generate / commit。
+"""[orchestration] chat 的一轮流水线：prepare / compose / generate / commit。
 
 从 chat.py 抽出来，目的是让 ChatCore 只剩组装和对外接口。
 为了兼容测试对 chat.DB / chat.REPLY_MAX_TOKENS 的补丁，常量通过 _chat() 动态读取。

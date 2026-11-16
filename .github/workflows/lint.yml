@@ -16,6 +16,8 @@ jobs:
         run: python ops/lint-plugins.py
       - name: 分层依赖（kernel/domain 方向）
         run: python ops/lint-layers.py
+      - name: 分层护栏自检（故意写违规，确认上一条会红）
+        run: python ops/test-lint-layers.py
       - name: 密钥扫描
         run: python ops/scan-secrets.py
       - name: 文档守门员（链接 / 路径引用 / 登记表）

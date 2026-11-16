@@ -1,4 +1,4 @@
-"""身份映射：外部平台 ID -> 引擎内部 ID。
+"""[orchestration] 身份映射：外部平台 ID -> 引擎内部 ID。
 
 QQ 的内部 ID 继续用 QQ 号（存量数据零迁移）；新平台用 c-<uuid>。
 映射表只是登记簿，核心逻辑只看 internal_id。

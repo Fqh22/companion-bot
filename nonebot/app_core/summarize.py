@@ -1,4 +1,4 @@
-"""把一段对话总结成一条长期记忆（结构化 JSON）。"""
+"""[orchestration] 把一段对话总结成一条长期记忆（结构化 JSON）。"""
 from __future__ import annotations
 
 import json

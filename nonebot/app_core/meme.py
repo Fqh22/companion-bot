@@ -1,4 +1,4 @@
-"""表情包：优先按语义匹配（caption + tags 向量），回退到分类。"""
+"""[orchestration] 表情包：优先按语义匹配（caption + tags 向量），回退到分类。"""
 from __future__ import annotations
 
 import asyncio

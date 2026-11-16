@@ -1,4 +1,4 @@
-"""memory 的 SQLite 存储与维护操作。
+"""[orchestration] memory 的 SQLite 存储与维护操作。
 
 方法通过 self._conn() 拿连接，所以 Memory.DB 的测试补丁仍然有效。
 """

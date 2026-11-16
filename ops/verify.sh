@@ -2,9 +2,9 @@
 # verify.sh —— 一键跑「五件套」，任何一套失败就返回非零。
 #
 # 用法（在云端 /opt/nonebot 下，root 或 ubuntu 都行）：
-#   ops/verify.sh            # 全量：分层 + 离线回归 + 联动体检 + 全链路 + 插件启动
-#   ops/verify.sh --pre      # 重启前：分层 + 离线回归 + 联动体检（都不碰生产库、不发消息）
-#   ops/verify.sh --quick    # 秒级：分层 + 联动体检（改完想先看一眼接线时用）
+#   ops/verify.sh            # 全量：规范 + 分层 + 离线回归 + 联动体检 + 全链路 + 插件启动
+#   ops/verify.sh --pre      # 重启前：规范 + 分层 + 离线回归 + 联动体检（都不碰生产库、不发消息）
+#   ops/verify.sh --quick    # 秒级：规范 + 分层 + 联动体检（改完想先看一眼接线时用）
 #   ops/verify.sh --verbose  # 失败时也打印完整输出
 #   ops/verify.sh --code /path/to/nonebot
 #
@@ -97,16 +97,19 @@ echo "=== 验证（模式：$MODE，代码：$CODE）==="
 
 case "$MODE" in
     quick)
-        run_suite "分层检查" "$OPS/lint-plugins.py"
+        run_suite "规范检查" "$OPS/lint-plugins.py"
+        run_suite "分层依赖" "$OPS/lint-layers.py"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     pre)
-        run_suite "分层检查" "$OPS/lint-plugins.py"
+        run_suite "规范检查" "$OPS/lint-plugins.py"
+        run_suite "分层依赖" "$OPS/lint-layers.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     *)
-        run_suite "分层检查" "$OPS/lint-plugins.py"
+        run_suite "规范检查" "$OPS/lint-plugins.py"
+        run_suite "分层依赖" "$OPS/lint-layers.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "联动体检" "$OPS/link-check.py"
         run_suite "全链路"   "$OPS/smoke-all.py"

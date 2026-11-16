@@ -1,4 +1,4 @@
-"""日记：每天读当天对话，写第一人称日记；可读、可列。"""
+"""[orchestration] 日记：每天读当天对话，写第一人称日记；可读、可列。"""
 from __future__ import annotations
 
 import json

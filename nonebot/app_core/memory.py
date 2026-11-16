@@ -1,4 +1,4 @@
-"""记忆层：复用 LivingMemory 的 schema（documents / memory_atoms），
+"""[orchestration] 记忆层：复用 LivingMemory 的 schema（documents / memory_atoms），
 自己管一张向量表。不依赖 AstrBot。
 """
 from __future__ import annotations

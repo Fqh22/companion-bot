@@ -1,4 +1,4 @@
-"""知识库：给 learn/*.md 切块建向量，按 query 检索。存在 chat.db，不碰记忆库。
+"""[orchestration] 知识库：给 learn/*.md 切块建向量，按 query 检索。存在 chat.db，不碰记忆库。
 
 为什么按「块」而不是按「文件」：
 

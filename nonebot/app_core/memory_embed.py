@@ -1,4 +1,4 @@
-"""embedding 适配：HTTP 调用 + 进程内缓存。"""
+"""[infra] embedding 适配：HTTP 调用 + 进程内缓存。"""
 from __future__ import annotations
 
 import hashlib

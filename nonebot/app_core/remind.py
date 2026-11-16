@@ -1,4 +1,4 @@
-"""提醒门面：实现搬到 app_core/scheduling/remind.py。"""
+"""[orchestration] 提醒门面：实现搬到 app_core/scheduling/remind.py。"""
 from __future__ import annotations
 
 from app_core import paths as _paths

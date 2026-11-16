@@ -1,4 +1,4 @@
-"""LLM 工具定义与执行（OpenAI function calling 格式）。"""
+"""[orchestration] LLM 工具定义与执行（OpenAI function calling 格式）。"""
 from __future__ import annotations
 
 from app_core import diary, kb, learn, meme, remind, web, wiki

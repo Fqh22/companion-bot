@@ -1,4 +1,4 @@
-"""运行时配置：读 /opt/nonebot/config.yaml，带默认值。"""
+"""[infra] 运行时配置：读 /opt/nonebot/config.yaml，带默认值。"""
 from __future__ import annotations
 
 import copy
