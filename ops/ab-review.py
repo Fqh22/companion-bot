@@ -64,10 +64,11 @@ _VOLATILE = ("updated_at", "day")
 
 
 def _sha(p: Path) -> str:
-    data = p.read_bytes()
+    # 跨平台：Windows 写 CRLF、Linux 写 LF，先统一成 LF 再比，否则基线只在同平台成立
+    data = p.read_bytes().replace(b"\r\n", b"\n")
     if p.suffix == ".json":
         try:
-            obj = json.loads(data)
+            obj = json.loads(data.decode("utf-8"))
             if isinstance(obj, dict):
                 for k in _VOLATILE:
                     obj.pop(k, None)
