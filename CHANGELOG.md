@@ -2,6 +2,28 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 文档规则收敛：守门员、登记表、脚本去重
+
+- **改了什么**：
+  - `ops/check-links.py` 重写为文档规则的**唯一守门员**：除原有 markdown 链接外，新增
+    「反引号 / 代码注释 / 配置注释里的 `docs/NN...` 引用（含裸编号）必须存在」与
+    「`docs/README.md` 登记表 ↔ 实际编号文档一一对应」；扫描**工作区**而非 `git ls-files`，
+    新建但还没 `git add` 的文档同样被检查。
+  - 新增 `ops/test-check-links.py`（6/6 护栏自检，故意写坏文档确认规则不永远绿），CI lint job 加一步。
+  - 删除 `ops/link-check.py` 里重复的「文档内相对链接」检查段：云端没有 docs 只会 SKIP，
+    本地又与 `check-links.py` 跑同一件事、判定还不一致。联动体检 46 → 45，当前口径数字同步。
+  - 全仓清理 **31 处失效引用**：AGENTS §5/§6、`nonebot/app_core` 十个模块的注释、
+    `config.example.yaml`、ops 多个脚本与 CI 注释里的旧编号，统一指向 5 篇现行文档。
+  - 规则收敛：`docs/README.md` 新增「规则（唯一真相源）」；AGENTS §1/§5 与 CONTRIBUTING §2/§5
+    改为速查与指针，不再复制规则正文；澄清 `link-check.py`（联动）与 `check-links.py`（文档）分工。
+- **为什么**：19 篇合并为 5 篇后，AGENTS 与代码注释里仍有十几处 `docs/00`、`docs/06`、
+  `docs/11`、`docs/17` 指向已删文件，旧检查只查 `[xxx](yyy)` 一处都抓不到；
+  规则又散在四处并已开始漂移。新守门员首跑列出 31 项，修完归零。
+- **验证**：`check-links.py` 21 篇 md / 92 链接 / 80 处路径引用 / 5 项登记 PASS；
+  `test-check-links.py` 6/6；`lint-plugins` FAIL 0 / WARN 0；`lint-layers` PASS；`test-guards` 4/4。
+- **部署**：`ops/` 脚本行为有变更（联动体检少一项重复检查），`nonebot/` 下为纯注释；
+  按约定需部署，`QQBOT_HOST` 仍缺，本次未执行。
+
 ## 2026-11-16 · 文档重构：19 篇合并为 5 篇分层叙述
 
 - **改了什么**：`docs/` 从 19 篇编号文档（2214 行）压成 **5 篇 + 一张地图**：

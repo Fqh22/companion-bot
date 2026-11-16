@@ -1,6 +1,6 @@
 """[orchestration] 感知层 v1：外部现实的最小入口。
 
-契约（见 docs/15）：
+契约（见 docs/04-评测与实验.md）：
     read(topic) -> {"text", "as_of", "source"} | None
 None 表示 **unknown**，不返回空字符串——缺口要显式，但 prompt 层不常驻。
 

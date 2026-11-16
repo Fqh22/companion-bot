@@ -15,10 +15,11 @@ python ops/test-nonebot-offline.py
 python ops/smoke-all.py
 python ops/test-runner.py
 python ops/test-commands.py
-python ops/link-check.py
+python ops/link-check.py          # 联动体检：插件 ↔ 内核接线（不是文档链接）
 python ops/smoke-plugins.py
 python ops/test-guards.py         # 护栏自检：lint 规则必须能抓到反例
-python ops/check-links.py         # 文档相对链接（改 README/docs 时）
+python ops/check-links.py         # 文档守门员：链接 / 路径引用 / 登记表
+python ops/test-check-links.py    # 护栏自检：故意写坏文档，确认上一条会红
 python ops/replay-diff.py 5       # 全链路冒烟：真实对话重放，只看召回一致/无异常（会调 LLM，不进 CI）
 python ops/memory-report.py 7     # 记忆使用周报：0 条率 / 平均条数 / 类型分布（观察期每周跑）
 
@@ -76,18 +77,21 @@ ops/verify.sh                    # 全量
 - **CHANGELOG.md**：按日期加一条，写「改了什么 + 为什么 + 验证数字」。
 - **测试**：新行为配一条 `check()`，放在对应的 `ops/test-*.py`；纯逻辑优先。
 - **文档**：改了对外行为/命令/配置，同步 `docs/` 对应页。
-- **决策**：改了 `docs/00` 里已记录的决策，必须在 CHANGELOG 写「为什么改」，否则会被当成默认值。
+- **决策**：改了 `docs/01-定义与决策.md` 里已记录的决策，必须在 CHANGELOG 写「为什么改」，否则会被当成默认值。
+
+文档规则的**唯一真相源**是 `docs/README.md` 的「约定 / 规则」两节（含机器检查项）；
+本文件只列必须留痕的动作，不复制规则正文。
 
 ## 6. 已定、别随手推翻的决策
 
 | 决策 | 位置 |
 |---|---|
-| 记忆放历史之后、画像作稳定前缀（缓存） | `docs/00` |
+| 记忆放历史之后、画像作稳定前缀（缓存） | `docs/01-定义与决策.md` |
 | 回复默认 model-first + 信号包，规则只兜底 | `prompt.py` / `chat.py` |
 | 主动消息只在「有 followup 话头」时开口 | `proactive.py` |
 | 思考常开（`llm.thinking_casual=false`） | `config.py` |
 | 引用回复默认关（`chat.quote_reply=false`） | `config.py` |
-| 分层不物理搬家，用 docstring 标记 + lint | `docs/06` |
+| 分层不物理搬家，用 docstring 标记 + lint | `docs/02-系统与扩展.md` |
 
 ## 7. 常见错误（AI 最容易犯）
 

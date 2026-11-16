@@ -142,7 +142,7 @@ async def main() -> None:
     check("语音发送失败也降级成文字",
           any("本来是语音" in t for t in ch6.texts), str(ch6.texts))
 
-    # 5. 生成图：不支持 drawing 的通道退化成普通图片（docs/19 的降级规则）
+    # 5. 生成图：不支持 drawing 的通道退化成普通图片（docs/02-系统与扩展.md 的降级规则）
     from app_core.message import Part as _P
 
     class NoDrawChannel(FakeChannel):

@@ -3326,7 +3326,7 @@ async def main() -> None:
     check("多个注入块的顺序与传入一致",
           _pos["块一"] < _pos["块二"] < _pos["块三"], str(_pos))
 
-    # 分享轮档位（docs/17）：判「他给了多少授权」，给一个读深度的上限
+    # 分享轮档位（docs/04-评测与实验.md）：判「他给了多少授权」，给一个读深度的上限
     from app_core import share_tier as st_mod
     check("无字 + 情绪物 → 第 0 档", st_mod.judge("", "Q版卡通人物鼓脸生气")[0] == 0)
     check("无字 + 作品 → 第 1 档", st_mod.judge("", "深色背景上的架构列表")[0] == 1)
@@ -3337,7 +3337,7 @@ async def main() -> None:
           all("必须" in st_mod.block(t) for t in (0, 1, 2)))
     check("档位块带理由", "无字" in st_mod.block(*st_mod.judge("", "表情包")))
 
-    # 姿态（docs/17 §3）：用他的动作回应他，别当评论员
+    # 姿态（docs/04-评测与实验.md §3）：用他的动作回应他，别当评论员
     from app_core import prompt as _p_mod
     check("自检规则含「接梗 / 看」两类",
           "接梗" in _p_mod.SELF_CHECK_RULE and "看（指认一个点" in _p_mod.SELF_CHECK_RULE)

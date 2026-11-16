@@ -131,39 +131,13 @@ def static_checks() -> None:
     else:
         print("SKIP config.example.yaml 不在部署目录（云端正常），跳过键对齐检查")
 
-    docs_link_checks()
     import_cycle_checks()
 
 
-# ---------------- 静态：文档链接 ----------------
-_MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-
-
-def docs_link_checks() -> None:
-    """文档里的相对链接必须真的能打开。
-
-    link-check 以前只管代码接线，文档链接没人查：docs/00 的
-    「10-重构方案.md」在文档合并后就不存在了，链接一直挂着。云端只部署
-    nonebot/，没有 docs —— 那里跳过，不冒充通过。
-    """
-    repo = CODE.parent
-    if not (repo / "docs").is_dir():
-        print("SKIP 部署目录没有 docs（云端正常），跳过文档链接检查")
-        return
-    broken = []
-    mds = sorted(repo.glob("*.md")) + sorted((repo / "docs").rglob("*.md"))
-    seen = set()
-    for p in mds:
-        if p.name == "交接卡.md" or p in seen:
-            continue
-        seen.add(p)
-        for m in _MD_LINK.finditer(p.read_text(encoding="utf-8", errors="replace")):
-            target = m.group(1).split("#", 1)[0].strip()
-            if not target or "://" in target or target.startswith(("mailto:", "#")):
-                continue
-            if not (p.parent / target).exists():
-                broken.append(f"{p.relative_to(repo)} -> {target}")
-    check("文档内相对链接都有效", not broken, "; ".join(broken)[:200])
+# 文档链接 / 路径引用 / 登记表一致性统一由 ops/check-links.py 负责（CI lint job）。
+# 2026-11-16 移除这里的重复实现：云端部署目录没有 docs 时它只会 SKIP，
+# 本地又与 check-links.py 跑同一件事、判定规则还不一致，留着只会给出第二个口径。
+# 本文件只管插件 ↔ 内核的代码接线。
 
 
 # ---------------- 静态：import 环 ----------------

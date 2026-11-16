@@ -4,7 +4,7 @@
 行为纠正 → corrections.md；
 提不出来但像事实 → corrections_pending.jsonl（永不注入，等复盘）。
 
-见 docs/16。这里只做「判断 + 分流」，不阻塞回合。
+见 docs/04-评测与实验.md。这里只做「判断 + 分流」，不阻塞回合。
 """
 from __future__ import annotations
 

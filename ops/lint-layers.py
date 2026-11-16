@@ -72,7 +72,7 @@ def check_domain_layers():
             mod = t.split(".")[1] if t.count(".") >= 1 else ""
             if mod in ORCH:
                 FAILS.append(f"app_core/{name}.py: domain 不得 import 编排层：{t}"
-                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/06）")
+                             "（编排逻辑留在 orchestration；domain 只做纯规则，见 docs/02-系统与扩展.md）")
 
 
 def check_adapters():

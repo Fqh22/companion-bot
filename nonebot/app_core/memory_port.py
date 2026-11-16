@@ -3,7 +3,7 @@
 P0/P1 阶段：**只读适配器**。把现有存储（memory / profile / wiki / kb）映射成统一的
 MemoryItem，不改表、不迁数据、不改变行为。
 
-五个类型（见 docs/09）：fact / profile / knowledge / mood / task。
+五个类型（见 docs/01-定义与决策.md）：fact / profile / knowledge / mood / task。
 P1 第一刀只迁 fact 召回（最重、最影响行为）；knowledge / profile 仍走旧路径，P3 再迁。
 
 为什么要有这一层：入口（chat_turn / commands / tools / scheduler）现在直接 import

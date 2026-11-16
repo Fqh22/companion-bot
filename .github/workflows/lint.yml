@@ -18,8 +18,10 @@ jobs:
         run: python ops/lint-layers.py
       - name: 密钥扫描
         run: python ops/scan-secrets.py
-      - name: 文档链接检查
+      - name: 文档守门员（链接 / 路径引用 / 登记表）
         run: python ops/check-links.py
+      - name: 文档护栏自检（故意写坏反例，确认上一条会红）
+        run: python ops/test-check-links.py
       # 2026-11-15 两次踩坑：.ps1 丢 BOM 后 PS 5.1 按 GBK 解析中文直接语法错；
       # 手工 scp 又让云端 ops/*.sh 丢了 +x，cron 静默停摆一天。两条都用 CI 守住。
       - name: PowerShell 脚本必须带 UTF-8 BOM
@@ -80,7 +82,7 @@ jobs:
         run: python ops/test-inbound.py
       - name: companion-core 包门面
         run: python ops/test-package.py
-      # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04 的矩阵）
+      # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04-评测与实验.md 的矩阵）
       - name: 联动体检
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot

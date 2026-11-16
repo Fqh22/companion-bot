@@ -35,7 +35,8 @@ python ops/lint-layers.py
 python ops/test-nonebot-offline.py     # 离线回归（不联网、不碰生产库）
 python ops/smoke-all.py                # 全链路
 python ops/link-check.py               # 联动体检
-python ops/check-links.py               # 文档相对链接（改了文档/移动文件后必跑）
+python ops/check-links.py               # 文档守门员（改了文档/移动文件后必跑）
+python ops/test-check-links.py          # 护栏自检：确认上一条不是永远绿
 
 # 提交前（等价于 CI 的 18 套）
 ops/verify.sh --pre
@@ -73,7 +74,8 @@ ops/verify.sh --pre
 - 必须满足：
   - [ ] CI 绿（lint + test 全部 job）
   - [ ] 新行为有对应 `check()`
-  - [ ] 对外行为/命令/配置变化同步 `docs/`
+  - [ ] 对外行为/命令/配置变化同步 `docs/`（规则见 [docs/README.md](docs/README.md)）
+  - [ ] `python ops/check-links.py` 与 `ops/test-check-links.py` 全绿
   - [ ] `CHANGELOG.md` 加一条（改了什么 + 为什么 + 验证数字）
 - 涉及密钥/协议/权限的改动，先看 [SECURITY.md](SECURITY.md)。
 

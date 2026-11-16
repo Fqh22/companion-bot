@@ -40,7 +40,7 @@ class InboundMessage:
         out = []
         if (self.text or "").strip():
             # 语音转写：形式是 voice，meta 里带 transcript 标记，
-            # 需要人读的正文仍可从 content 取（docs/19 的约定）
+            # 需要人读的正文仍可从 content 取（docs/02-系统与扩展.md 的约定）
             out.append(Part("voice" if self.voice else "text", self.text,
                             {"transcript": True} if self.voice else {}))
         out += [Part("image", str(p)) for p in (self.images or [])]

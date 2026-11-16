@@ -1,6 +1,6 @@
 """[orchestration] 情绪契约：状态是"单例"，不是"条目"。
 
-为什么和 MemoryPort 分开（见 docs/11）：
+为什么和 MemoryPort 分开（见 docs/01-定义与决策.md）：
 - MemoryPort 管可枚举、可检索、可删除的条目；
 - mood 是当前状态（valence / valence_base / energy / social），每轮必读，连续衰减，
   `recall` 的列表语义对它不成立。
