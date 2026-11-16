@@ -2,6 +2,21 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 B3b（配置三处同步）
+
+- **改了什么**：
+  - 新增 `ops/check-config-sync.py`：`config.example.yaml` 有、`config.DEFAULTS` 没有的键
+    一律 **FAIL**（写了等于没写，代码和面板都不认）；反过来只 WARN。接入
+    `verify.sh` 三个模式与 CI。
+  - 补两个**真实漂移**：顶层 `weather`（`perception.py` 在读、`DEFAULTS` 没有，靠
+    `or {}` 兜底）、`llm.prepare_parallel`（yaml 写在 `llm` 段、代码读 `chat` 段，
+    这个开关**从来没生效过**——默认恰好是 false/串行，所以一直没被发现）。
+- **为什么**：同一个事实在 DEFAULTS / yaml / 面板 / 测试四处手抄，weather 那次已经漂了。
+  配置项「四处登记」是文档要求，之前没有机器检查。
+- **验证**：云端 `verify.sh` **7/7**（规范 / 分层 / 配置同步 / 离线 735 / 联动 / 全链路 288 / 插件启动）。
+- **没做的**：面板键表仍手写（检查器只 WARN）。真正「单向生成」要改 `config-ui.py` 的
+  键表结构，风险大于收益，留到面板下次改动时一起做。
+
 ## 2026-11-16 · 重构批次 B2（拆入口：chat.py 1456→547，chat_turn.py 1106→704）
 
 - **改了什么**：
