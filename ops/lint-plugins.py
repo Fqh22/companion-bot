@@ -270,7 +270,7 @@ _MEM_EXEMPT = frozenset({
     "app_core/chat.py", "app_core/summary.py",
     "app_core/memory_port.py", "app_core/memory.py",
     "app_core/memory_store.py", "app_core/memory_index.py", "app_core/kb.py",
-    "app_core/learn.py", "app_core/wiki.py", "app_core/review.py",
+    "app_core/learn.py", "app_core/learn_store.py", "app_core/wiki.py", "app_core/review.py",
     "app_core/purge.py", "app_core/web.py", "app_core/meme.py",
 })
 

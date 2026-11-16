@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from app_core import parse_log
 from app_core import profile as profile_mod
-from app_core import learn
+from app_core import learn_store as learn
 from app_core.learn_constants import (SYSTEM_PROFILE, SYSTEM_REVIEW, SYSTEM_WEEKLY,
                                       _PROFILE_SPEC)
 

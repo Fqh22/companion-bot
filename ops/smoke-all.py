@@ -155,6 +155,7 @@ from app_core import (  # noqa: E402
     remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     history as history_mod, learn_constants as learn_constants_mod,
+    learn_store as learn_store_mod,
     notes_meta as notes_meta_mod,
     shadow as shadow_mod, summary as summary_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,

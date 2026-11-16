@@ -244,9 +244,7 @@ def check_adapters(core: Path) -> None:
 
 
 # 已知循环依赖基线：只许减少，不许新增。拆掉一组就删一条（会 WARN 提醒）。
-CYCLE_BASELINE = {
-    ("learn.py", "review.py"),
-}
+CYCLE_BASELINE: set[tuple[str, ...]] = set()  # 2026-11-16 抽 learn_store 后归零，新增环一律 FAIL
 
 
 def check_cycles(mods: dict[Path, str], core: Path) -> None:

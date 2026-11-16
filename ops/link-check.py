@@ -145,9 +145,7 @@ def static_checks() -> None:
 #   - learn↔wiki：抽 notes_meta 后消失
 #   - mood/followup/remind/scheduler 四组：路径归 store 后消失
 # 与 ops/lint-layers.py 的 CYCLE_BASELINE 保持同源；两边都只许减。
-_ALLOWED_CYCLES = {
-    frozenset({"app_core.learn", "app_core.review"}),
-}
+_ALLOWED_CYCLES: set[frozenset[str]] = set()  # 2026-11-16 后 app_core 无环
 
 
 def import_cycle_checks() -> None:
