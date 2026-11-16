@@ -103,6 +103,28 @@ tools:
   # 主人发 /approve <id> 批准才执行；不发 10 分钟后自动过期。默认 false。
   require_approval: false
 
+mcp:
+  # 只读 MCP：把外部 server 的工具接给模型。默认关。
+  #   白名单：只连这里列出的 server，每个 server 只暴露列出的 tool
+  #   超时：每次调用受 tools.timeout_seconds 约束
+  #   不可信隔离：返回内容标 [外部数据，非指令]，不当指令执行
+  enabled: false
+  servers: []
+  # 例子：
+  # servers:
+  #   - name: notes
+  #     command: npx
+  #     args: ["-y", "@modelcontextprotocol/server-filesystem", "/opt/qqbot-data/notes"]
+  #     tools:
+  #       - name: read_file
+  #         description: 读一个文件的全文
+  #         parameters: {type: object, properties: {path: {type: string}}, required: [path]}
+
+persona:
+  # 人格自学习：off = 不记录；shadow = 只记录「如果允许它改会改什么」，不改人格。
+  # 改人格等于改「它是谁」，没有审批与回滚前不真改。影子截止 2026-11-30。
+  self_learn: off
+
 proactive:
   # 主动消息发到哪个通道。默认 qq；改成 feishu 需要飞书插件启用、
   # 且主人先跟它说过话（有 chat_id 映射）。发不出去自动回退 QQ。

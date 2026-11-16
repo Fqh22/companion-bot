@@ -250,6 +250,13 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
 
         for _ns, _mod in plugin_api.build().items():
             setattr(self, _ns, _mod)
+        # 只读 MCP：把外部 server 的工具接给模型（默认关；白名单 + 超时 + 不可信隔离）
+        try:
+            from app_core import mcp as mcp_mod
+            from app_core import tools as tools_mod
+            mcp_mod.register(tools_mod)
+        except Exception as e:  # noqa: BLE001
+            log.debug("MCP 注册失败：%s", e)
 
     async def init_db(self) -> None:
         DATA.mkdir(parents=True, exist_ok=True)

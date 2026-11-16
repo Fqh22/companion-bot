@@ -148,6 +148,8 @@ DEFAULTS = {
     "profile": {
         "inject": "shadow",
     },
+    "mcp": {"enabled": False, "servers": []},
+    "persona": {"self_learn": "off"},
     "tools": {
         # 单个工具调用的超时；总预算是一轮回复里所有工具调用的上限
         "timeout_seconds": 30,

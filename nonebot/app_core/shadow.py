@@ -132,6 +132,20 @@ def record_second_recall(user_text: str, prev_text: str, rows: list[dict]) -> No
     })
 
 
+# ---------- 人格自学习影子（截止 2026-11-30） ----------
+PERSONA_LOG = DATA / "persona-drift.jsonl"
+
+
+def record_persona_drift(kind: str, detail: str, rid: str = "") -> None:
+    """记一条「如果允许它改人格，这轮会改什么」。只写文件，不改人格。
+
+    人格自学习现在只有影子：改人格等于改「它是谁」，没有审批与回滚前不真改。
+    截止 2026-11-30 看有没有值得改的模式，再决定做不做（docs/04）。
+    """
+    _append(PERSONA_LOG, {"ts": time.time(), "kind": kind,
+                          "detail": (detail or "")[:200], "rid": str(rid or "")[:8]})
+
+
 # ---------- 周汇总：把样本变成几句话 ----------
 LOGS = {
     "positive": POSITIVE_LOG,

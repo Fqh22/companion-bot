@@ -1,7 +1,11 @@
 """[orchestration] LLM 工具定义与执行（OpenAI function calling 格式）。"""
 from __future__ import annotations
 
+import logging
+
 from app_core import diary, kb, learn, meme, remind, web, wiki
+
+log = logging.getLogger("qqbot.tools")
 
 TOOLS = [
     {"type": "function", "function": {
@@ -229,6 +233,14 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None,
     之后，模型自己不能悄悄写入，必须主人显式批准。默认关闭，旧行为不变。
     """
     handler = HANDLERS.get(name)
+    if name.startswith("mcp__"):
+        # 只读外部工具：失败降级成一句话，不影响本轮（server 起不来 / 超时 / 协议错）
+        try:
+            from app_core import mcp as mcp_mod
+            return await mcp_mod.call(name, args)
+        except Exception as e:  # noqa: BLE001
+            log.warning("MCP 调用失败 %s：%s", name, e)
+            return f"外部工具暂时不可用：{e}"
     if handler is None:
         return f"未知工具：{name}"
     try:

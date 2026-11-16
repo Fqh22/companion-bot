@@ -252,6 +252,12 @@ class CommitMixin:
             # 只认本人的纠正：写入的是全局 corrections 和本人的 fact 记忆，
             # 让外人触发等于让别人替你改记忆（见 510 行「里面写满了他的私事」）。
             if turn.owner and _prev and correction.looks_like_correction(turn.user_text):
+                try:
+                    from app_core import config as _cfg_mod
+                    if str((_cfg_mod.load().get("persona") or {}).get("self_learn", "off")) == "shadow":
+                        shadow.record_persona_drift("correction", turn.user_text, turn.rid)
+                except Exception:  # noqa: BLE001
+                    pass
                 asyncio.create_task(correction.adjudicate(
                     self, turn.user_text, _prev, turn.rid, turn.session))
         except Exception:  # noqa: BLE001
