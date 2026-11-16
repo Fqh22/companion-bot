@@ -82,21 +82,25 @@ _BANNED = ("self.memory_trace", "self._turn", "self.trace", "self._current_turn"
 
 
 def _state_violations(files: dict[str, str]) -> list[str]:
-    joined = files["chat.py"] + files["chat_turn.py"] + files["memory_port.py"]
+    joined = (files["chat.py"] + files["chat_turn.py"] + files["chat_turn_base.py"]
+              + files["chat_turn_commit.py"] + files["memory_port.py"])
     return [b for b in _BANNED
             if re.search(rf"\b{re.escape(b)}\s*=", joined)]
 
 
 def state_checks() -> None:
     core = CODE / "app_core"
-    names = ("chat.py", "chat_turn.py", "memory_port.py", "runner.py")
+    names = ("chat.py", "chat_turn.py", "chat_turn_base.py", "chat_turn_commit.py",
+             "memory_port.py", "runner.py")
     files = {n: (core / n).read_text(encoding="utf-8") for n in names}
     check("每轮状态不挂回实例", not _state_violations(files),
           str(_state_violations(files)))
     check("MemoryPort 让调用方传自己的 trace",
           "trace: list[dict] | None = None" in files["memory_port.py"])
+    # Turn 在 2026-11-16 随数据结构搬到 chat_turn_base.py
     check("Turn 仍是每轮状态的 dataclass",
-          "@dataclass" in files["chat_turn.py"] and "class Turn" in files["chat_turn.py"])
+          "@dataclass" in files["chat_turn_base.py"]
+          and "class Turn" in files["chat_turn_base.py"])
     check("同会话串行锁仍在", "_SESSION_LOCKS.setdefault" in files["runner.py"])
     # 反例：确认这条护栏不是摆设
     fake = dict(files)
