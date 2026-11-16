@@ -540,8 +540,9 @@ async def main() -> None:
     _sl = shadow_mod.summary_lines(7, prev=_prev)
     check("周报里有「与上周相比」", any("与上周相比" in x for x in _sl), str(_sl[-1:])[:90])
     check("影子周报有可读的行", any("二次召回" in x for x in _sl), str(_sl[:2]))
-    check("影子周报会带上画像块",
-          any("画像块" in x for x in _sl), str(_sl))
+    check("影子周报只报还有的项",
+          all(("画像块" not in x and "补一句" not in x and "自指率" not in x) for x in _sl),
+          str(_sl))
 
     # ---------- C. 预传 qv 时不重复 embedding ----------
     embed_calls = []
