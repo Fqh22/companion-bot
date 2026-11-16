@@ -217,10 +217,13 @@ check("纠正哈希稳定",
       correction_mod._hash("他生日是3月") == correction_mod._hash(" 他生日是3月 "))
 memory_mod.DB = TMP / "livingmemory.db"
 kb_mod.DB, kb_mod.LEARN = TMP / "chat.db", LEARN
+# 2026-11-16：learn 的存储层拆到 learn_store，路径补丁点跟着走
 learn_mod.LEARN, learn_mod.MEM_DB, learn_mod.CHAT_DB = LEARN, memory_mod.DB, TMP / "chat.db"
-learn_mod.PROFILE, learn_mod.CORRECTIONS = LEARN / "self_profile.md", LEARN / "corrections.md"
-learn_mod.CURIOUS = LEARN / "curious.md"
 learn_mod.SKILLS, learn_mod.NOTES, learn_mod.RAW = LEARN / "skills", LEARN / "notes", LEARN / "raw"
+learn_store_mod.LEARN, learn_store_mod.MEM_DB, learn_store_mod.CHAT_DB = LEARN, memory_mod.DB, TMP / "chat.db"
+learn_store_mod.PROFILE, learn_store_mod.CORRECTIONS = LEARN / "self_profile.md", LEARN / "corrections.md"
+learn_store_mod.CURIOUS = LEARN / "curious.md"
+learn_store_mod.NOTES = LEARN / "notes"
 wiki_mod.DB, wiki_mod.NOTES, wiki_mod.SKILLS = TMP / "chat.db", learn_mod.NOTES, learn_mod.SKILLS
 diary_mod.DIARY_DIR, diary_mod.MIRROR_DIR, diary_mod.CHAT_DB = TMP / "diary", LEARN, TMP / "chat.db"
 contradict_mod.LOG = TMP / "contradictions.jsonl"
@@ -373,10 +376,10 @@ async def main() -> None:
         check("meme.categories", isinstance(meme_mod.categories(), dict))
 
         # ---------- learn ----------
-        learn_mod.write_list(learn_mod.CURIOUS, "还没搞懂", ["问题一", "问题二"])
-        check("learn.read_list", "问题一" in learn_mod.read_list(learn_mod.CURIOUS))
-        learn_mod.merge_list(learn_mod.CURIOUS, "还没搞懂", ["问题三"], cap=5)
-        check("learn.merge_list", "问题三" in learn_mod.read_list(learn_mod.CURIOUS))
+        learn_mod.write_list(learn_store_mod.CURIOUS, "还没搞懂", ["问题一", "问题二"])
+        check("learn.read_list", "问题一" in learn_mod.read_list(learn_store_mod.CURIOUS))
+        learn_mod.merge_list(learn_store_mod.CURIOUS, "还没搞懂", ["问题三"], cap=5)
+        check("learn.merge_list", "问题三" in learn_mod.read_list(learn_store_mod.CURIOUS))
         check("learn.resolve_curious", learn_mod.resolve_curious(["问题一"]) >= 0)
         check("review._extract_json", review_mod._extract_json('{"a": 1}') == {"a": 1})
         check("review._documents_since", isinstance(review_mod._documents_since(7), list))
