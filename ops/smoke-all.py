@@ -138,7 +138,8 @@ from app_core.scheduling import scheduler as sched_store_mod  # noqa: E402
 from app_core import (  # noqa: E402
     chat as chat_mod, chat_turn as chat_turn_mod,
     chat_turn_base as chat_turn_base_mod,
-    chat_turn_commit as chat_turn_commit_mod, engine as engine_mod,
+    chat_turn_commit as chat_turn_commit_mod, chat_reply as chat_reply_mod,
+    engine as engine_mod,
     approval as approval_mod, delivery as delivery_mod,
     identity as identity_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
@@ -199,6 +200,7 @@ for p in (LEARN, LEARN / "notes", LEARN / "skills", LEARN / "raw"):
 chat_mod.DB, chat_mod.DATA = TMP / "chat.db", TMP
 summary_mod.DB = TMP / "chat.db"
 history_mod.DB = TMP / "chat.db"
+chat_reply_mod.DB = TMP / "chat.db"
 parse_log_mod.note("smoke", "x", "test")
 check("parse_fail 能写", (paths_mod.DATA / "parse_fail.jsonl").exists())
 check("现实校验：夜里说早安会记录",

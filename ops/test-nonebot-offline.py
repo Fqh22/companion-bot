@@ -72,6 +72,7 @@ from app_core import mood as mood_mod          # noqa: E402
 from app_core import mood_store as mood_store_mod  # noqa: E402
 from app_core import summary as summary_mod   # noqa: E402
 from app_core import history as history_mod   # noqa: E402
+from app_core import chat_reply as chat_reply_mod  # noqa: E402
 from app_core import followup_store as followup_store_mod  # noqa: E402
 from app_core import remind as remind_mod      # noqa: E402
 from app_core.scheduling import remind as remind_store_mod  # noqa: E402
@@ -87,6 +88,7 @@ chat_mod.DB = TMP / "chat.db"
 chat_mod.DATA = TMP           # 只在 init_db 里用来建目录，Windows 上跑测试也不会碰 /opt
 summary_mod.DB = TMP / "chat.db"   # 摘要/水位已拆到 SummaryMixin（2026-11-16）
 history_mod.DB = TMP / "chat.db"   # 历史读写已拆到 HistoryMixin（2026-11-16）
+chat_reply_mod.DB = TMP / "chat.db"  # 回复主链路已拆到 ReplyMixin（2026-11-16）
 memory_mod.DB = TMP / "livingmemory.db"
 kb_mod.DB = TMP / "chat.db"
 mood_store_mod.STATE_DIR = TMP / "mood"
