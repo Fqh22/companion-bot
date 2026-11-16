@@ -440,17 +440,21 @@ def check_slot_table() -> list[str]:
 
     「唯一」而不是「书写递增」：渲染按 sorted(sid) 走，书写顺序不参与判断。
     """
-    f = CORE / "chat_turn.py"
-    try:
-        tree = ast.parse(f.read_text(encoding="utf-8"))
-    except Exception as e:  # noqa: BLE001
-        return [f"chat_turn.py 解析失败：{e}"]
+    # SLOTS 在 2026-11-16 随数据结构搬到 chat_turn_base.py；两处任一存在即可。
     node = None
-    for n in tree.body:
-        if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SLOTS":
-            node = n.value
+    f = CORE / "chat_turn.py"
+    for cand in (CORE / "chat_turn_base.py", f):
+        if not cand.is_file():
+            continue
+        try:
+            tree = ast.parse(cand.read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            return [f"{cand.name} 解析失败：{e}"]
+        for n in tree.body:
+            if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SLOTS":
+                node, f = n.value, cand
     if node is None:
-        return ["chat_turn.py: 找不到模块级 SLOTS 表（槽位顺序的唯一真源）"]
+        return ["chat_turn.py / chat_turn_base.py: 找不到模块级 SLOTS 表（槽位顺序的唯一真源）"]
     fails = []
     sids, keys = [], []
     for elt in getattr(node, "elts", []):
