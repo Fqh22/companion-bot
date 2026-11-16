@@ -26,8 +26,12 @@
   `check-links.py` 21 篇 / 92 链接 / 82 处引用 / 5 项登记 PASS；`test-check-links` 6/6；
   `lint-plugins` FAIL 0 / WARN 0；`lint-layers` PASS；`test-guards` 4/4。
   离线回归与全链路本地缺依赖未跑，由云端 `verify.sh` 覆盖。
-- **部署**：本次为批次 1 首次部署（云端原 `.deployed_sha = 1a3c313`），
-  逐项结果见 `docs/05-改动台账.md` #3。
+- **首次部署被硬门拦住（未重启）**：`verify.sh --pre` 的召回 golden 2 条 FAIL——
+  读侧 `check_dim` 误把 `self.dim=2048` 与调用方传入的低维 `qv` 比较，
+  正常的预计算召回被降级成 `recent()`。已改为「读侧只比矩阵与查询维度，
+  配置维度交给写侧 `embed()`」，并补一条护栏用例。这正是「验证不过就不重启」的价值。
+- **部署**：云端原 `.deployed_sha = 1a3c313`；修复后重部署，逐项结果见
+  `docs/05-改动台账.md` #3。
 
 ## 2026-11-16 · 文档规则收敛：守门员、登记表、脚本去重
 

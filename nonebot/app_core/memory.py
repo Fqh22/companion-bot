@@ -189,8 +189,11 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         # 维度不一致 = 换过 embedding 模型却没重建向量。以前这里直接 recent()，
         # 用户只看到「它记不住了」，日志里什么都没有。现在降级仍然保留（服务不能挂），
         # 但必须留下 error 日志 + 一条告警，让静默失败变成可数的失败。
+        # qv 可由调用方传入（预计算的向量、离线 golden 的低维假向量），所以读侧
+        # 只判断「矩阵与查询是否在同一空间」；配置维度的校验属于写侧 embed()，
+        # 拿 self.dim 来卡 qv 会把正常的预计算召回全部误判成换家降级。
         ok, why = embed_provider.check_dim(
-            int(mat.shape[1]), int(q.shape[0]), self.dim)
+            int(mat.shape[1]), int(q.shape[0]))
         if not ok:
             log.error("召回降级：%s", why)
             try:

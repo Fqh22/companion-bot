@@ -40,9 +40,11 @@ def main() -> int:
     check("查询/配置维度不符被拦", cfg_bad[0] is False, cfg_bad[1])
     check("未配置维度时不误报", ep.check_dim(1024, 1024, 0)[0] is True)
     check("空矩阵且查询与配置一致时不误报", ep.check_dim(0, 2048, 2048)[0] is True)
+    # 读侧只比矩阵与查询；调用方常传低维假向量/预计算向量，不能被配置维度卡住
+    check("读侧不拿配置维度卡 qv", ep.check_dim(3, 3)[0] is True)
 
-    total = 11 - len(FAILS)
-    print(f"\n=== {total}/11 通过 ===" if not FAILS else
+    total = 12 - len(FAILS)
+    print(f"\n=== {total}/12 通过 ===" if not FAILS else
           f"\n=== FAIL: {', '.join(FAILS)} ===")
     return 1 if FAILS else 0
 

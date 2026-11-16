@@ -38,6 +38,9 @@ tmp*/
 # dsh-rag 自动生成的交接卡（含项目状态，不入库）
 交接卡.md
 
+# Agent 本地工作记忆（项目相关，但不进仓库；否则每次部署都会 WARN 工作区脏）
+.workbuddy/
+
 # 编辑器 / 系统
 .vscode/
 .idea/
