@@ -57,6 +57,13 @@ class StoreMixin:
                 return
             log.info("[记忆去重] 与 %s cos=%.3f（影子模式：本次仍新建）新=%s 旧=%s",
                      ids[i][:8], top, (text or "")[:40], (hit.get("text") or "")[:40])
+            # 以前只有上面这行日志，轮转后就没有候选集可评审了。
+            # 落盘一份只读候选（不改记忆），由 ops/consolidate.py 汇总。
+            try:
+                from app_core import shadow as _shadow
+                _shadow.record_dedup_hit(text, ids[i], hit.get("text") or "", top)
+            except Exception:  # noqa: BLE001
+                pass
         except Exception as e:  # noqa: BLE001
             log.debug("影子去重检查失败（不影响写入）：%s", e)
 
@@ -245,9 +252,16 @@ class StoreMixin:
                     m["access_count"] = int(m.get("access_count") or 0) + 1
                     c.execute("UPDATE documents SET metadata=? WHERE id=?",
                               (json.dumps(m, ensure_ascii=False), doc_row))
+                    # 访问强化接线：ttl/expires/reinforcement_count 是 livingmemory
+                    # 遗留字段，以前有表有索引却无人写，reinforcement_count 恒 0。
+                    # 这里只记账，不改状态、不删数据；清理仍按 documents.metadata
+                    # 的 importance + last_access_time 软归档（见 cleanup()）。
                     c.execute(
-                        "UPDATE memory_atoms SET last_accessed_at=? "
-                        "WHERE parent_memory_id=? AND status='active'", (now, doc_row))
+                        "UPDATE memory_atoms SET last_accessed_at=?, "
+                        "last_reinforced_at=?, "
+                        "reinforcement_count=reinforcement_count+1 "
+                        "WHERE parent_memory_id=? AND status='active'",
+                        (now, now, doc_row))
         finally:
             c.close()
         # 进程内的 _last 也要跟着更新：它只在矩阵重建时重读，

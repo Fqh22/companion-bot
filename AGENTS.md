@@ -22,6 +22,7 @@ python ops/check-links.py         # 文档守门员：链接 / 路径引用 / �
 python ops/test-check-links.py    # 护栏自检：故意写坏文档，确认上一条会红
 python ops/test-embed-guard.py    # embedding 维度守卫（含反例）
 python ops/test-batch2-guards.py  # 门控 / 预筛 / 每轮状态归属 / 配置默认值
+python ops/test-batch3-guards.py  # 主体导出往返 / 面板 / 预算双模式 / 只读性
 python ops/replay-diff.py 5       # 全链路冒烟：真实对话重放，只看召回一致/无异常（会调 LLM，不进 CI）
 python ops/memory-report.py 7     # 记忆使用周报：0 条率 / 平均条数 / 类型分布（观察期每周跑）
 

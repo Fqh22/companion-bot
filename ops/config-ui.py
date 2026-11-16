@@ -107,6 +107,7 @@ F = {
     "chat.media_settle_seconds": ("媒体等待（秒）", "图片/文件后等他补一句说明的窗口。", {"min": 0, "max": 10, "step": 0.1}),
     "chat.shadow_followup": ("影子补句", "只记日志、不发消息，用来量「本来可以补的话」。", {}),
     "chat.shadow_sample": ("影子抽样", "0–1，默认 0.3。", {"min": 0, "max": 1, "step": 0.05}),
+    "chat.budget_mode": ("背景块预算", "legacy = 旧行为（prompt 基线）；tiered = fact / insight 各自配额。默认 legacy，可一键回退。", {"options": ["legacy", "tiered"]}),
     "group.enabled": ("启用群聊", "独立链路，无记忆无情绪。", {}),
     "group.whitelist": ("群白名单", "群号列表，一行一个；空 = 任何群都不回。", {"list": "int", "max_items": 20}),
     "group.context_turns": ("群上下文条数", "进程内短期上下文，重启即忘。", {"min": 1, "max": 100}),
@@ -604,6 +605,26 @@ class App:
         return {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
 
 
+def observability_switches() -> dict:
+    """面板只读展示的关键开关。读不到配置就返回空，不冒充默认值。"""
+    try:
+        cfg = _appconfig.load()
+    except Exception:  # noqa: BLE001
+        return {}
+    def get(section: str, key: str):
+        return (cfg.get(section) or {}).get(key)
+    return {
+        "llm.reply_deadline_seconds": get("llm", "reply_deadline_seconds"),
+        "llm.reply_stall_seconds": get("llm", "reply_stall_seconds"),
+        "memory.recall_gate": get("memory", "recall_gate"),
+        "memory.shadow_retrieval": get("memory", "shadow_retrieval"),
+        "memory.contradiction_check": get("memory", "contradiction_check"),
+        "chat.budget_mode": get("chat", "budget_mode"),
+        "chat.context_format": get("chat", "context_format"),
+        "profile.inject": get("profile", "inject"),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     app: App = None  # type: ignore
 
@@ -678,7 +699,7 @@ class Handler(BaseHTTPRequestHandler):
             q = parse_qs(u.query)
             if (q.get("token") or [""])[0] and self._auth():
                 tab = (q.get("tab") or [""])[0]
-                target = "/" + (f"#{tab}" if tab in ("basic", "advanced", "persona", "watch") else "")
+                target = "/" + (f"#{tab}" if tab in ("basic", "advanced", "persona", "watch", "observe") else "")
                 self.send_response(302)
                 self.send_header("Set-Cookie", f"{COOKIE}={self.app.token}; Path=/; HttpOnly; SameSite=Strict")
                 self.send_header("Location", target)
@@ -730,6 +751,15 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 return self._json(self._assets())
             except Exception as e:
+                return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
+        if u.path == "/api/observability":
+            if not self._auth():
+                return self._json({"ok": False, "error": "unauthorized"}, 401)
+            try:
+                from app_core import status as _status
+                return self._json({"ok": True, **_status.observability(),
+                                   "switches": observability_switches()})
+            except Exception as e:  # noqa: BLE001
                 return self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, 500)
         if u.path == "/api/backups":
             if not self._auth():

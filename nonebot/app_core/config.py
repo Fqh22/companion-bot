@@ -194,6 +194,10 @@ DEFAULTS = {
         # compact = 记忆/知识/技能/纠正/待办合成一个【背景】块并限预算；
         # legacy = 旧的分块注入。回退只改这里。
         "context_format": "compact",
+        # 背景块预算：legacy = 先取 3 条记忆再按类型分（旧行为，prompt 快照基线）；
+        # tiered = fact / insight 各按自己的配额取，推断不挤占「他说过的话」的名额。
+        # 默认 legacy，一键可回退；转正前先跑 prompt A/B（见 docs/04）。
+        "budget_mode": "legacy",
     },
     # 群聊：独立链路（见 app_core/group.py）。默认关闭，白名单为空 = 空跑。
     "group": {

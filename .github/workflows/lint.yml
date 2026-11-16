@@ -28,6 +28,10 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/test-batch2-guards.py
+      - name: 批次 3 护栏自检（导出往返 / 面板 / 预算 / 只读性）
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/test-batch3-guards.py
       # 2026-11-15 两次踩坑：.ps1 丢 BOM 后 PS 5.1 按 GBK 解析中文直接语法错；
       # 手工 scp 又让云端 ops/*.sh 丢了 +x，cron 静默停摆一天。两条都用 CI 守住。
       - name: PowerShell 脚本必须带 UTF-8 BOM

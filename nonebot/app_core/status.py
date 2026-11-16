@@ -161,6 +161,86 @@ def _ago(ts: float, now: float) -> str:
     return f"{d / 86400:.0f} 天前"
 
 
+def _recent_trace(path: Path, limit: int) -> list[dict]:
+    """最近几轮「读了什么记忆」。只读末尾，别把整份日志读进内存。"""
+    if not path.exists() or limit <= 0:
+        return []
+    from collections import deque
+
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            tail = deque(f, maxlen=limit)
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[dict] = []
+    for raw in tail:
+        try:
+            r = json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        injected = r.get("injected") or []
+        scores = [float(x.get("score")) for x in injected
+                  if isinstance(x, dict) and x.get("score") is not None]
+        gate = next((t for t in (r.get("trace") or [])
+                     if isinstance(t, dict) and t.get("type") == "gate"), None)
+        out.append({
+            "ts": r.get("ts"),
+            "turn_id": r.get("turn_id", ""),
+            "query": (r.get("query") or "")[:60],
+            "n": len(injected),
+            "top_score": round(max(scores), 3) if scores else None,
+            "t_recall_ms": r.get("t_recall_ms"),
+            "gate": gate.get("why") if gate else "",
+            "items": [{"id": str(x.get("id") or "")[:8],
+                       "score": x.get("score"),
+                       "text": (x.get("text") or "")[:60]}
+                      for x in injected if isinstance(x, dict)][:5],
+        })
+    return out
+
+
+def _shadow_files(data: Path) -> list[dict]:
+    """影子日志 / 裁决日志：行数与体积是「这周跑了多少轮」的直接证据。"""
+    out: list[dict] = []
+    try:
+        paths = sorted({p for g in (*_SHADOW_GLOBS, "consolidation-candidates.jsonl")
+                        for p in data.glob(g)})
+    except Exception:  # noqa: BLE001
+        return out
+    for p in paths:
+        if not p.is_file():
+            continue
+        try:
+            lines = sum(1 for _ in p.open("r", encoding="utf-8", errors="replace"))
+            out.append({"name": p.name, "lines": lines,
+                        "bytes": p.stat().st_size,
+                        "mtime": p.stat().st_mtime})
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
+def observability(data_dir: Path | None = None, mem_db: Path | None = None,
+                  chat_db: Path | None = None, limit: int = 12) -> dict:
+    """本地面板用的一份只读总览：健康快照 + 最近轨迹 + 影子文件。
+
+    这是「可审查」的落点（定义 01 §3）：以前要看 `journalctl`、翻
+    `data/prompt_log`、手工跑 `export-memory.py` 才能回答「它到底记得什么」，
+    现在一个回环页面就能看见。路径全部可注入，缺库/缺文件时返回空结构而不是抛。
+    """
+    data = Path(data_dir) if data_dir else _paths.DATA
+    try:
+        snap = snapshot(data_dir=data, mem_db=mem_db, chat_db=chat_db)
+    except Exception:  # noqa: BLE001
+        snap = {}
+    return {
+        "status": snap,
+        "trace": _recent_trace(data / "memory_trace.jsonl", limit),
+        "shadows": _shadow_files(data),
+        "limit": limit,
+    }
+
+
 def render(s: dict) -> str:
     """几行字。/mem_status 用它，周报也能复用。"""
     m, c = s["mem"], s["chat"]

@@ -28,6 +28,7 @@
     <button type="button" class="tab" data-tab="advanced">高级 / 风险</button>
     <button type="button" class="tab" data-tab="persona">人格</button>
     <button type="button" class="tab" data-tab="watch">巡检话题</button>
+    <button type="button" class="tab" data-tab="observe">状态 / 轨迹</button>
   </nav>
 
   <div class="layout">
@@ -66,6 +67,35 @@
           同名话题会保留上次的 last 基线，改名视为新话题。</p>
         <div id="watch-edit"></div>
         <div id="watch-baseline" class="unknown"></div>
+      </section>
+
+      <section id="observe-wrap" class="group tab-panel hidden">
+        <h2>状态 / 轨迹（只读）</h2>
+        <p class="desc">这一页只看不改：健康快照、最近几轮「读了什么记忆」、影子日志体积、
+          关键开关。数据来自 <code>/api/observability</code>，与编辑配置互不影响。
+          <b>仍是只绑回环的本地页面，不是公网后台。</b></p>
+        <div id="observe-msg" class="banner hidden"></div>
+
+        <h3>健康快照</h3>
+        <div id="observe-status" class="unknown">读取中…</div>
+
+        <h3>关键开关</h3>
+        <div id="observe-switch" class="unknown">读取中…</div>
+
+        <h3>最近轨迹（memory_trace）</h3>
+        <p class="desc">score 是原始余弦分；gate 是检索门控判断。查「它凭什么这么说」从这里开始。</p>
+        <div id="observe-trace" class="unknown">读取中…</div>
+
+        <h3>影子日志</h3>
+        <div id="observe-shadow" class="unknown">读取中…</div>
+
+        <h3>影子实验截止日</h3>
+        <div class="unknown">
+          <div>BM25 / RRF 混合检索：<b>2026-11-19</b>（已对齐关闭，判据被证伪，到期移除代码）</div>
+          <div>shadow_followup / profile / attention：<b>2026-11-19</b>（到期定转正或删除）</div>
+          <div>检索门控 recall_gate：<b>2026-11-30</b>（默认 off，shadow 只记判断）</div>
+          <div>碎片整合候选：<b>2026-11-30</b>（只读报告，不写库）</div>
+        </div>
       </section>
     </main>
   </div>

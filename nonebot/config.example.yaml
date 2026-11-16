@@ -130,6 +130,11 @@ chat:
   # 分享轮档位（docs/04-评测与实验.md）：按「他配了几个字 + 东西是什么体裁」算一个读深度上限，
   # 注入 prompt。默认 false——先用 ops/replay-share.py 跑「开/关」两组对比再开。
   share_tier: false
+  # 背景块注入预算：
+  #   legacy = 先取 3 条记忆再按 fact / insight 分（旧行为，prompt 快照基线）
+  #   tiered = 两类各按自己的配额取，推断不挤占「他说过的话」的名额
+  # 默认 legacy，一键可回退；转正前先跑 prompt A/B（docs/04-评测与实验.md）。
+  budget_mode: "legacy"
   # 影子模式：只记日志、不发消息，用来在真改行为前先量收益。
   #   shadow-followup.jsonl  每轮生成一句「本来可以补的话」，看有多少真值得发
   #   shadow-positive.jsonl  他说「哈哈/笑死/懂了」时记一条正例（之前只有纠错闭环）

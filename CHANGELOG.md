@@ -2,6 +2,43 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 批次 3：B 可携带与可观测（主体导出、只读面板、预算开关）
+
+- **改了什么**：
+  - **主体导出（B 落地）**：新建 `ops/export-subject.py`，把人格 / 记忆 / 画像 / 关系 /
+    纠正 / 跟进合成一个带 `manifest.json`（每片 sha256 / 字节数 / 条目数）的目录；
+    JSON 排序缩进、JSONL 每行稳定、统一 LF，可直接进 git diff；`--verify` 做往返自校验。
+    刻意不导出向量 blob（换 embedding 后跑 `rebuild-vectors.py --apply` 重建）、
+    `keys.json` / `config.yaml`、聊天历史。旧的 `export-memory.py` / `export-persona.py`
+    保留，主体快照是它们之上的完整层。
+  - **#30 本地可观测面板**：`status.observability()` 汇总健康快照 + 最近 12 轮
+    `memory_trace`（注入哪条 / 原始 score / 耗时 / 门控判断）+ 影子日志行数体积 + 关键开关；
+    `config-ui.py` 加只读 `GET /api/observability`，前端加「状态 / 轨迹」tab 并列出影子截止日。
+    仍只绑回环、需 token、**不写任何数据**。
+  - **#7 分层注入预算**：`prompt._compact_background` 加 `budget_mode`，`tiered` 给
+    fact / insight 各自配额（推断不再挤占「他说过的话」的名额）；`chat.budget_mode=legacy`
+    默认，legacy 路径逐字节不变。可逆开关，按 01 §6 不设影子，转正前跑 prompt A/B。
+  - **#9 访问强化接线**：复核发现按 importance 分档软归档（180 / 90 / 30 天）、
+    `profile.py` 字段级过期、`restore()` 可捞回**早已实现**，不再重复造轮子；本批只把
+    `memory_atoms.reinforcement_count / last_reinforced_at` 接进 `touch()`（纯记账，不改状态、不删数据）。
+  - **#8 碎片整合候选**：`_shadow_dedup` 命中不再只打日志，落
+    `data/consolidation-candidates.jsonl`；新建 `ops/consolidate.py` 只读汇总（去重对数、
+    cos 分档、同文重复数）。**不写库**：合并成自足条目需调模型且不可逆，按 01 §6 设截止 2026-11-30。
+  - 护栏与文档：`ops/test-batch3-guards.py`（24/24，含导出篡改 / 缺片反例、预算双模式、
+    面板数据解析、只读性）；CI 与 AGENTS §1 登记；`docs/01` B 落地说明、`docs/02` 默认值、
+    `docs/03` 面板与导出命令、`docs/04` 影子台账两行。
+- **为什么**：定义 01 §3 的 B 明确写「SQLite 里的记忆不算可携带」，但仓库原来只有两个各导一半、
+  无清单无自校验的脚本；「可审查」是陪伴产品的信任底座，以前排障只能翻 journalctl / prompt_log；
+  #9 复核后确认主体机制已在，硬加一遍反而会重复归档逻辑。
+- **验证**：本地 `check-links` 21 篇 / 92 链接 / 92 处路径引用 / 5 项登记 PASS，
+  `lint-plugins` FAIL 0 / WARN 0、`lint-layers` PASS、`test-guards` 4/4、
+  `test-check-links` 6/6、`test-embed-guard` 12/12、`test-batch2-guards` 24/24、
+  `test-batch3-guards` **24/24**、`py_compile` 全过、`scan-secrets` 235 文件无问题、
+  `node --check app.js` 通过。云端**不重启预检**：全量 `verify.sh` **5/5**、
+  `test-config-ui` 48/48、`test-batch3-guards` 24/24、
+  **`test-prompt-golden --offline` 39/39**（legacy 字节未变）。
+- **部署**：本次为批次 3 首次部署，逐项结果见 `docs/05-改动台账.md` #5。
+
 ## 2026-11-16 · 批次 2：A 主体连续性（超时语义、检索门控、原文指针、确定性裁决）
 
 - **改了什么**：

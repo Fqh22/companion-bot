@@ -33,6 +33,7 @@ PROFILE_LOG = DATA / "shadow-profile.jsonl"
 SECOND_LOG = DATA / "shadow-second.jsonl"
 ATTENTION_LOG = DATA / "shadow-attention.jsonl"
 GATE_LOG = DATA / "shadow-recall-gate.jsonl"
+DEDUP_LOG = DATA / "consolidation-candidates.jsonl"
 
 FOLLOWUP_PROMPT = (
     "你刚回了下面这句话。现在像突然想起什么，再补一句不超过 20 个字的话。\n"
@@ -75,6 +76,23 @@ def record_positive(user_text: str, reply: str) -> None:
         return
     _append(POSITIVE_LOG, {"ts": time.time(), "said": user_text[:120],
                            "reply": (reply or "")[:200]})
+
+
+def record_dedup_hit(new_text: str, old_id: str, old_text: str,
+                     cos: float) -> None:
+    """记一次「本可合并的碎片」，供 ops/consolidate.py 离线评审。
+
+    写入侧的影子去重以前只打一行 log，日志轮转后就没了，攒不出候选集。
+    这里只落盘、**不改任何记忆**：归档 / 合并是不可逆的，按 01 §6 先有
+    可审查的候选，截止 2026-11-30 再决定要不要做（docs/04）。
+    """
+    _append(DEDUP_LOG, {
+        "ts": time.time(),
+        "cos": round(float(cos), 3),
+        "new": (new_text or "")[:120],
+        "old_id": str(old_id or "")[:40],
+        "old_text": (old_text or "")[:120],
+    })
 
 
 def record_recall_gate(query: str, user_text: str, need: bool, why: str,

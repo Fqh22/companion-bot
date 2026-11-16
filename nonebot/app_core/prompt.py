@@ -300,13 +300,29 @@ FRESHNESS_RULE = (
 )
 CONTEXT_CHAR_BUDGET = 1200
 
+# 分层配额（chat.budget_mode=tiered）：每类先按自己的上限裁剪，
+# 再按优先级丢整块。legacy 是「mem[:3] 之后再按 type 分」，
+# 于是 2 条 insight 就能把 fact 挤到只剩 1 条——洞察是推断，
+# 不该占用「他说过的话」的名额。默认仍是 legacy，保证 prompt 快照基线不变。
+TIER_QUOTA = {"memory": 3, "insight": 2}
+
 
 def _compact_background(memories, knowledge: str, skills, lessons: str,
-                        open_items: str) -> str:
-    """把动态背景收成一块：保留来源标签，超预算从低优先级开始丢。"""
-    sections: list[tuple[str, str]] = []
+                        open_items: str, budget_mode: str = "legacy") -> str:
+    """把动态背景收成一块：保留来源标签，超预算从低优先级开始丢。
 
-    mem = [m for m in (memories or []) if m.get("text")][:3]
+    `budget_mode="tiered"` 时给 fact / insight 各自配额；其它路径逐字节不变。
+    """
+    sections: list[tuple[str, str]] = []
+    tiered = str(budget_mode).strip().lower() == "tiered"
+
+    if tiered:
+        all_mem = [m for m in (memories or []) if m.get("text")]
+        facts = [m for m in all_mem if m.get("type") != "insight"][:TIER_QUOTA["memory"]]
+        ins = [m for m in all_mem if m.get("type") == "insight"][:TIER_QUOTA["insight"]]
+        mem = facts + ins
+    else:
+        mem = [m for m in (memories or []) if m.get("text")][:3]
     if mem:
         # 事实和洞察必须分开：insight 是模型自己的推断，
         # 混进「相关记忆」会被当成「他说过的话」复述——那是把解读伪装成事实。
@@ -344,8 +360,11 @@ def _compact_background(memories, knowledge: str, skills, lessons: str,
         sections.append(("open", "还没跟进：\n" + "\n".join(
             "- " + x.lstrip("- ")[:40] for x in oi)))
 
-    # 规则/记忆优先；先丢待办、纠正、技能、笔记，最后才动记忆
+    # 规则/记忆优先；先丢待办、纠正、技能、笔记，最后才动记忆。
+    # tiered 下 insight 是独立的一块，可以被单独丢掉，不必跟着 fact 一起削条数。
     drop_order = ["open", "lessons", "skills", "knowledge"]
+    if tiered:
+        drop_order.append("insight")
     text = "\n\n".join(t for _, t in sections)
     while len(text) > CONTEXT_CHAR_BUDGET and drop_order:
         drop = drop_order.pop(0)
@@ -592,7 +611,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
                    profile: str = "",
                    style_mode: str = "rules",
                    context_format: str = "legacy",
-                   gap_hours: float | None = None) -> list[dict]:
+                   gap_hours: float | None = None,
+                   budget_mode: str = "legacy") -> list[dict]:
     """拼 prompt。两条原则：**约束放两端、参考材料贴提问** + **稳定前缀往前放**。
 
     顺序：人格 → few-shot → 纪要 → 历史 → 情绪 → 记忆/知识索引/技能 → 当前提问。
@@ -646,7 +666,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
     if compact:
         if mood_text:
             msgs.append({"role": "system", "content": "【现在】" + clip(mood_text, 200)})
-        bg = _compact_background(memories, knowledge, skills, lessons, open_items)
+        bg = _compact_background(memories, knowledge, skills, lessons, open_items,
+                                 budget_mode=budget_mode)
         if bg:
             msgs.append({"role": "system",
                          "content": "【背景】（只在相关时用，别硬提）\n" + bg})

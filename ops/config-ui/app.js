@@ -281,6 +281,65 @@ function renderNav(tab) {
   }
 }
 
+function obsRow(k, v) {
+  const r = el("div", "obs-row");
+  r.appendChild(el("span", "obs-key", k));
+  r.appendChild(el("span", "obs-val", v === undefined || v === null ? "—" : String(v)));
+  return r;
+}
+
+function renderObservability(j) {
+  const s = j.status || {};
+  const m = s.mem || {}, c = s.chat || {};
+  const st = $("#observe-status"); st.textContent = "";
+  st.appendChild(obsRow("记忆", `${m.total ?? "—"} 条（活跃 ${m.active ?? "—"} / 归档 ${m.archived ?? "—"} / 作废 ${m.superseded ?? "—"}）`));
+  st.appendChild(obsRow("消息 / 纪要 / 知识", `${c.messages ?? "—"} / ${c.sessions_summarized ?? "—"} / ${c.wiki_pages ?? "—"}`));
+  st.appendChild(obsRow("24h 矛盾", String((s.today || {}).contradictions ?? "—")));
+  const al = s.alerts || {};
+  st.appendChild(obsRow("24h 告警", Object.keys(al).length ? JSON.stringify(al) : "无"));
+  if (!Object.keys(s).length) st.appendChild(obsRow("说明", "读不到数据库（本地或全新库），已降级为空"));
+
+  const sw = $("#observe-switch"); sw.textContent = "";
+  const switches = j.switches || {};
+  if (!Object.keys(switches).length) sw.appendChild(obsRow("说明", "读不到配置"));
+  for (const [k, v] of Object.entries(switches)) sw.appendChild(obsRow(k, v));
+
+  const tr = $("#observe-trace"); tr.textContent = "";
+  const rows = j.trace || [];
+  if (!rows.length) tr.appendChild(obsRow("说明", "暂无轨迹（memory_trace.jsonl 为空或不存在）"));
+  for (const r of rows) {
+    const when = r.ts ? new Date(r.ts * 1000).toLocaleString() : "—";
+    tr.appendChild(obsRow(when,
+      `q=${r.query || "—"} 注入 ${r.n} 条 top=${r.top_score ?? "—"} 耗时=${r.t_recall_ms ?? "—"}ms gate=${r.gate || "—"}`));
+    for (const it of (r.items || [])) {
+      tr.appendChild(obsRow("  " + (it.id || ""), `${it.score ?? "—"}  ${it.text || ""}`));
+    }
+  }
+
+  const sh = $("#observe-shadow"); sh.textContent = "";
+  const files = j.shadows || [];
+  if (!files.length) sh.appendChild(obsRow("说明", "暂无影子日志"));
+  for (const f of files) sh.appendChild(obsRow(f.name, `${f.lines} 行 / ${f.bytes} 字节`));
+}
+
+async function loadObservability() {
+  const box = $("#observe-msg");
+  box.className = "banner hidden";
+  try {
+    const r = await fetch("/api/observability", { credentials: "same-origin" });
+    const j = await r.json();
+    if (!j.ok) {
+      box.textContent = "读取失败：" + (j.error || r.status);
+      box.className = "banner error";
+      return;
+    }
+    renderObservability(j);
+  } catch (e) {
+    box.textContent = "读取失败：" + e;
+    box.className = "banner error";
+  }
+}
+
 function switchTab(tab) {
   activeTab = tab;
   try { history.replaceState(null, "", "#" + tab); } catch (e) {}
@@ -290,6 +349,7 @@ function switchTab(tab) {
   const panels = {
     basic: "panel-basic", advanced: "panel-advanced",
     persona: "persona-wrap", watch: "watch-wrap",
+    observe: "observe-wrap",
   };
   for (const [key, id] of Object.entries(panels)) {
     const node = document.getElementById(id);
@@ -303,6 +363,7 @@ function switchTab(tab) {
   $(".layout").classList.toggle("no-nav", !isConfig);
   renderNav(tab);
   if (isConfig) applyFilter();
+  if (tab === "observe") loadObservability();
 }
 
 function render() {
@@ -375,7 +436,7 @@ async function load() {
   personaDrafts = {};
   const tab = (location.hash || "").replace("#", "");
   render();
-  if (["basic", "advanced", "persona", "watch"].includes(tab)) switchTab(tab);
+  if (["basic", "advanced", "persona", "watch", "observe"].includes(tab)) switchTab(tab);
 }
 
 function collect() {

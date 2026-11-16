@@ -640,12 +640,21 @@ class ChatCore(ChatTurnMixin):
                        persona: dict | None = None,
                        style_mode: str = "rules",
                        context_format: str = "legacy",
-                       gap_hours: float | None = None) -> list[dict]:
+                       gap_hours: float | None = None,
+                       budget_mode: str | None = None) -> list[dict]:
         """拼 prompt：规则在 prompt.py，这里只负责把人格传进去。"""
+        if budget_mode is None:
+            # 默认 legacy：prompt 快照基线逐字节不变，随时可一键回退。
+            # 冻结/离线测试里 config 可能读不到，这时也必须走 legacy，不能崩。
+            try:
+                budget_mode = str((config.load().get("chat") or {}).get(
+                    "budget_mode", "legacy"))
+            except Exception:  # noqa: BLE001
+                budget_mode = "legacy"
         return prompt_mod.build_messages(
             persona or self.persona, history, user_text, memories, mood_text, knowledge,
             skills, images, extra_system, digest, DIGEST_MAX, lessons, open_items,
-            profile, style_mode, context_format, gap_hours)
+            profile, style_mode, context_format, gap_hours, budget_mode)
 
     async def complete_raw(self, *a, **kw) -> dict:
         """LLM 调用本体在 llm.py，这里只是让 ChatCore 保持原接口。"""

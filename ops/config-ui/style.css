@@ -113,3 +113,9 @@ dialog pre { margin: 12px 20px; max-height: 55vh; overflow: auto; background: #f
   .topbar { flex-direction: column; align-items: stretch; }
   input[type=search] { width: 100%; }
 }
+
+/* 状态 / 轨迹：只读键值对，沿用面板配色，窄屏自动换行 */
+.obs-row { display: flex; gap: 12px; border-top: 1px solid var(--line); padding: 6px 2px; font-size: 12.5px; }
+.obs-row:first-child { border-top: 0; }
+.obs-key { color: var(--muted); font-family: var(--mono); flex: 0 0 34%; word-break: break-all; }
+.obs-val { flex: 1; word-break: break-word; }
