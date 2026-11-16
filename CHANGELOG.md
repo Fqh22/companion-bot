@@ -2,6 +2,33 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 批次 1：embedding 维度守卫、影子收尾、配置对齐
+
+- **改了什么**：
+  - **#1** `Memory.__init__` 改由 `embed_provider.spec()` 解析 provider / api / model / dim
+    （以前只读 api/model，dim 常为 0，写侧不校验）；新增读侧 `check_dim()`，
+    召回维度不符时记 `log.error` + `alerts.jsonl`（code `embed_dim_mismatch`），
+    降级仍保留但**不再静默**。`embed()` 的 httpx 改为延迟导入，spec/check_dim 可离线测。
+  - **#2** 新建 `ops/rebuild-vectors.py`（默认 dry-run，`--apply` 才重算并写回），
+    修 `config.example.yaml` 里指向不存在的 `ops/rebuild-embed.py` 的注释。
+  - **#3/#4/#31** `config.py` 与 `config.example.yaml` 的 `shadow_retrieval` 默认改 false
+    （与代码注释一致）；`shadow.retrieval_line()` 改为读真实开关而非硬编码「已停止」；
+    面板标注停用；`docs/04` 台账写明影子代码 11-19 到期删除。
+  - **#36** `adapters/console.py` 把 `core.reply_deadline` 传给 `TurnRunner`，
+    终端通道不再吃 runner 里硬编码的 45。
+  - **#23** `embedding.provider/dim`、`memory.recall_repeat_window_min/penalty`
+    登记到 DEFAULTS、example 与面板键表；**#22** `ops/probe-recall.py` 记忆阈值改为读
+    运行时 `recall_min_score`，不再写死 0.25。修 `AGENTS.md` 红线 8「mood/task 未进契约」的过时描述。
+- **为什么**：换 embedding 家后旧向量与查询不在同一空间，原来会静默退化成 recent()，
+  用户只看到「它记不住了」而日志里什么都没有；配置、状态页、注释、探针四处口径不一，
+  11-19 到期的影子实验还开着。
+- **验证（本地）**：`py_compile` 9 个改动文件 OK；新增 `ops/test-embed-guard.py` **11/11**；
+  `check-links.py` 21 篇 / 92 链接 / 82 处引用 / 5 项登记 PASS；`test-check-links` 6/6；
+  `lint-plugins` FAIL 0 / WARN 0；`lint-layers` PASS；`test-guards` 4/4。
+  离线回归与全链路本地缺依赖未跑，由云端 `verify.sh` 覆盖。
+- **部署**：本次为批次 1 首次部署（云端原 `.deployed_sha = 1a3c313`），
+  逐项结果见 `docs/05-改动台账.md` #3。
+
 ## 2026-11-16 · 文档规则收敛：守门员、登记表、脚本去重
 
 - **改了什么**：

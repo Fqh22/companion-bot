@@ -85,8 +85,12 @@ DEFAULTS = {
         "thinking": False,
     },
     "embedding": {
+        # provider 只用于取默认 api/model/dim；显式写这三个人会覆盖它。
+        # 维度必须显式登记：embed_provider.spec() 用它校验写入与召回。
+        "provider": "zhipu",
         "api": "https://open.bigmodel.cn/api/paas/v4/embeddings",
         "model": "embedding-3",
+        "dim": 2048,
     },
     "meme": {
         # 按 valence 正负分档；缺省时回落到 mood_threshold（见 ChatCore.__init__）
@@ -105,8 +109,13 @@ DEFAULTS = {
         "recall_time_weight": 0.3,
         "recall_importance_weight": 0.1,
         "recall_keep_important": 0.8,
-        # 关键词通道（BM25+RRF）目前只跑影子：落盘对比，不改召回结果
-        "shadow_retrieval": True,
+        # 「刚说过的事」降权：窗口内被召回过的记忆乘 (1 - penalty × 剩余比例)。
+        # 原来只在 memory.py 里 get 兜底，没进 DEFAULTS，面板当未知键、改不了。
+        "recall_repeat_window_min": 30,
+        "recall_repeat_penalty": 0.35,
+        # BM25+RRF 影子：2026-11-14 判据被证伪（重合度只是代理指标），
+        # 到期 2026-11-19 按「影子实验必须有截止时间」关闭。代码保留，默认不再跑。
+        "shadow_retrieval": False,
         # 同一段文字（去空白后完全相同）在这个窗口内不重复写第二条。
         # range_key 只保护带 range 的新记忆，老数据没有 range，只能靠文本兜底。
         "dup_window_minutes": 10,

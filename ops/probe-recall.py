@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""用生产数据验证召回阈值：0.25（记忆）/ 0.35（知识库）/ 0.30（表情包）是否合理。
+"""用生产数据验证召回阈值：记忆取运行时 recall_min_score / 0.35（知识库）/ 0.30（表情包）。
+
+2026-11-16：记忆阈值原来写死 0.25，而线上 memory.recall_min_score 早已是 0.35，
+探针会给出「阈值很宽松」的错误结论。改成读运行时配置。
 
 诊断脚本（云端 ad-hoc）：只读库 + 调一次 embedding（5 条查询），不写库。
 注意：知识库向量表已从 kb_vectors 迁到 kb_chunks（每段一行）。
@@ -48,8 +51,9 @@ async def main() -> None:
         kbk = top(kb_vecs)
         mm = top(meme_vecs)
         print(f"query: {q!r}")
+        _min = m.recall_min_score
         print("  记忆  : " + " ".join(f"{s:.3f}" for s in mem)
-              + f"   → 过 0.25 的 {sum(1 for s in mem if s > 0.25)} 条")
+              + f"   → 过 {_min:.2f} 的 {sum(1 for s in mem if s > _min)} 条")
         print("  知识库: " + " ".join(f"{s:.3f}" for s in kbk)
               + f"   → 过 0.35 的 {sum(1 for s in kbk if s >= 0.35)} 条")
         print("  表情包: " + " ".join(f"{s:.3f}" for s in mm)

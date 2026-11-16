@@ -86,7 +86,8 @@ embedding:
   provider: zhipu
   api: https://open.bigmodel.cn/api/paas/v4/embeddings
   model: embedding-3
-  # 维度。换家时必须一起改并重建向量（ops/rebuild-embed.py），否则旧向量静默失效
+  # 维度。换家时必须一起改并重建向量（ops/rebuild-vectors.py --apply）。
+  # 写侧由 embed_provider 校验，读侧由 check_dim 校验并记 alert，不再静默退化。
   dim: 2048
 
 tools:
@@ -224,9 +225,13 @@ memory:
   #   on     = 真的标记取代
   # 四道闸：相似度 >=0.5 才问、>=0.6 才改、每次最多 2 条、必须给理由。
   contradiction_check: on
-  # 关键词通道（BM25+RRF）的影子对比。开着就每轮多算一遍关键词召回，
-  # 写进 data/shadow-retrieval.jsonl；**不改召回结果**，只用来判断要不要转正。
-  shadow_retrieval: true
+  # 关键词通道（BM25+RRF）的影子对比：2026-11-14 判据被证伪（重合度只是代理指标，
+  # 人工抽检否决），2026-11-19 到期关闭。默认 false，不再每轮多算一遍召回。
+  # 重开前先重写判据，别再拿重合度当依据（docs/04-评测与实验.md）。
+  shadow_retrieval: false
+  # 「刚说过的事」降权：窗口内被召回过的记忆压低权重，避免同一句连着翻出来。
+  recall_repeat_window_min: 30
+  recall_repeat_penalty: 0.35
 
 # 自我画像注入（每天 03:40 的复盘会更新 profile.json）。
 # off    = 不注入、也不记影子

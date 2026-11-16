@@ -280,13 +280,18 @@ def retrieval_verdict(now: float | None = None) -> dict:
 
 
 def retrieval_line(now: float | None = None) -> str:
-    # 2026-11-14 判据被证伪后影子默认关闭。这里不再按「攒够样本就决策」的旧假设
-    # 汇报——那会让人以为实验还在跑（实测重合 2.8 < 3.0，但人工抽检否决，
-    # 代理指标本身失效，不是「这次恰好没转正」）。
+    """如实汇报开关状态。以前无论配置开没开都写「已停止」，状态页会撒谎。"""
+    from app_core import config
+
+    on = bool((config.load().get("memory") or {}).get("shadow_retrieval", False))
     v = retrieval_verdict(now)
+    head = "BM25 影子：运行中" if on else "BM25 影子：已停止"
+    if on:
+        return (f"{head}（累计 {v['n']} 次）—— 注意：判据 11-14 已被人工否决，"
+                "配置仍开着，2026-11-19 到期前请关闭或移除")
     if not v["n"]:
-        return "BM25 影子：已停止（2026-11-14 判据失效）"
-    return (f"BM25 影子：已停止（累计 {v['n']} 次，重合 {v['avg_overlap']:.1f}/5）"
+        return f"{head}（2026-11-14 判据失效，默认关闭）"
+    return (f"{head}（累计 {v['n']} 次，重合 {v['avg_overlap']:.1f}/5）"
             "——判据被人工否决，重合度不再作为转正依据")
 
 

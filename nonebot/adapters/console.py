@@ -53,8 +53,12 @@ class ConsoleChannel:
             await self.send_image("", path)
 
     async def run(self, engine: Engine, session: str = "private:console") -> None:
-        runner = TurnRunner(engine, self, caps=self.caps)
         core = getattr(engine, "core", None)
+        # QQ / 飞书都把 core.reply_deadline 传给 TurnRunner，终端以前没传，
+        # 吃的是 runner.py 里硬编码的默认 45 —— 改配置时终端不跟随。
+        deadline = (float(getattr(core, "reply_deadline", 45))
+                    if core is not None else 45.0)
+        runner = TurnRunner(engine, self, caps=self.caps, deadline=deadline)
         registry = default_registry(core) if core is not None else None
         self.out.write("console 模式；/help 看命令，/quit 退出。\n")
         self.out.flush()

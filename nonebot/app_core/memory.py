@@ -17,6 +17,7 @@ from app_core import paths as _paths
 import httpx
 
 from app_core import config
+from app_core import embed_provider
 from app_core import memory_score
 from app_core.vec import cos as _cos
 from app_core.vec import pack as _pack
@@ -61,11 +62,20 @@ from app_core.memory_store import StoreMixin
 class Memory(StoreMixin, IndexMixin, EmbedMixin):
     def __init__(self) -> None:
         self.key = _zhipu_key()
-        cfg = config.load()["embedding"]
-        self.api = cfg.get("api") or EMBED_API
-        self.model = cfg.get("model") or EMBED_MODEL
-        # 维度：换 embedding 家时旧向量不在同一空间，显式声明才能在写入时就报错
-        self.dim = int(cfg.get("dim") or 0)
+        # 三家参数统一由 embed_provider.spec() 解析：provider 给默认，
+        # 显式 api/model/dim 覆盖它。以前这里只读 api/model，dim 常常是 0，
+        # 于是写侧不校验、读侧维度不符就静默退成 recent()。
+        cfg = config.load().get("embedding") or {}
+        _spec = embed_provider.spec(
+            provider=str(cfg.get("provider") or ""),
+            api=str(cfg.get("api") or ""),
+            model=str(cfg.get("model") or ""),
+            dim=int(cfg.get("dim") or 0))
+        self.api = _spec["api"] or EMBED_API
+        self.model = _spec["model"] or EMBED_MODEL
+        self.dim = _spec["dim"]
+        if not self.dim:
+            log.error("embedding.dim 未配置：写侧不做维度校验，换家后旧向量会静默失效")
         mem_cfg = config.load().get("memory") or {}
         self.recall_min_score = float(mem_cfg.get("recall_min_score", 0.35))
         # 时间 / 重要性调制参数（见 recall 里的公式）
@@ -176,9 +186,18 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         nq = float(np.linalg.norm(q))
         if nq == 0:
             return self.recent(top_k, touch=touch)
-        if mat.shape[1] != q.shape[0]:
-            # 维度不一致：换过 embedding 模型，或库里混着旧维度的向量。
-            # 这种情况矩阵乘会直接抛异常，退回到最近几条更稳。
+        # 维度不一致 = 换过 embedding 模型却没重建向量。以前这里直接 recent()，
+        # 用户只看到「它记不住了」，日志里什么都没有。现在降级仍然保留（服务不能挂），
+        # 但必须留下 error 日志 + 一条告警，让静默失败变成可数的失败。
+        ok, why = embed_provider.check_dim(
+            int(mat.shape[1]), int(q.shape[0]), self.dim)
+        if not ok:
+            log.error("召回降级：%s", why)
+            try:
+                from app_core import alerts
+                alerts.record("error", "embed_dim_mismatch", why)
+            except Exception:  # noqa: BLE001
+                pass
             return self.recent(top_k, touch=touch)
         scores = mat @ (q / nq)          # 矩阵已归一化，点积即余弦
 
