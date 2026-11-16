@@ -1,4 +1,4 @@
-# deploy.ps1 —— Windows 无 bash 时的等价部署入口，门禁顺序与 ops/deploy.sh 相同。
+﻿# deploy.ps1 —— Windows 无 bash 时的等价部署入口，门禁顺序与 ops/deploy.sh 相同。
 #
 # 为什么需要：本地没有 bash（where bash 为空），而 deploy.sh 是唯一的部署入口。
 # 这个脚本只做「等价搬运」，不改变门禁顺序：快照 → 上传 → 权限/版本号 →
