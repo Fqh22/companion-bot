@@ -286,6 +286,8 @@ _MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
         "profile": {"compact"},                 # 画像压缩块
         "wiki": {"index_text"},                 # 知识索引
     },
+    # chat_turn.py 拆出的收尾段（2026-11-16）：即时记忆要直接拿向量
+    "app_core/chat_turn_commit.py": {"memory": {"embed"}},
     "app_core/tools.py": {
         "diary": {"list_days", "read"}, "kb": {"search_meta"},
         "learn": {"note_list", "note_write"}, "memory": {"read_full", "recall"},
