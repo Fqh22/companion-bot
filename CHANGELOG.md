@@ -2,6 +2,22 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 P4/P5（复盘基线、存储格式设计稿、依赖清单）
+
+- **P4 低成本版**：`chat_turn.py` 新增 `TURN_DEPS`，显式列出 ChatTurnMixin 对 ChatCore
+  的 19 个依赖；`ops/lint-plugins.py` 的 `check_turn_deps` 双向检查——
+  新增未登记 `self.xxx` → FAIL，`TURN_DEPS` 里的成员在 ChatCore（含三个 Mixin）上找不到 → FAIL。
+  反例验证：把 `self.seg_max` 换成 `self.nope_dep`，lint 立刻红。
+- **P5 设计稿**：`docs/04` §9 记忆存储格式——**文件是真相源、SQLite 是派生索引**，
+  写路径先落文件再更新索引、读路径只读索引保持延迟，分双写 / 切读 / 删表三步迁移，含判据、门槛、回滚。
+  另 §10 记录 TurnContext 完整版为什么现在不做（收益是可测性，成本 40+ 处 diff）。
+- **P2 验收工具**：`ops/ab-review.py` 用 3 组固定输入 + 固定 day 跑 `apply_review`，
+  对 LEARN 下全部文件做 sha256 基线；profile.json 的 `updated_at/seen/previous.at` 归一化，
+  CRLF/LF 归一化——**Windows 生成的基线在云端 Linux 也成立**。接入 `verify.sh` 与 CI。
+- **验证**：云端 `verify.sh` **8/8**（新增复盘基线）；离线 735/735、全链路 288/288。
+- **过程中被拦住的问题**：`profile.json` 带时间戳导致基线每次跑都变（两轮才归化全）；
+  Windows CRLF 与云端 LF 基线不兼容；`TURN_DEPS` 的成员分散在三个 Mixin 文件里（检查漏扫）。
+
 ## 2026-11-16 · 重构批次 P3（插件门面：29 条业务 import 归零）
 
 - **改了什么**：
