@@ -130,20 +130,48 @@ def check_registry(root: Path) -> tuple[list[str], int]:
     return errors, len(listed)
 
 
+# 常青页的行数上限（docs/README 的书写规则第 2 条）：超了就是该拆或该删。
+# README 是入口，允许稍长；CHANGELOG 是流水，不设上限。
+LENGTH_LIMIT = 200
+LENGTH_LIMIT_README = 250
+
+
+def check_lengths(root: Path) -> tuple[list[str], int]:
+    targets: list[tuple[Path, int]] = [(root / "README.md", LENGTH_LIMIT_README)]
+    for name in ("AGENTS.md", "CONTRIBUTING.md", "SECURITY.md"):
+        targets.append((root / name, LENGTH_LIMIT))
+    docs = root / "docs"
+    if docs.is_dir():
+        for p in sorted(docs.glob("*.md")):
+            if p.name in ("README.md", "relation.example.md"):
+                continue
+            targets.append((p, LENGTH_LIMIT))
+    errors = []
+    for p, limit in targets:
+        if not p.is_file():
+            continue
+        n = sum(1 for _ in p.read_text(encoding="utf-8", errors="replace").splitlines())
+        if n > limit:
+            errors.append(f"{rel(root, p)}：{n} 行，超过常青页上限 {limit}（拆或删，不要继续写）")
+    return errors, len(targets)
+
+
 def scan(root: Path) -> tuple[list[str], dict]:
     """核心入口，接受 root 便于 ops/test-check-links.py 在临时目录构造反例。"""
     e1, n_links, n_md = check_links(root)
     e2, n_refs = check_doc_refs(root)
     e3, n_reg = check_registry(root)
-    return e1 + e2 + e3, {
+    e4, n_len = check_lengths(root)
+    return e1 + e2 + e3 + e4, {
         "md": n_md, "links": n_links, "refs": n_refs, "registry": n_reg,
+        "lengths": n_len,
     }
 
 
 def main() -> int:
     errors, stats = scan(ROOT)
-    print("检查了 %d 个 markdown 文件、%d 条链接、%d 处文档路径引用、%d 项登记："
-          % (stats["md"], stats["links"], stats["refs"], stats["registry"]))
+    print("检查了 %d 个 markdown 文件、%d 条链接、%d 处文档路径引用、%d 项登记、%d 篇篇幅："
+          % (stats["md"], stats["links"], stats["refs"], stats["registry"], stats["lengths"]))
     if errors:
         print("结果：FAIL（%d 项）" % len(errors))
         for line in errors:

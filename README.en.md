@@ -1,3 +1,5 @@
+> This English version may lag behind the Chinese [README.md](README.md); the Chinese one is authoritative.
+
 <div align="center">
 
 # companion · a portable continuing subject
