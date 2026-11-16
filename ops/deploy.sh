@@ -43,6 +43,14 @@ echo "== 1/6 云端旧代码快照（回滚点）"
 "${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot app_core plugins adapters && sudo -n ls -l /opt/backup/code-$TS.tgz"
 
 echo "== 2/6 上传 HEAD:$SHA 的 nonebot/ 与 ops/"
+# 删除清单：tar 解压是覆盖写，不会删掉已从 HEAD 移除的文件（2026-11-16 删
+# retrieval.py 时云端残留旧文件，link-check 报「模块没进 smoke-all」才发现）。
+PREV="$("${SSH[@]}" 'cat /opt/nonebot/.deployed_sha 2>/dev/null' || true)"
+if [ -n "$PREV" ] && git cat-file -e "${PREV}^{commit}" 2>/dev/null; then
+  git diff --name-only --diff-filter=D "$PREV" "$SHA" -- nonebot ops | while read -r f; do
+    [ -n "$f" ] && "${SSH[@]}" "rm -f /opt/nonebot/$f"
+  done
+fi
 git archive HEAD:nonebot | "${SSH[@]}" "tar -x -C /opt/nonebot"
 git archive HEAD:ops | "${SSH[@]}" "tar -x -C /opt/nonebot/ops"
 # 云端遗留的同名旧脚本会遮住仓库里的新脚本：verify.sh 曾经优先 offline-test.py，

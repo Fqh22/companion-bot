@@ -1,4 +1,4 @@
-﻿# deploy.ps1 —— Windows 无 bash 时的等价部署入口，门禁顺序与 ops/deploy.sh 相同。
+# deploy.ps1 —— Windows 无 bash 时的等价部署入口，门禁顺序与 ops/deploy.sh 相同。
 #
 # 为什么需要：本地没有 bash（where bash 为空），而 deploy.sh 是唯一的部署入口。
 # 这个脚本只做「等价搬运」，不改变门禁顺序：快照 → 上传 → 权限/版本号 →
@@ -62,6 +62,19 @@ if ($LASTEXITCODE -ne 0) { throw "scp nonebot.tar 失败" }
 & scp @SshOpts "$Tmp\ops.tar" $remoteOps
 if ($LASTEXITCODE -ne 0) { throw "scp ops.tar 失败" }
 
+# 删除清单：tar 解压是覆盖写，不会删掉已从 HEAD 移除的文件（2026-11-16 删 retrieval.py
+# 时云端残留旧文件，link-check 报「模块没进 smoke-all」才发现）。只删真实删除的文件。
+$prevSha = (& ssh @SshOpts $SshHost "cat /opt/nonebot/.deployed_sha 2>/dev/null").Trim()
+if ($prevSha) {
+    & git cat-file -e "$prevSha^{commit}" 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        $deleted = @(& git diff --name-only --diff-filter=D $prevSha $Sha -- nonebot ops)
+        foreach ($f in $deleted) {
+            if ($f) { Invoke-Remote "rm -f /opt/nonebot/$f" }
+        }
+        if ($deleted.Count -gt 0) { Write-Host ("== 2.5/6 删除已移除的文件：" + ($deleted -join ", ")) }
+    }
+}
 Invoke-Remote "tar -xf /tmp/nonebot-$Ts.tar -C /opt/nonebot && tar -xf /tmp/ops-$Ts.tar -C /opt/nonebot/ops && rm -f /tmp/nonebot-$Ts.tar /tmp/ops-$Ts.tar"
 
 Write-Host "== 3/6 权限 / 缓存 / 部署版本号"

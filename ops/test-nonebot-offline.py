@@ -230,6 +230,8 @@ async def main() -> None:
     hub = memgraph_mod.EntityGraph([(i, ["热门"]) for i in range(10)])
     check("memgraph 高频标签被当停用词", hub.related([0]) == [], str(hub.stats()))
 
+    from app_core import shadow as shadow_mod
+
     graph_path = TMP / "shadow-graph.jsonl"
     shadow_mod.GRAPH_LOG = graph_path
     shadow_mod.record_graph("装机配置怎么选", dense=["aaaa1111"],
