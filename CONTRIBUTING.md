@@ -44,7 +44,25 @@ ops/verify.sh --pre
 
 没有"应该没问题"：**改完必须全绿**。CI 会跑同一套，本地先跑能省一轮。
 
-## 3. 代码红线（lint 会拦，别绕）
+## 3. 测试的数据根（唯一清单）
+
+测试会写盘（历史、画像、清单、情绪、提醒）。**默认根是 /opt，漏补一处就是读写生产库**——
+2026-11-16 一天里因此踩了三次。拆环 / 拆 Mixin 之后，同一个路径常量在多个模块里各有一份：
+
+| 模块 | 常量 |
+|---|---|
+| chat / summary / history / followup_store / kb / memory | DB |
+| learn_store | LEARN / PROFILE / PROFILE_JSON / CORRECTIONS / CURIOUS / SKILLS / NOTES / RAW / MEM_DB / CHAT_DB |
+| learn（保留函数读自己的全局） | NOTES / SKILLS / RAW / CHAT_DB / MEM_DB |
+| mood_store | STATE_DIR / STATE / CHAT_DB |
+| scheduling.remind / scheduling.scheduler | DB / CHAT_DB / CLEANUP_LOG |
+| wiki | DB / NOTES / SKILLS |
+| files | SAVE_DIR / IMAGE_DIR / PENDING_JSON |
+
+新测试**只调** harness.redirect_paths(root)，不要再手写补丁点；
+ops/test-harness.py 会逐项断言它真的生效。改这些模块的路径常量时，同步跑 test-harness。
+
+## 4. 代码红线（lint 会拦，别绕）
 
 1. `app_core` 不许 import 任何平台框架（nonebot / lark 等）。
 2. 运行时路径不许写死 `/opt`——从 `app_core/paths.py` 派生。
@@ -55,7 +73,7 @@ ops/verify.sh --pre
 7. adapters 不许 import `chat` / `chat_turn` / `tool_loop`。
 8. 新代码的记忆读写只走 `MemoryPort`（docs/01-定义与决策.md）；不要直接 import `memory` / `profile` / `wiki`。
 
-## 4. 五条扩展路径
+## 5. 五条扩展路径
 
 | 要加什么 | 改哪里 | 检查 |
 |---|---|---|
@@ -66,7 +84,7 @@ ops/verify.sh --pre
 | 定时任务 | `scheduling/scheduler.py` 的 `JOBS` + `_run_job` | smoke-all / smoke-clock |
 | 配置项 | `config.DEFAULTS` + `config.example.yaml` + `ops/config-ui.py` 键表 | test-config-ui |
 
-## 5. 提交与 PR
+## 6. 提交与 PR
 
 - 提交信息用 Conventional Commits 风格：`feat(scope): ...` / `fix(scope): ...` /
   `docs:` / `refactor:` / `test:`，正文写**为什么**和**验证数字**。
@@ -79,7 +97,7 @@ ops/verify.sh --pre
   - [ ] `CHANGELOG.md` 加一条（改了什么 + 为什么 + 验证数字）
 - 涉及密钥/协议/权限的改动，先看 [SECURITY.md](SECURITY.md)。
 
-## 6. 不要做的事
+## 7. 不要做的事
 
 - 不要为了"跑通"绕过 lint、跳过 `test-guards`、或在测试里写死日期。
 - 不要提交 `config.yaml`、`keys.json`、`.env`、备份包、日志。
@@ -87,12 +105,12 @@ ops/verify.sh --pre
 - 不要给个人微信写 hook/协议接入（违规 + 封号，项目明确不支持）。
 - 不要私自改已定决策（`docs/01-定义与决策.md`）；确实要改，先开 issue 说明理由与代价。
 
-## 7. 行为准则
+## 8. 行为准则
 
 对事不对人；技术分歧拿数据和测试说话；不欢迎人身攻击、骚扰与歧视性言论。
 维护者有权关闭不符合上述约定的 PR。
 
-## 8. 维护者：部署
+## 9. 维护者：部署
 
 部署脚本与备份流程见 [docs/03-运维与通道.md](docs/03-运维与通道.md)。简版：
 

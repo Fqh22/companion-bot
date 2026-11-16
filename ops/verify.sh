@@ -100,6 +100,7 @@ case "$MODE" in
         run_suite "规范检查" "$OPS/lint-plugins.py"
         run_suite "分层依赖" "$OPS/lint-layers.py"
         run_suite "配置同步" "$OPS/check-config-sync.py"
+        run_suite "骨架自检" "$OPS/test-harness.py"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     pre)
@@ -108,6 +109,7 @@ case "$MODE" in
         run_suite "配置同步" "$OPS/check-config-sync.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "复盘基线" "$OPS/ab-review.py"
+        run_suite "骨架自检" "$OPS/test-harness.py"
         run_suite "联动体检" "$OPS/link-check.py"
         ;;
     *)
@@ -116,6 +118,7 @@ case "$MODE" in
         run_suite "配置同步" "$OPS/check-config-sync.py"
         run_suite "离线回归" "$OFFLINE"
         run_suite "复盘基线" "$OPS/ab-review.py"
+        run_suite "骨架自检" "$OPS/test-harness.py"
         run_suite "联动体检" "$OPS/link-check.py"
         run_suite "全链路"   "$OPS/smoke-all.py"
         run_suite "插件启动" "$OPS/smoke-plugins.py"

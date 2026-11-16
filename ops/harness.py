@@ -72,3 +72,80 @@ def copy_db(src, dst) -> None:
     finally:
         s.close()
         d.close()
+
+
+def redirect_paths(root, chat_db: str = "chat.db") -> dict[str, list[str]]:
+    """把「会写盘」的模块路径常量统一指到 root 下，返回 {模块: [改过的属性]}。
+
+    为什么需要这张清单：拆环 / 拆 Mixin 之后，同一个路径常量会在多个模块里各有一份——
+    chat.DB、summary.DB、history.DB、learn_store.LEARN、mood_store.STATE …… 
+    测试只补其中一处，另几处仍然指向默认根（线上就是生产库）。
+    2026-11-16 一天里因此踩了三次。新测试**只调这个函数**，不要再手写补丁点。
+
+    调用时机：import app_core 之后、跑用例之前。默认根是 /opt，所以漏掉任何一处
+    都可能读写生产数据——这也是 ops/test-harness.py 会逐项断言的原因。
+    """
+    from pathlib import Path as _P
+
+    from app_core import (chat, files, followup_store, history, kb, learn,
+                          learn_store, memory, mood_store, summary, wiki)
+    from app_core.scheduling import remind as sched_remind
+    from app_core.scheduling import scheduler as sched
+
+    root = _P(root)
+    root.mkdir(parents=True, exist_ok=True)
+    db = root / chat_db
+    learn_root = root / "learn"
+    done: dict[str, list[str]] = {}
+
+    def setp(mod, name, value):
+        setattr(mod, name, value)
+        done.setdefault(mod.__name__.rsplit(".", 1)[-1], []).append(name)
+
+    # 对话库：chat / summary / history / followup_store / kb / memory 各有一份常量
+    for mod in (chat, summary, history, followup_store, kb, memory):
+        setp(mod, "DB", db)
+    setp(chat, "DATA", root)
+
+    # 学习层的存储（learn_store 是真相源，learn 只是 re-export 旧入口）
+    for name, value in (
+        ("LEARN", learn_root),
+        ("PROFILE", learn_root / "self_profile.md"),
+        ("PROFILE_JSON", learn_root / "profile.json"),
+        ("CORRECTIONS", learn_root / "corrections.md"),
+        ("CURIOUS", learn_root / "curious.md"),
+        ("SKILLS", learn_root / "skills"),
+        ("NOTES", learn_root / "notes"),
+        ("RAW", learn_root / "raw"),
+        ("MEM_DB", root / "livingmemory.db"),
+        ("CHAT_DB", db),
+    ):
+        setp(learn_store, name, value)
+    # learn 保留的函数（note_write / skill_* / archive_raw）读自己的全局
+    for name in ("NOTES", "SKILLS", "RAW", "CHAT_DB", "MEM_DB"):
+        if hasattr(learn, name):
+            setp(learn, name, getattr(learn_store, name))
+
+    # 情绪：状态文件与历史表
+    setp(mood_store, "STATE_DIR", root / "mood")
+    setp(mood_store, "STATE", root / "mood" / "state.json")
+    setp(mood_store, "CHAT_DB", db)
+
+    # 定时与提醒
+    setp(sched_remind, "DB", db)
+    setp(sched, "CHAT_DB", db)
+    setp(sched, "CLEANUP_LOG", root / "memory-cleanup.log")
+
+    # 知识索引
+    setp(wiki, "DB", db)
+    setp(wiki, "NOTES", learn_root / "notes")
+    setp(wiki, "SKILLS", learn_root / "skills")
+
+    # 文件与图片
+    setp(files, "SAVE_DIR", root / "files")
+    setp(files, "IMAGE_DIR", root / "files" / "images")
+    setp(files, "PENDING_JSON", root / "last-file.json")
+
+    # 选配路径可能不存在（老版本模块）：只记录改到的
+    return done
+
