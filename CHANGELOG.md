@@ -2,6 +2,29 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 P3（插件门面：29 条业务 import 归零）
+
+- **改了什么**：
+  - 新增 `app_core/plugin_api.py`：16 个命名空间对象（`learn/audit/kb/wiki/diary/meme/
+    mood/remind/profile/help/introspect/tools/scheduler/proactive_*/relational`），
+    `ChatCore.__init__` 挂成实例属性 —— 插件写 `core.learn.review(core)`，不再 import 业务模块。
+  - `CORE_API` 扩成两层（`core.<ns>.<func>` 逐条登记），检查区分命名空间与普通属性：
+    `core.persona.get` 只认单层，`core.learn.review` 必须登记。
+  - 6 个插件（admin/commands/schedule/proactive/chat/feishu）29 处 import 全部迁完，
+    `PLUGIN_LEGACY` **清空**——以后插件直接 import 业务模块一律 FAIL。
+  - **环检查改为只看顶层 import**（lint-layers 与 link-check 两个工具）：
+    `chat.__init__` 里 `import plugin_api` 是运行时解耦，不是结构环；
+    与 link-check 注释里「函数内 import 能绕」的判据对齐。
+- **为什么**：29 条白名单带 2026-12-31 到期日，不清就会在到期日当天 CI 全红；
+  且插件直接 import 业务模块会把内部结构焊死。
+- **验证**：云端 `verify.sh` **7/7**；离线 735/735、全链路 288/288、`test-commands` 11/11、
+  插件启动 7/7。
+- **过程中被拦住的 3 个问题**（都在重启前）：
+  两层正则把 `core.persona.get` 误判成未登记接口；
+  环检查把函数内 `import plugin_api` 当成结构环；
+  批量替换漏掉 `introspect/remind` 前缀和 chat 整行删除导致的 `config` 丢失。
+- **没做的**：P4 TurnContext（37 个 self 访问点）、P5 存储格式设计文档、ab-review diff 工具。
+
 ## 2026-11-16 · 重构批次 P1/P2（harness 收尾、learn 解环）
 
 - **P1 · 机械清理**：harness 再迁 20 个脚本（affect/asr/commands/dialog/fact-check/
