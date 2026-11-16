@@ -2,6 +2,28 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 P1/P2（harness 收尾、learn 解环）
+
+- **P1 · 机械清理**：harness 再迁 20 个脚本（affect/asr/commands/dialog/fact-check/
+  memory-port/runner/self-check/web + console/e2e/guards/slot），删掉各自的 check 定义与尾部汇总。
+  剩余 9 个不迁（batch 用 TOTAL/FAILS、check-links/embed 用 FAILS、golden-m0 有 rc==2 分支、
+  nonebot-offline 3566 行）。**面板键表本来就是从 DEFAULTS 生成的**（`build_schema()` 遍历
+  `DEFAULTS`，`F` 只覆盖说明），这项不需要改。
+- **P2 · learn 解环**：
+  - 抽 `notes_meta.py`：笔记页元数据 9 个纯文件解析函数，wiki 改为直接依赖它 —— **learn↔wiki 环消失**。
+  - 抽 `learn_constants.py`：5 个复盘 prompt 常量，review 不再从 learn 拿。
+  - 抽 `learn_store.py`：路径常量、画像字段读写、清单读写、`apply_review` 落盘、
+    文本去重规则（353 行），review 改为 `import learn_store`，调用点前缀不变 —— **learn↔review 环消失**。
+  - `learn.py` **833 → 303 行**（业务只剩：技能、笔记写入 + `_touch_wiki`、间隔重复、归档、复盘入口）。
+  - `CYCLE_BASELINE` 与 link-check 的 `_ALLOWED_CYCLES` **清空**：app_core 现在没有 import 环。
+  - `_touch_wiki` 保持同步直调（采纳「不引入标记文件」的建议，没有用延迟索引换架构）。
+- **验证**：云端 `verify.sh` **7/7**；离线 735/735、全链路 288/288。
+- **过程中被拦住的 4 个问题**（都在重启前）：
+  link-check 的环基线还是 learn-review-wiki 三角（SCC 变了被判成新环）；
+  `learn_constants` 缺 `profile` 导入；`profile.FIELDS` 触发红线 8 需登记；
+  测试/烟雾对 `learn.LEARN/PROFILE/CORRECTIONS/CURIOUS` 的补丁点必须跟着 store 走（两轮才迁全）。
+- **没做的**：P3 组合门面（`core.learn / core.audit / core.kb`）、P4 TurnContext、P5 存储格式。
+
 ## 2026-11-16 · 重构批次 B3（通道胶水上移 outbound）
 
 - **改了什么**：QQ 与飞书两个插件各写一遍的 `_speak_later` / `_draw_later` /
