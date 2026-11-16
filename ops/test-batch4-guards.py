@@ -155,8 +155,11 @@ def wiring_checks() -> None:
           '"require_approval": False' in cfg and '"proactive": {' in cfg
           and "require_approval: false" in ex and "channel: \"qq\"" in ex
           and '"tools.require_approval"' in ui and '"proactive.channel"' in ui)
-    check("QQ / 飞书语音都走按句分段",
-          qq.count("split_for_voice") >= 2 and fs.count("split_for_voice") >= 2)
+    # 2026-11-16：分段逻辑上移到 outbound.py，插件只传回调
+    ob = read(core, "outbound.py")
+    check("QQ / 飞书语音都走按句分段（outbound 统一）",
+          ob.count("split_for_voice") >= 2
+          and "outbound.speak_later" in qq and "outbound.speak_later" in fs)
     check("飞书主动发送 + 会话映射 + 注册都接上",
           "_send_proactive" in fs and "_save_chat_map" in fs
           and "proactive_channels.register" in fs)
