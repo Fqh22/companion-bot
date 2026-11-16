@@ -2,6 +2,29 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 B2（拆入口：chat.py 1456→547，chat_turn.py 1106→704）
+
+- **改了什么**：
+  - **chat.py 切成四个 Mixin**：`summary.py`（摘要/水位/矛盾/追赶，9 个方法）、
+    `history.py`（历史读写/身份/记消息/prompt 账，10 个方法）、`chat_reply.py`
+    （回复主链路/工具循环/风格决策/用量统计，15 个方法），`ChatCore` 只剩装配、
+    DB 初始化、记忆与情绪端口、人格加载——**1456 → 547 行**。
+  - **chat_turn.py 拆两层**：`chat_turn_base.py`（Turn/Slot/StageError/阶段常量，
+    201 行）+ `chat_turn_commit.py`（收尾四段，290 行），ChatTurnMixin 只剩
+    准备/组装/生成——**1106 → 704 行**。
+  - **`_turn_commit` 235 行拆成四段**：写库 45 / 记忆 42 / 观测 57 / 收尾 93，
+    由 `_turn_commit` 顺序调度（顺序不能换）。
+  - **lint 跟随拆分**：`check_remember_stage` 放行 `_commit_*` 前缀；
+    SLOTS 允许在 `chat_turn_base`；`summary.py` 进 `_MEM_EXEMPT`（chat 的装配点）；
+    `chat_turn_commit.py` 的 `memory.embed` 存量登记。
+- **为什么**：入口类 53 个方法、单函数 235 行，改一处要通读 2500 行；
+  B0 的护栏已经把「回退」挡住，这一步才敢搬。
+- **验证**：云端 `verify.sh` **6/6**（规范 / 分层 100 模块 / 离线 735 / 联动 / 全链路 288 / 插件启动）；
+  `prompt-golden` 39/39。期间 pre-verify 抓到 3 次 NameError（Mixin import 无括号、
+  SUMMARY_BATCH 常量、DeliveryPolicy 导入），都在重启前拦住，未带病上线。
+- **没做的**：TurnContext 显式化（把 Mixin 的 self 换成一等上下文）。切片先做，
+  显式化等切片稳定后单独评估——一次只改一件事。
+
 ## 2026-11-16 · 重构批次 B0/B1a/B3a（分层护栏生效、密钥统一、四组壳环拆掉）
 
 - **改了什么**：
