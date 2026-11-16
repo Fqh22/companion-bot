@@ -265,7 +265,10 @@ _MEM_MODULES = frozenset({"memory", "profile", "wiki", "kb", "diary", "learn"})
 # 装配点与实现层豁免：chat 持有 Memory 实例，memory_port 就是适配器本身，
 # memory/kb/wiki/learn/review/purge/web 是存储实现及它们的内部协作。
 _MEM_EXEMPT = frozenset({
-    "app_core/chat.py", "app_core/memory_port.py", "app_core/memory.py",
+    # summary.py 是 chat.py 拆出的同一批代码（2026-11-16）：操作的是 self.memory 实例，
+    # 和 chat.py 一样属于装配点，不是绕过 MemoryPort 的第三方直连。
+    "app_core/chat.py", "app_core/summary.py",
+    "app_core/memory_port.py", "app_core/memory.py",
     "app_core/memory_store.py", "app_core/memory_index.py", "app_core/kb.py",
     "app_core/learn.py", "app_core/wiki.py", "app_core/review.py",
     "app_core/purge.py", "app_core/web.py", "app_core/meme.py",
@@ -511,7 +514,9 @@ def check_remember_stage() -> list[str]:
     for fn in ast.walk(tree):
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if fn.name == "_turn_commit":
+        # _turn_commit 已拆成四段（_commit_write_user / _memory / _observe / _finalize），
+        # 写库仍在 POST_WRITE 阶段内，规则按前缀放行。
+        if fn.name == "_turn_commit" or fn.name.startswith("_commit_"):
             continue
         for n in ast.walk(fn):
             if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)

@@ -130,6 +130,8 @@ _age_label = prompt_mod.age_label
 split_reply = prompt_mod.split_reply
 
 
+from app_core.history import HistoryMixin
+from app_core.summary import SummaryMixin
 from app_core.chat_turn import ChatTurnMixin, Turn
 
 
