@@ -90,9 +90,12 @@ TOOLS = [
 # 只读工具：同一轮里可以并发执行。名单要跟着插件走——
 # 只要有一个写操作混进并发，同名笔记/技能文件就可能互相覆盖。
 READ_ONLY_TOOLS = frozenset({
-    "web_search", "web_open", "kb_read", "kb_search", "memory_search", "memory_read",
+    "web_search", "kb_read", "kb_search", "memory_search", "memory_read",
     "diary_read", "skill_read", "skill_list", "note_list", "remind_list",
 })
+# web_open 以前被列进只读名单，但它会 learn.note_write 往知识库写笔记
+# （见下面 PUBLIC_TOOLS 的注释）——放进并发组等于允许两个写操作同时落盘。
+# 2026-11-16 批次 4 移出，改走串行 + 审计。
 
 # 外人能用的工具：只给「不碰他的东西」的那几个。
 # 判据不是读还是写，而是**碰不碰他的库**——note_list / kb_read / memory_read
@@ -218,11 +221,26 @@ HANDLERS = {
 }
 
 
-async def execute(core, name: str, args: dict, images: list[str] | None = None) -> str:
-    """执行一个工具。images 是本轮回复要附带的图片，由调用方持有，避免跨会话串图。"""
+async def execute(core, name: str, args: dict, images: list[str] | None = None,
+                  approved: bool = False) -> str:
+    """执行一个工具。images 是本轮回复要附带的图片，由调用方持有，避免跨会话串图。
+
+    `approved=True` 只由 `/approve <id>` 重放时传入：开了 `tools.require_approval`
+    之后，模型自己不能悄悄写入，必须主人显式批准。默认关闭，旧行为不变。
+    """
     handler = HANDLERS.get(name)
     if handler is None:
         return f"未知工具：{name}"
+    try:
+        from app_core import audit
+        side = name in audit.SIDE_EFFECT_TOOLS
+        if side and not approved and audit.requires_approval(name):
+            rid = audit.propose(name, args)
+            return (f"这一步会改动东西，需要你授权：发 /approve {rid}"
+                    "（10 分钟内有效）。不发就不做。")
+    except Exception:  # noqa: BLE001  审计不可用时不阻断工具
+        audit = None
+        side = False
     # 工具使用埋点：只记名字和成败，用来决定「砍哪些」——没有数据时砍工具是拍脑袋。
     try:
         import json as _json
@@ -235,15 +253,28 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None) 
                                 ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001
         pass
+    def _log(status: str, after: str = "") -> None:
+        if not side or audit is None:
+            return
+        try:
+            audit.record(name, target=audit.target_of(name, args),
+                         actor=("owner" if approved else "model"),
+                         status=status, after=after)
+        except Exception:  # noqa: BLE001
+            pass
+
     try:
         out = await handler(core, args, images)
     except (ValueError, TypeError, KeyError) as e:
         # 参数错要能自我纠正：告诉它「格式不对」，不是「执行失败」。
+        _log("failed", str(e))
         return f"参数不对：{e}（检查格式再试一次）"
     except Exception as e:  # noqa: BLE001
+        _log("failed", f"{type(e).__name__}: {e}")
         if "Timeout" in type(e).__name__:
             return f"工具超时：{name}（换种说法或稍后再试）"
         return f"工具执行失败：{type(e).__name__}: {e}"
+    _log("done", str(out)[:200])
     # 返回截断：memory_read 这类可能返回几千字，直接撑满上下文。
     s = str(out if out is not None else "")
     if len(s) > MAX_RESULT_CHARS:

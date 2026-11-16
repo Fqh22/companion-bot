@@ -2035,7 +2035,9 @@ async def main() -> None:
     from app_core import help as help_mod
     check("help 清单够全（展示+隐藏）",
       len(help_mod.all_names()) >= 29, str(len(help_mod.all_names())))
-    check("展示的清单已精简", len(help_mod.names()) <= 13, str(len(help_mod.names())))
+    # 2026-11-16 批次 4：新增 /audit 与 /approve 两条审计门面（DEBUG 组），
+    # 展示数 12 → 14。阈值跟着调到 14，仍然卡住「清单不许继续膨胀」。
+    check("展示的清单已精简", len(help_mod.names()) <= 14, str(len(help_mod.names())))
     check("help 无重复", len(help_mod.names()) == len(set(help_mod.names())))
     check("help 文案分组", "【日常】" in help_mod.text() and "/ping" in help_mod.text())
 

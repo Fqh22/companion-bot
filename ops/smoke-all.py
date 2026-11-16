@@ -160,6 +160,7 @@ from app_core import (  # noqa: E402
     commands as commands_mod, introspect as introspect_mod, runtime as runtime_mod,
     proactive_runtime as proactive_runtime_mod,
     memory_port as memory_port_mod,
+    audit as audit_mod, proactive_channels as proactive_channels_mod,
     affect_port as affect_port_mod,
     fact_check as fact_check_mod,
     self_check as self_check_mod,

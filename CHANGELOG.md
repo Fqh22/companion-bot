@@ -2,6 +2,46 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 批次 4：C 可授权（审计层）与体验收尾
+
+- **改了什么**：
+  - **审计层（C 的地基）**：核对后发现 11-10 删 `agentd` 留下的「先有审计层」前提
+    **从未兑现**——`approval.py` 只是内存 Future，无队列 / 落盘 / 超时，也没有审批命令。
+    新增 `app_core/audit.py`：写类副作用逐条记 `data/audit.jsonl`（`prev_hash` 哈希链、
+    可回滚标记、状态追加不覆盖），`propose/decide` 管理 10 分钟过期的待授权请求；
+    `/audit` 查看、`/approve <id>` 批准后才由 `tools.execute(..., approved=True)` 重放执行。
+    `tools.require_approval` **默认关**：旧行为不变，但每次写操作仍记审计。
+    `meme_send` / `web_open` 明确标「不可回滚」，不假装能撤销。
+    **本批不新增自主执行能力**，只补责任边界。
+  - **修真 bug**：`web_open` 会 `learn.note_write` 往知识库写笔记，却被列进
+    `READ_ONLY_TOOLS` 参与同轮并发；已从 `tools.py` / `tool_loop.py` 两处名单移出，改走串行 + 审计。
+  - **#15 多段语音**：`pacing.split_for_voice()` 按句切 300 字一段（最多 8 段，
+    纯规则、拼接不丢内容）；QQ 与飞书的 `_speak_later` / `_deliver_voice_reply`
+    改为逐段合成发送。单段路径与旧行为一致，不再把 300 字之后的内容丢掉。
+  - **#14 飞书主动消息**：新增 `app_core/proactive_channels.py` 注册表；飞书
+    `_chat_of` 从「只写不读」改为落盘 `data/feishu-chats.json`（重启不丢），
+    新增 `_send_proactive` 并写回历史；`proactive.channel` 默认 `qq`，
+    改成 `feishu` 时优先飞书、发不出去自动回退 QQ，**不双发**。
+  - 护栏与文档：`ops/test-batch4-guards.py`（30/30）；`help.py` 登记两条命令
+    （离线回归「展示清单已精简」阈值 13 → 14，仍卡住继续膨胀）；
+    CI 与 AGENTS §1 登记；`docs/01` C 落地、`docs/02` 默认值与并发名单、
+    `docs/03` 审计命令 / 主动通道 / 已知待办划掉两项、`docs/04` 台账。
+- **为什么**：定义 01 §3 的 C 要求「每次副作用可追溯、可回滚、需授权」，
+  而既有代码只能回答「哪个工具被调用过」；早先判断「审批零件基本齐了」是错的，
+  这批改成了从零补齐。多段语音与飞书主动消息是路线图上挂了两周的已知限制。
+- **明确推后**：只读 MCP 客户端、人格自学习受控实验。仓库里 MCP 代码为零、
+  画像变更无审批链；两者正好依赖本批刚落地的审计层，排到批次 5 再定判据与截止日。
+- **验证**：本地 `check-links` 21 篇 / 92 链接 / 92 处路径引用 / 5 项登记 PASS，
+  `lint-plugins` FAIL 0 / WARN 0、`lint-layers` PASS、`test-guards` 4/4、
+  `test-check-links` 6/6、`test-embed-guard` 12/12、
+  `test-batch2-guards` 24/24、`test-batch3-guards` 24/24、`test-batch4-guards` **30/30**、
+  `py_compile` 全过、`scan-secrets` 238 文件无问题。云端**不重启预检**首轮抓到
+  离线回归 1 条 FAIL（新增两条展示命令使清单 12 → 14，超过旧阈值 13），
+  调阈值并注明原因后复跑：全量 `verify.sh` **5/5**、`test-batch4-guards` 30/30、
+  `test-commands` 11/11、`test-config-ui` 48/48、`test-prompt-golden --offline` 39/39。
+- **部署**：本次为批次 4 首次部署，逐项结果见 `docs/05-改动台账.md` #6。
+  多段语音 / 飞书主动消息 / 授权门均需真机验收（云端 verify 测不到体感与外部通道）。
+
 ## 2026-11-16 · 批次 3：B 可携带与可观测（主体导出、只读面板、预算开关）
 
 - **改了什么**：

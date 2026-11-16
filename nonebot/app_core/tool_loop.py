@@ -20,7 +20,8 @@ log = logging.getLogger("qqbot.tool_loop")
 PER_TURN_CAP = {"meme_send": 1}
 
 _DEFAULT_READ_ONLY = frozenset({
-    "web_search", "web_open", "kb_read", "kb_search", "memory_search", "memory_read",
+    # web_open 会往知识库写笔记，不是只读（tools.py 里已同步移出）。
+    "web_search", "kb_read", "kb_search", "memory_search", "memory_read",
     "diary_read", "skill_read", "skill_list", "note_list", "remind_list",
 })
 # 并发时情绪事件可能同时落盘，串起来写（state.json 不是并发安全的）

@@ -134,24 +134,26 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
     失败静默——文字已经发出去了，语音是补充不是替代。
     """
     try:
-        from app_core import tts
-
-        # 读完整回复（截 300 字），不再只取最后一段——
-        # 实测 85 字的回复最后一段只有 10 字，听上去像被掐断。
-        say = (text or "").strip()
-        if len(say) > 300:
-            say = say[:300]
-        silk = await tts.synth(say, mood=mood.load(), rewrite=rewrite)
-        if not silk:
-            logger.info("[chat] 语音合成返回空，跳过")
-            return
-        # 走协议入口而不是直接调 send_voice：加形式只改 adapter。
-        # 但这条链路在 runner 之外（文字回复已经发完才合成语音），所以失败要自己
-        # 补一句——他明确要了语音，静默等于漏回。
+        from app_core import pacing, tts
         from app_core.message import Part
 
+        # 长文案按句切成多段，不再截掉 300 字之后的内容（批次 4 #15）。
+        # 单段时 split_for_voice 原样返回一条，旧行为逐字节不变。
+        say = (text or "").strip()
+        segments = pacing.split_for_voice(say)
+        if not segments:
+            return
         ch = QQChannel()
-        ok = await ch.send_part(sid, Part("voice", str(silk)))
+        ok = False
+        for seg in segments:
+            silk = await tts.synth(seg, mood=mood.load(), rewrite=rewrite)
+            if not silk:
+                continue
+            # 走协议入口而不是直接调 send_voice：加形式只改 adapter。
+            # 这条链路在 runner 之外（文字回复发完才合成），失败要自己补一句。
+            if await ch.send_part(sid, Part("voice", str(silk))):
+                ok = True
+        logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字 / {len(segments)} 段")
         if not ok:
             try:
                 await ch.send_text(sid, "（语音没发出去，文字顶上）")
@@ -159,8 +161,7 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
                     sid, "（语音没发出去，我补了一句文字）", kind="voice_fail")
             except Exception:  # noqa: BLE001
                 pass
-        logger.info(f"[chat] voice sent={ok} {sid} {len(say)} 字")
-        if ok:
+        else:
             # 让它知道"我刚发了语音"：否则历史里只有文字，问起来它会否认。
             # 单独记一条极短的助手旁注，比改正文安全（不污染回复内容）。
             try:
@@ -175,18 +176,20 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
 async def _deliver_voice_reply(sid: str, ch: QQChannel,
                              rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
-    from app_core import tts
+    from app_core import pacing, tts
     from app_core.message import Part
 
     buffered = list(ch.buffered)
     ch.defer_text = False
-    say = "".join(buffered).strip()[:300]
+    say = "".join(buffered).strip()
     ok = False
     try:
-        silk = await tts.synth(say, mood=mood.load(), rewrite=rewrite) if say else None
-        if silk:
-            ok = await ch.send_part(sid, Part("voice", str(silk)))
-            silk.unlink(missing_ok=True)
+        for seg in pacing.split_for_voice(say):
+            silk = await tts.synth(seg, mood=mood.load(), rewrite=rewrite)
+            if silk:
+                if await ch.send_part(sid, Part("voice", str(silk))):
+                    ok = True
+                silk.unlink(missing_ok=True)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[chat] 语音发送失败，退回文字：{e}")
     if ok:

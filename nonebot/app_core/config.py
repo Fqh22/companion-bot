@@ -146,6 +146,14 @@ DEFAULTS = {
         # 单个工具调用的超时；总预算是一轮回复里所有工具调用的上限
         "timeout_seconds": 30,
         "total_timeout_seconds": 120,
+        # C 的授权门：开启后写类工具（note_write / remind_* / meme_send / web_open）
+        # 先落待授权请求，主人 /approve <id> 批准后才执行。默认关，旧行为不变。
+        "require_approval": False,
+    },
+    # 主动消息发到哪个通道。默认 qq（现状）；feishu 需飞书插件启用且主人先跟它说过话
+    # （要有 chat_id 映射），发不出去会自动回退 QQ，不会静默丢消息。
+    "proactive": {
+        "channel": "qq",
     },
     "context": {
         "history_max_chars": 2500,

@@ -99,6 +99,14 @@ tools:
   # 不加的话，6 轮 × 每轮 90s 的模型超时能把一次回复拖到 9 分钟。
   timeout_seconds: 30
   total_timeout_seconds: 120
+  # 授权门（定义 01 §3 的 C）：开启后写类工具先落待授权请求，
+  # 主人发 /approve <id> 批准才执行；不发 10 分钟后自动过期。默认 false。
+  require_approval: false
+
+proactive:
+  # 主动消息发到哪个通道。默认 qq；改成 feishu 需要飞书插件启用、
+  # 且主人先跟它说过话（有 chat_id 映射）。发不出去自动回退 QQ。
+  channel: "qq"
 
 context:
   # 历史对话的字符预算。6000 时占满载 prompt 的 57%，是最大头。

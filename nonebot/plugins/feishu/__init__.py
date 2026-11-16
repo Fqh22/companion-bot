@@ -32,7 +32,7 @@ from lark_oapi.api.im.v1 import (
 )
 from nonebot import get_driver, logger
 
-from app_core import asr, config, mood, paths, tts
+from app_core import asr, config, mood, paths, proactive_channels, tts
 from app_core.delivery import Capability
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
@@ -70,6 +70,51 @@ _loop: asyncio.AbstractEventLoop | None = None
 _seen: set[str] = set()
 _chat_of: dict[str, str] = {}
 _SAVE = paths.DATA / "files"
+# 主动消息要用 chat_id，但 `_chat_of` 以前只在内存里（重启就丢）。
+# 落一份 open_id → chat_id，主人先跟 bot 说过话才能主动发。
+_CHAT_MAP = paths.DATA / "feishu-chats.json"
+
+
+def _load_chat_map() -> None:
+    try:
+        if _CHAT_MAP.exists():
+            d = json.loads(_CHAT_MAP.read_text(encoding="utf-8"))
+            if isinstance(d, dict):
+                _chat_of.update({str(k): str(v) for k, v in d.items()})
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[feishu] 会话映射读取失败：{e}")
+
+
+def _save_chat_map() -> None:
+    try:
+        _CHAT_MAP.parent.mkdir(parents=True, exist_ok=True)
+        tmp = _CHAT_MAP.with_suffix(".tmp")
+        tmp.write_text(json.dumps(_chat_of, ensure_ascii=False, indent=1),
+                       encoding="utf-8")
+        tmp.replace(_CHAT_MAP)
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"[feishu] 会话映射保存失败：{e}")
+
+
+async def _send_proactive(text: str) -> bool:
+    """主动给主人发一条飞书消息（#14）。没有会话映射就不硬猜 chat_id。
+
+    成功要写回历史——和 QQ 的 `_send` 一样，否则下一轮它不知道自己主动说过话。
+    """
+    if not _client or not OWNER or not (text or "").strip():
+        return False
+    chat_id = _chat_of.get(f"feishu:{OWNER}") or _chat_of.get(OWNER)
+    if not chat_id:
+        logger.warning("[feishu] 还没有会话映射，主动消息跳过（需主人先发一条消息）")
+        return False
+    ok = await asyncio.to_thread(
+        _send_message, chat_id, "text", {"text": text})
+    if ok:
+        try:
+            await core.record_assistant(f"feishu:{OWNER}", text, "proactive")
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"[feishu] 主动消息写历史失败：{e}")
+    return bool(ok)
 
 
 def _creds() -> tuple[str, str]:
@@ -305,18 +350,23 @@ async def _speak_later(session: str, chat_id: str, text: str,
                        rewrite: bool = True) -> None:
     """文字发完后补一条语音（和 QQ 同一策略：只在他要/他发语音时才发）。"""
     try:
-        say = (text or "").strip()[:300]
-        if not say:
+        from app_core import pacing
+
+        say = (text or "").strip()
+        segments = pacing.split_for_voice(say)
+        if not segments:
             return
         # 飞书直接吃 opus：走 tts.synth_opus（Breeze 直出，少一次 silk 转码）
-        audio = await tts.synth_opus(say, mood=mood.load(), rewrite=rewrite)
-        if not audio:
-            logger.info("[feishu] 语音合成返回空，跳过")
-            return
         ch = FeishuChannel(session="", chat_id=chat_id)
-        ok = await ch.send_voice("", str(audio))
-        audio.unlink(missing_ok=True)
-        logger.info(f"[feishu] voice sent={ok}")
+        ok = False
+        for seg in segments:
+            audio = await tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite)
+            if not audio:
+                continue
+            if await ch.send_voice("", str(audio)):
+                ok = True
+            audio.unlink(missing_ok=True)
+        logger.info(f"[feishu] voice sent={ok} {len(segments)} 段")
         if ok:
             # 历史里补一条旁注：它得知道"这句话我刚用语音说过"，
             # 否则被问「你发语音了吗」会答没有。
@@ -368,16 +418,19 @@ async def _draw_later(session: str, chat_id: str, ask: str) -> None:
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
                                  rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
+    from app_core import pacing
+
     buffered = list(ch.buffered)
     ch.defer_text = False
-    say = "".join(buffered).strip()[:300]
+    say = "".join(buffered).strip()
     ok = False
     try:
-        audio = await tts.synth_opus(say, mood=mood.load(),
-                                     rewrite=rewrite) if say else None
-        if audio:
-            ok = await ch.send_voice("", str(audio))
-            audio.unlink(missing_ok=True)
+        for seg in pacing.split_for_voice(say):
+            audio = await tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite)
+            if audio:
+                if await ch.send_voice("", str(audio)):
+                    ok = True
+                audio.unlink(missing_ok=True)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 语音发送失败，退回文字：{e}")
     if ok:
@@ -449,6 +502,8 @@ async def _handle(data) -> None:
         _model_text = (_READ_ALOUD_DIRECTIVE + text) if _read_aloud else text
         session = config.owner_session() or f"feishu:{open_id}"
         _chat_of[session] = str(msg.chat_id)
+        # 主动消息要靠这份映射；落盘，重启后仍然找得到
+        _save_chat_map()
         want_voice = voice or any(k in text for k in
                                   ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
         ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
@@ -519,6 +574,9 @@ async def _start() -> None:
         return
     _client = _new_client(app_id, app_secret)
     _loop = asyncio.get_running_loop()
+    # 注册主动发送能力（注册 ≠ 启用，是否使用由 proactive.channel 决定）
+    _load_chat_map()
+    proactive_channels.register("feishu", _send_proactive)
     handler = (lark.EventDispatcherHandler.builder("", "")
                .register_p2_im_message_receive_v1(_on_event)
                .build())

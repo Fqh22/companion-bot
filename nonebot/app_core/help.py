@@ -32,6 +32,8 @@ DEBUG_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("系统", [
         ("prompt_last", "看最近一轮发给模型的 prompt（排障）"),
         ("reload_persona", "重载人格文件，不用重启"),
+        ("audit", "最近几条副作用 / 授权记录，含哈希链校验"),
+        ("approve", "批准待授权的写操作：/approve <id>"),
     ]),
 ]
 

@@ -99,6 +99,8 @@ F = {
     "embedding.model": ("向量模型", "默认 embedding-3。", {}),
     "tools.timeout_seconds": ("单工具超时", "单个工具调用最多等多久。", {"min": 5, "max": 600}),
     "tools.total_timeout_seconds": ("工具总预算", "一轮回复里所有工具调用的总上限；会被首字预算压小。", {"min": 10, "max": 900}),
+    "tools.require_approval": ("写操作授权门", "开启后写类工具需主人 /approve <id> 批准才执行；默认关。", {}),
+    "proactive.channel": ("主动消息通道", "默认 qq；feishu 需飞书启用且有会话映射，发不出去会回退 QQ。", {"options": ["qq", "feishu"]}),
     "context.history_max_chars": ("历史字符预算", "没有纪要时自动放宽到 4000。", {"min": 500, "max": 20000}),
     "context.history_max_items": ("历史条数", "最多取最近多少条消息。", {"min": 5, "max": 200}),
     "context.history_item_max_chars": ("单条消息上限", "防止一条 8000 字文件反复塞回 prompt。", {"min": 100, "max": 5000}),
