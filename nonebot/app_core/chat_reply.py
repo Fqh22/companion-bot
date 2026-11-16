@@ -13,12 +13,10 @@ import random
 import time
 
 from app_core import config, tool_loop, tools
-from app_core import paths as _paths
 from app_core import prompt as prompt_mod
+from app_core.chat_turn_base import _chat
 
 log = logging.getLogger("qqbot.chat")
-
-DB = _paths.DATA / "chat.db"
 
 
 class ReplyMixin:
@@ -47,10 +45,11 @@ class ReplyMixin:
             issues.append(
                 f"config.yaml 解析失败（{err}）：所有配置已回落默认值——"
                 "admin.user_id、模型、阈值全变了。修好后 systemctl restart nonebot")
-        if _PERSONA_ERROR:
+        _ch = _chat()
+        if _ch._PERSONA_ERROR:
             issues.append(
-                f"人格文件异常（{_PERSONA_ERROR}）：现在用空人格回复。"
-                f"检查 {PERSONA} 后发 /reload_persona")
+                f"人格文件异常（{_ch._PERSONA_ERROR}）：现在用空人格回复。"
+                f"检查 {_ch.PERSONA} 后发 /reload_persona")
         return issues
 
     def config_status(self) -> str:
@@ -61,13 +60,14 @@ class ReplyMixin:
 
     def _sync_llm_db(self) -> None:
         """DB 路径可能被测试改过，LLM 持有一份引用，用之前同步一下。"""
-        if self.llm.db != DB:
-            self.llm.db = DB
+        db = _chat().DB
+        if self.llm.db != db:
+            self.llm.db = db
 
     async def last_prompts(self, n: int = 1) -> list[dict]:
         """最近几条 prompt 快照（含正文与分块账）。排障用：它当时到底看到了什么。"""
         n = max(1, min(5, int(n or 1)))
-        async with aiosqlite.connect(DB, timeout=15) as db:
+        async with aiosqlite.connect(_chat().DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT ts, session, chars, flags, COALESCE(body,'') AS body, "
                 "COALESCE(blocks,'') AS blocks "
@@ -86,7 +86,7 @@ class ReplyMixin:
 
     async def usage_stats(self, days: int = 1) -> dict:
         since = time.time() - days * 86400
-        async with aiosqlite.connect(DB, timeout=15) as db:
+        async with aiosqlite.connect(_chat().DB, timeout=15) as db:
             cur = await db.execute(
                 "SELECT COUNT(*), COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(completion_tokens),0) "
                 "FROM usage WHERE ts >= ?", (since,))
@@ -226,7 +226,7 @@ class ReplyMixin:
             banned |= {((t.get("function") or {}).get("name") or "") for t in tools.TOOLS
                        if ((t.get("function") or {}).get("name") or "") not in allowed}
         if retry:
-            banned |= SIDE_EFFECT_TOOLS
+            banned |= _chat().SIDE_EFFECT_TOOLS
         return await tool_loop.run(
             self, msgs,
             complete=lambda m, t: self.complete_raw(m, t, max_tokens=budget,

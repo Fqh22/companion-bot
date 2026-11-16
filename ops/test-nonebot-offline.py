@@ -88,7 +88,7 @@ chat_mod.DB = TMP / "chat.db"
 chat_mod.DATA = TMP           # 只在 init_db 里用来建目录，Windows 上跑测试也不会碰 /opt
 summary_mod.DB = TMP / "chat.db"   # 摘要/水位已拆到 SummaryMixin（2026-11-16）
 history_mod.DB = TMP / "chat.db"   # 历史读写已拆到 HistoryMixin（2026-11-16）
-chat_reply_mod.DB = TMP / "chat.db"  # 回复主链路已拆到 ReplyMixin（2026-11-16）
+# chat_reply 的 DB 通过 _chat().DB 读，测试补 chat_mod.DB 即可（2026-11-16）
 memory_mod.DB = TMP / "livingmemory.db"
 kb_mod.DB = TMP / "chat.db"
 mood_store_mod.STATE_DIR = TMP / "mood"

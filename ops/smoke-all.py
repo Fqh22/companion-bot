@@ -200,7 +200,6 @@ for p in (LEARN, LEARN / "notes", LEARN / "skills", LEARN / "raw"):
 chat_mod.DB, chat_mod.DATA = TMP / "chat.db", TMP
 summary_mod.DB = TMP / "chat.db"
 history_mod.DB = TMP / "chat.db"
-chat_reply_mod.DB = TMP / "chat.db"
 parse_log_mod.note("smoke", "x", "test")
 check("parse_fail 能写", (paths_mod.DATA / "parse_fail.jsonl").exists())
 check("现实校验：夜里说早安会记录",
