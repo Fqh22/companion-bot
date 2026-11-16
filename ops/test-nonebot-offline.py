@@ -438,28 +438,31 @@ async def main() -> None:
     check("profile.clear 清空整份", profile_mod.load(_pf) == {})
 
     # 复盘：结构化 profile 落 json + md，且没提到的字段不会被擦掉
-    _saved_learn = (learn_mod.LEARN, learn_mod.PROFILE, learn_mod.CORRECTIONS,
-                    learn_mod.CURIOUS)
-    learn_mod.LEARN = TMP / "learn_p"
-    learn_mod.LEARN.mkdir(parents=True, exist_ok=True)
-    learn_mod.PROFILE = learn_mod.LEARN / "self_profile.md"
-    learn_mod.CORRECTIONS = learn_mod.LEARN / "corrections.md"
-    learn_mod.CURIOUS = learn_mod.LEARN / "curious.md"
+    # 2026-11-16：apply_review 已搬到 learn_store，补丁点跟着走
+    from app_core import learn_store as learn_store_mod
+
+    _saved_learn = (learn_store_mod.LEARN, learn_store_mod.PROFILE,
+                    learn_store_mod.CORRECTIONS, learn_store_mod.CURIOUS)
+    learn_store_mod.LEARN = TMP / "learn_p"
+    learn_store_mod.LEARN.mkdir(parents=True, exist_ok=True)
+    learn_store_mod.PROFILE = learn_store_mod.LEARN / "self_profile.md"
+    learn_store_mod.CORRECTIONS = learn_store_mod.LEARN / "corrections.md"
+    learn_store_mod.CURIOUS = learn_store_mod.LEARN / "curious.md"
     try:
         learn_mod.apply_review({"learned": "x", "profile": {"职业与求职": "找工作中"}},
                                day="2026-11-05")
         learn_mod.apply_review({"learned": "y", "profile": {"家庭": "催婚"}},
                                day="2026-11-06")
-        _pj = profile_mod.load(learn_mod.LEARN / "profile.json")
+        _pj = profile_mod.load(learn_store_mod.LEARN / "profile.json")
         check("apply_review 结构化 profile 落 json",
-              (learn_mod.LEARN / "profile.json").exists(), str(_pj))
+              (learn_store_mod.LEARN / "profile.json").exists(), str(_pj))
         check("apply_review 两次写入后字段合并而非覆盖",
               _pj.get("职业与求职") == "找工作中" and _pj.get("家庭") == "催婚", str(_pj))
         check("apply_review 同步刷新 md",
-              "催婚" in learn_mod.PROFILE.read_text(encoding="utf-8"))
+              "催婚" in learn_store_mod.PROFILE.read_text(encoding="utf-8"))
     finally:
-        (learn_mod.LEARN, learn_mod.PROFILE, learn_mod.CORRECTIONS,
-         learn_mod.CURIOUS) = _saved_learn
+        (learn_store_mod.LEARN, learn_store_mod.PROFILE,
+         learn_store_mod.CORRECTIONS, learn_store_mod.CURIOUS) = _saved_learn
 
     # ---------- B6. 画像注入位置 + 二次召回 ----------
     from app_core import prompt as prompt_mod
