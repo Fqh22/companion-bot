@@ -37,7 +37,6 @@ from nonebot.adapters.onebot.v11 import (
     PrivateMessageEvent,
 )
 
-from app_core import asr, config, meme, mood, pacing, relational
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
 from app_core.delivery import Capability
@@ -118,7 +117,7 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
     ch = QQChannel()
     await outbound.speak_later(
         text=text,
-        synth=lambda seg: tts.synth(seg, mood=mood.load(), rewrite=rewrite),
+        synth=lambda seg: tts.synth(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
         send_text=lambda t: ch.send_text(sid, t),
         record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
@@ -136,7 +135,7 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
     ch.defer_text = False
     await outbound.deliver_voice_reply(
         buffered=buffered,
-        synth=lambda seg: tts.synth(seg, mood=mood.load(), rewrite=rewrite),
+        synth=lambda seg: tts.synth(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
         send_text=lambda t: ch.send_text(sid, t),
         record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
@@ -250,7 +249,7 @@ class QQChannel:
                 return False
             # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
             # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
-            data = await asyncio.to_thread(meme.payload, str(p))
+            data = await asyncio.to_thread(core.meme.payload, str(p))
             await chat.send(MessageSegment.image(data))
             return True
         except Exception as e:  # noqa: BLE001
@@ -456,7 +455,7 @@ async def _pace(text: str, fast: bool = False) -> None:
     fast=True 时压低上限：长回答段数多，再按原节奏发就会撞穿回复时限。
     """
     await asyncio.sleep(pacing.pace_seconds(text, datetime.now().hour,
-                                            mood.load(), fast=fast))
+                                            core.mood.load(), fast=fast))
 
 
 async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> bool:
@@ -498,7 +497,7 @@ async def _send_replies(replies: list[str], images: list[str] | None = None,
                 continue
             # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
             # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
-            data = await asyncio.to_thread(meme.payload, str(p))
+            data = await asyncio.to_thread(core.meme.payload, str(p))
             await chat.send(MessageSegment.image(data))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
@@ -631,7 +630,7 @@ async def _handle(event: MessageEvent):
     _owner = _admin in ("", "0") or str(event.user_id) == _admin
 
     # 外人版人格写着「0 点到 8 点不回复」。只对别人生效——主人半夜找它不该被晾着。
-    if not _owner and relational.is_quiet_hour(datetime.now().hour):
+    if not _owner and core.relational.is_quiet_hour(datetime.now().hour):
         return
 
     file_segs = [s for s in event.message if getattr(s, "type", "") == "file"]

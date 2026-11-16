@@ -9,7 +9,6 @@ import asyncio
 
 from nonebot import get_bots, get_driver, logger
 
-from app_core.proactive_runtime import ProactiveRuntime
 from plugins.chat import core
 
 driver = get_driver()
@@ -26,14 +25,13 @@ async def _send(text: str) -> bool:
     # 默认仍是 QQ；改成 feishu 时优先走飞书注册通道，发不出去自动回退 QQ，
     # 不双发也不静默丢消息（#14）。
     try:
-        from app_core import config, proactive_channels
-
+        
         channel = str((config.load().get("proactive") or {}).get(
             "channel", "qq")).strip().lower()
     except Exception:  # noqa: BLE001
         channel = "qq"
     if channel != "qq":
-        if await proactive_channels.send(text, channel):
+        if await core.proactive_channels.send(text, channel):
             logger.info("[proactive] 已由 %s 发送: %r", channel, text[:60])
             return True
         logger.warning("[proactive] 通道 %s 不可用，回退 QQ", channel)
@@ -54,7 +52,7 @@ async def _send(text: str) -> bool:
     return False
 
 
-runtime = ProactiveRuntime(core, _send, admin_id=str(_admin_id()))
+runtime = core.proactive_runtime.ProactiveRuntime(core, _send, admin_id=str(_admin_id()))
 
 
 async def _tick() -> None:

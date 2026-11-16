@@ -32,7 +32,7 @@ from lark_oapi.api.im.v1 import (
 )
 from nonebot import get_driver, logger
 
-from app_core import asr, config, mood, paths, proactive_channels, tts
+from app_core import asr, config, paths, tts
 from app_core.delivery import Capability
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
@@ -354,7 +354,7 @@ async def _speak_later(session: str, chat_id: str, text: str,
     ch = FeishuChannel(session="", chat_id=chat_id)
     await outbound.speak_later(
         text=text,
-        synth=lambda seg: tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite),
+        synth=lambda seg: tts.synth_opus(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_voice("", p),
         send_text=lambda t: ch.send_text("", t),
         record=lambda text, kind: core.record_assistant(session, text, kind=kind),
@@ -391,7 +391,7 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
     ch.defer_text = False
     await outbound.deliver_voice_reply(
         buffered=buffered,
-        synth=lambda seg: tts.synth_opus(seg, mood=mood.load(), rewrite=rewrite),
+        synth=lambda seg: tts.synth_opus(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_voice("", p),
         send_text=lambda t: ch.send_text("", t),
         record=lambda text, kind: core.record_assistant(session, text, kind=kind),
@@ -528,7 +528,7 @@ async def _start() -> None:
     _loop = asyncio.get_running_loop()
     # 注册主动发送能力（注册 ≠ 启用，是否使用由 proactive.channel 决定）
     _load_chat_map()
-    proactive_channels.register("feishu", _send_proactive)
+    core.proactive_channels.register("feishu", _send_proactive)
     handler = (lark.EventDispatcherHandler.builder("", "")
                .register_p2_im_message_receive_v1(_on_event)
                .build())

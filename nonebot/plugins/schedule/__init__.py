@@ -6,8 +6,6 @@ import asyncio
 from nonebot import get_bots, get_driver
 from nonebot.log import logger
 
-from app_core import kb, meme, wiki
-from app_core.scheduler import Scheduler
 from plugins.chat import core
 
 driver = get_driver()
@@ -75,7 +73,7 @@ async def _send(text: str) -> bool:
     return False
 
 
-sched = Scheduler(core, send=_send)
+sched = core.scheduler.Scheduler(core, send=_send)
 
 
 @driver.on_startup
@@ -84,16 +82,16 @@ async def _start() -> None:
 
     async def _warm() -> None:
         try:
-            await kb.index()
+            await core.kb.index()
         except Exception:
             pass
         try:
-            await wiki.refresh(core)
+            await core.wiki.refresh(core)
         except Exception:
             pass
 
     asyncio.create_task(_warm())
-    asyncio.create_task(meme.ensure_vectors())
+    asyncio.create_task(core.meme.ensure_vectors())
 
 
 @driver.on_shutdown

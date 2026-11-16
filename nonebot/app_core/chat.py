@@ -247,6 +247,13 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
             except Exception as e:  # noqa: BLE001
                 log.warning("admin.identities 解析失败：%s", e)
 
+        # 插件门面：命名空间对象（core.learn / core.audit / core.kb …），
+        # 见 app_core/plugin_api.py；CORE_API 按两层登记检查。
+        from app_core import plugin_api
+
+        for _ns, _mod in plugin_api.build().items():
+            setattr(self, _ns, _mod)
+
     async def init_db(self) -> None:
         DATA.mkdir(parents=True, exist_ok=True)
         async with aiosqlite.connect(DB, timeout=15) as db:

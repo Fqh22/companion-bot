@@ -9,7 +9,6 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 
-from app_core import diary, introspect, kb, learn, meme, mood, remind, wiki
 from plugins.chat import core
 
 NL = chr(10)
@@ -55,14 +54,14 @@ async def _(event: MessageEvent):
     arg = _arg(event, "/mood_history").strip()
     days = int(arg) if arg.isdigit() else 7
     days = max(1, min(60, days))
-    rows = mood.recent(days)
+    rows = core.mood.recent(days)
     if not rows:
         await mood_hist.finish("还没有情绪历史（每天 23:55 存一行）")
     lines = [f"情绪最近 {len(rows)} 天（心情 / 基线 / 精力 / 互动 / 消息）："]
     for r in rows[-10:]:
         lines.append(f"{r['day'][5:]} {r['valence']:+.2f} / {r['valence_base']:+.2f}"
                      f" / {r['energy']:.2f} / {r['social']:.2f} / {r['msgs']}")
-    sm = mood.summary(days)
+    sm = core.mood.summary(days)
     lines.append(f"均值 心情 {sm['valence']:+.2f} / 精力 {sm['energy']:.2f}"
                  f" / 互动 {sm['social']:.2f}，共 {sm['msgs']} 条消息")
     lines.append(f"最好 {sm['best']['day'][5:]}（{sm['best']['valence']:+.2f}）"
@@ -99,13 +98,13 @@ async def _(event: MessageEvent):
 @diary_show.handle()
 async def _(event: MessageEvent):
     arg = _arg(event, "/diary_show")
-    day = arg if arg else (diary.list_days(1)[0] if diary.list_days(1) else "")
-    await diary_show.finish(diary.read(day) if day else "还没有日记")
+    day = arg if arg else (core.diary.list_days(1)[0] if core.diary.list_days(1) else "")
+    await diary_show.finish(core.diary.read(day) if day else "还没有日记")
 
 
 @diary_list.handle()
 async def _():
-    days = diary.list_days(7)
+    days = core.diary.list_days(7)
     await diary_list.finish(NL.join(days) if days else "还没有日记")
 
 
@@ -113,41 +112,41 @@ async def _():
 async def _(event: MessageEvent):
     arg = _arg(event, "/diary_write")
     day = arg or datetime.now().strftime("%Y-%m-%d")
-    await diary_write.finish(await diary.write_day(core, day, force=True))
+    await diary_write.finish(await core.diary.write_day(core, day, force=True))
 
 
 @review_now.handle()
 async def _():
-    await review_now.finish(await learn.review(core))
+    await review_now.finish(await core.learn.review(core))
 
 
 @weekly_now.handle()
 async def _():
-    text = await learn.weekly(core)
+    text = await core.learn.weekly(core)
     await weekly_now.finish(text[:1500])
 
 
 @note_list.handle()
 async def _():
-    items = learn.note_list()
+    items = core.learn.note_list()
     await note_list.finish(NL.join(items) if items else "还没有学习笔记")
 
 
 @kb_reindex.handle()
 async def _():
-    n = await kb.index()
+    n = await core.kb.index()
     await kb_reindex.finish(f"知识库索引完成，新增/更新 {n} 条")
 
 
 @meme_cmd.handle()
 async def _(event: MessageEvent):
     arg = _arg(event, "/meme")
-    path, mode, score = await meme.find_ex(arg)
+    path, mode, score = await core.meme.find_ex(arg)
     if not path:
         await meme_cmd.finish("表情包库是空的")
     try:
         # bytes → base64；传 Path 会变成 file:// 宿主机路径，容器里读不到
-        data = await asyncio.to_thread(meme.payload, path)
+        data = await asyncio.to_thread(core.meme.payload, path)
         await meme_cmd.send(MessageSegment.image(data))
     except Exception as e:  # noqa: BLE001
         await meme_cmd.finish(f"发送失败：{type(e).__name__}: {e}")
@@ -155,7 +154,7 @@ async def _(event: MessageEvent):
 
 @meme_stats.handle()
 async def _():
-    s = meme.stats()
+    s = core.meme.stats()
     cats = "、".join(f"{k}:{v}" for k, v in sorted(s["categories"].items()))
     hits = s.get("hits") or {}
     total_hits = sum(hits.values()) or 0
@@ -259,7 +258,7 @@ async def _():
 def _page_arg(event: MessageEvent, cmd: str) -> tuple[str, str]:
     """取命令参数并解析成页面路径。返回 (原参数, 路径)；路径空 = 没找到。"""
     arg = _arg(event, cmd).strip()
-    return arg, (wiki.resolve(arg) if arg else "")
+    return arg, (core.wiki.resolve(arg) if arg else "")
 
 
 @kb_verify.handle()
@@ -275,8 +274,8 @@ async def _(event: MessageEvent):
     if not path:
         await kb_verify.finish(f"没找到这一页：{arg}，先 /note_list 看文件名")
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    ok = learn.set_meta(path, verified=now, status="active")
-    wiki.set_verified(path, learn.parse_ts(now), "active")
+    ok = core.learn.set_meta(path, verified=now, status="active")
+    core.wiki.set_verified(path, core.learn.parse_ts(now), "active")
     name = Path(path).stem
     await kb_verify.finish(f"已验证：{name}（{now}）" if ok else f"写入失败：{name}")
 
@@ -289,8 +288,8 @@ async def _(event: MessageEvent):
         await kb_deprecate.finish("用法：/kb_deprecate 标题 —— 标记这页已过时（文件保留，不再进目录）")
     if not path:
         await kb_deprecate.finish(f"没找到这一页：{arg}，先 /note_list 看文件名")
-    ok = learn.set_meta(path, status="已废弃")
-    wiki.set_verified(path, 0.0, "已废弃")
+    ok = core.learn.set_meta(path, status="已废弃")
+    core.wiki.set_verified(path, 0.0, "已废弃")
     name = Path(path).stem
     await kb_deprecate.finish(f"已标记废弃：{name}（文件保留，不再进索引）" if ok else f"写入失败：{name}")
 
@@ -301,5 +300,5 @@ async def _(event: MessageEvent):
     arg = _arg(event, "/raw_archive").strip()
     day = arg if len(arg) == 10 and arg.count("-") == 2 else ""
     msg = await asyncio.to_thread(
-        learn.archive_raw, day, core.private_session())
+        core.learn.archive_raw, day, core.private_session())
     await raw_cmd.finish(msg)

@@ -86,6 +86,29 @@ def _imports_of(path: Path) -> list[str]:
     return out
 
 
+def _toplevel_imports(path: Path) -> list[str]:
+    """只取模块级 import：函数内 import 是显式的运行时解耦，不算结构环。
+
+    与 ops/link-check.py 的判据一致：环本身不一定炸（函数内 import 能绕），
+    但双向**顶层** import 一定炸。
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            out.extend(a.name for a in node.names if a.name.startswith("app_core"))
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.module.startswith("app_core"):
+                if node.module == "app_core":
+                    out.extend(f"app_core.{a.name}" for a in node.names)
+                else:
+                    out.append(node.module)
+    return out
+
+
 def _io_imports(path: Path) -> list[str]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
@@ -183,15 +206,9 @@ PLUGIN_ALLOWED = frozenset({
 
 # 冻结存量：插件 -> 允许继续直接 import 的业务模块。
 # 这是迁移脚手架，不是永久门禁：到期日之后一律 FAIL；迁掉一个删一个。
-PLUGIN_LEGACY = {
-    "admin/__init__.py": {"help", "introspect", "learn", "audit", "tools", "profile"},
-    "commands/__init__.py": {"diary", "introspect", "kb", "learn", "meme", "mood", "remind", "wiki"},
-    "schedule/__init__.py": {"kb", "meme", "wiki", "scheduler"},
-    "group/__init__.py": {"group"},
-    "proactive/__init__.py": {"proactive_runtime", "proactive_channels"},
-    "chat/__init__.py": {"meme", "mood", "relational"},
-    "feishu/__init__.py": {"mood", "proactive_channels", "config"},
-}
+# 2026-11-16：29 条全部迁到 core 门面（app_core/plugin_api.py），白名单清空。
+# 以后插件不得直接 import 任何业务模块；要加就加 core.<ns>.<func> 并登记 CORE_API。
+PLUGIN_LEGACY: dict[str, set[str]] = {}
 PLUGIN_LEGACY_DEADLINE = "2026-12-31"
 
 
@@ -253,7 +270,7 @@ def check_cycles(mods: dict[Path, str], core: Path) -> None:
     for p in mods:
         rel = p.relative_to(core).as_posix()
         deps: set[str] = set()
-        for t in _imports_of(p):
+        for t in _toplevel_imports(p):
             key = t[len("app_core."):] if t.startswith("app_core.") else t
             q = core / (key.replace(".", "/") + ".py")
             if q in mods:

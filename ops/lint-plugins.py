@@ -190,8 +190,11 @@ CORE_API = {
     # 计数与状态
     "usage_stats", "config_issues", "config_status",
     "rate_per_minute", "cooldown", "enabled",
-    # 子服务对象
+    # 子服务对象 / 插件门面命名空间（见 app_core/plugin_api.py）
     "scheduler", "pacing", "proactive", "files", "group", "chat",
+    "learn", "audit", "kb", "wiki", "diary", "meme", "mood", "remind",
+    "profile", "help", "introspect", "tools",
+    "proactive_channels", "proactive_runtime", "relational",
     "whitelist", "admin_uid",
     # 图片与文件
     "caption_images",
@@ -202,6 +205,35 @@ CORE_API = {
     "record_assistant", "append_to_message",
     # 兼容入口
     "remember_safe", "catch_up_summary", "complete_raw", "init_db",
+    # ---- 两层：插件门面 core.<ns>.<func>（2026-11-16）----
+    "learn.review", "learn.weekly", "learn.profile_fields", "learn.profile_path",
+    "learn.set_meta", "learn.parse_ts", "learn.archive_raw", "learn.note_list",
+    "audit.record", "audit.recent", "audit.verify_chain", "audit.decide",
+    "audit.propose", "audit.pending_ids",
+    "kb.index", "kb.recall",
+    "wiki.refresh", "wiki.resolve", "wiki.set_verified",
+    "diary.list_days", "diary.read", "diary.write_day",
+    "meme.find_ex", "meme.find", "meme.stats", "meme.ensure_vectors", "meme.payload",
+    "mood.recent", "mood.summary", "mood.load",
+    "remind.describe_pending", "remind.add", "remind.cancel",
+    "profile.forget", "profile.clear", "profile.load",
+    "help.text", "help.debug_text",
+    "introspect.forget_text", "introspect.trace_text", "introspect.ping_text",
+    "introspect.mood_text", "introspect.usage_text",
+    "introspect.mem_status_text", "introspect.profile_text",
+    "tools.execute",
+    "scheduler.Scheduler",
+    "proactive_channels.register", "proactive_channels.send",
+    "proactive_runtime.ProactiveRuntime",
+    "relational.is_quiet_hour", "relational.describe",
+}
+
+# 插件门面命名空间：这些名字后面的子成员按 core.<ns>.<func> 两层登记检查；
+# 其余单层属性（core.persona.get、core.admin_ids 等）只认单层。
+CORE_NAMESPACES = {
+    "learn", "audit", "kb", "wiki", "diary", "meme", "mood", "remind",
+    "profile", "help", "introspect", "tools", "scheduler",
+    "proactive_channels", "proactive_runtime", "relational",
 }
 
 # 没有遗留项了。以后要收内部接口，先在这里登记，再逐个迁移调用点。
@@ -217,7 +249,7 @@ def check_core_api() -> tuple[list[str], list[str]]:
     """
     import re
 
-    pat = re.compile(r"\bcore\.([A-Za-z_]\w*)")
+    pat = re.compile(r"\bcore\.([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?")
     fails: list[str] = []
     warns: list[str] = []
     for f in sorted(PLUGINS.rglob("*.py")):
@@ -236,22 +268,26 @@ def check_core_api() -> tuple[list[str], list[str]]:
             if line.strip().startswith("#"):
                 continue
             for m in pat.finditer(line):
-                name = m.group(1)
-                if name.startswith("_"):
+                name, sub = m.group(1), m.group(2)
+                key = name if sub is None else f"{name}.{sub}"
+                if (name.startswith("_") or (sub or "").startswith("_")):
                     fails.append(
-                        f"{_rel(f)}:{i}: core.{name} 是私有成员，插件不得直接访问")
+                        f"{_rel(f)}:{i}: core.{key} 是私有成员，插件不得直接访问")
                     continue
-                if name == "memory":
+                if name == "memory" and sub is not None:
                     fails.append(
                         f"{_rel(f)}:{i}: 别直接调 core.memory.*，用 core.memory_* 门面"
                         f"（内部结构才能自由改）")
                     continue
-                if name in CORE_API:
-                    if name in CORE_API_DEPRECATED:
-                        warns.append(f"{_rel(f)}:{i}: core.{name} 是遗留接口，建议改用公共方法")
+                # 命名空间才查两层；core.persona.get / core.admin_ids 这类只认单层
+                if sub is not None and name not in CORE_NAMESPACES:
+                    key = name
+                if key in CORE_API:
+                    if key in CORE_API_DEPRECATED:
+                        warns.append(f"{_rel(f)}:{i}: core.{key} 是遗留接口，建议改用公共方法")
                 else:
                     fails.append(
-                        f"{_rel(f)}:{i}: core.{name} 不在接口清单里"
+                        f"{_rel(f)}:{i}: core.{key} 不在接口清单里"
                         f"（要暴露就先登记到 ops/lint-plugins.py 的 CORE_API）")
     return fails, sorted(set(warns))
 
@@ -270,6 +306,7 @@ _MEM_EXEMPT = frozenset({
     "app_core/chat.py", "app_core/summary.py",
     "app_core/memory_port.py", "app_core/memory.py",
     "app_core/memory_store.py", "app_core/memory_index.py", "app_core/kb.py",
+    "app_core/plugin_api.py",  # 插件门面的装配点：只 import 不调用
     "app_core/learn.py", "app_core/learn_store.py", "app_core/wiki.py", "app_core/review.py",
     "app_core/purge.py", "app_core/web.py", "app_core/meme.py",
 })

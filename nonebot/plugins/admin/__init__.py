@@ -7,9 +7,6 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent
 from nonebot.permission import SUPERUSER
 
-from app_core import help as help_mod
-from app_core import introspect
-from app_core import learn
 from plugins.chat import core
 
 ping = on_command("ping", priority=5, block=True, permission=SUPERUSER)
@@ -43,15 +40,14 @@ async def _approve(event: MessageEvent):
 
     只认 10 分钟内的请求；过期 / 已处理 / 编的 id 一律不执行。
     """
-    from app_core import audit, tools
 
     rid = _arg(event, "approve").strip().split()[0] if _arg(event, "approve").strip() else ""
     if not rid:
         await approve_cmd.finish("用法：/approve <id>（/audit 看最近的记录）")
-    item = audit.decide(rid, True, by="owner")
+    item = core.audit.decide(rid, True, by="owner")
     if not item:
         await approve_cmd.finish("没有这个待授权请求（可能已过期或已处理）。")
-    out = await tools.execute(core, str(item["name"]),
+    out = await core.tools.execute(core, str(item["name"]),
                               dict(item.get("args") or {}), approved=True)
     await approve_cmd.finish(f"已批准并执行：{item['name']}\n{out[:200]}")
 
@@ -59,12 +55,11 @@ async def _approve(event: MessageEvent):
 @audit_cmd.handle()
 async def _audit_cmd():
     """只读：最近几条副作用、能不能回滚、哈希链是否完整、还有谁在等授权。"""
-    from app_core import audit
 
-    rows = audit.recent(8)
+    rows = core.audit.recent(8)
     if not rows:
         await audit_cmd.finish("还没有审计记录。写类工具执行后会记一条。")
-    ok, errors = audit.verify_chain(rows)
+    ok, errors = core.audit.verify_chain(rows)
     lines = [f"最近 {len(rows)} 条副作用："]
     for r in rows:
         try:
@@ -75,7 +70,7 @@ async def _audit_cmd():
         lines.append(f"{ts} {str(r.get('status')):8} {r.get('action', '')} "
                      f"{str(r.get('target') or '')[:24]} [{flag}] {r.get('actor', '')}")
     lines.append("哈希链：" + ("完整" if ok else "异常 " + "; ".join(errors)[:80]))
-    pend = audit.pending_ids()
+    pend = core.audit.pending_ids()
     if pend:
         lines.append("待授权：" + ", ".join(pend[:5]) + "（/approve <id>）")
     await audit_cmd.finish("\n".join(lines))
@@ -88,19 +83,19 @@ async def _ping():
     配上意义：`admin.user_id` 没填时记忆不写、主动消息不发，但服务看着一切正常。
     /ping 是唯一能一眼看出「它其实是个哑巴」的地方，所以状态挂在这里。
     """
-    await ping.finish(introspect.ping_text(core))
+    await ping.finish(core.introspect.ping_text(core))
 
 
 @help_cmd.handle()
 async def _help():
     """/help 由 app_core/help.py 渲染：命令只写一处，lint 保证不漂。"""
-    await help_cmd.finish(help_mod.text())
+    await help_cmd.finish(core.help.text())
 
 
 @debug_cmd.handle()
 async def _debug():
     """/debug：维护与排障命令全量。日常清单里只留了 11 条。"""
-    await debug_cmd.finish(help_mod.debug_text())
+    await debug_cmd.finish(core.help.debug_text())
 
 
 @reload_cmd.handle()
@@ -112,25 +107,23 @@ async def _reload(event: MessageEvent):
 @profile_cmd.handle()
 async def _profile():
     """看当前画像：每个字段的置信度、多久没被确认、会不会被注入。"""
-    await profile_cmd.finish(introspect.profile_text(learn))
+    await profile_cmd.finish(core.introspect.profile_text(learn))
 
 
 @forget_cmd.handle()
 async def _forget(event: MessageEvent):
-    from app_core import profile as profile_mod
 
     arg = _arg(event, "/profile_forget")
     if not arg:
         await forget_cmd.finish("用法：/profile_forget 职业与求职")
-    if not profile_mod.forget(learn.profile_path(), arg):
-        keys = "、".join(learn.profile_fields().keys()) or "（空）"
+    if not core.profile.forget(core.learn.profile_path(), arg):
+        keys = "、".join(core.learn.profile_fields().keys()) or "（空）"
         await forget_cmd.finish(f"没有这个字段。现有：{keys}")
     await forget_cmd.finish(f"已删掉「{arg}」，下次复盘不会自动加回来（除非又有新证据）")
 
 
 @clear_cmd.handle()
 async def _clear():
-    from app_core import profile as profile_mod
 
-    profile_mod.clear(learn.profile_path())
+    core.profile.clear(core.learn.profile_path())
     await clear_cmd.finish("画像已清空。它会从下次复盘开始重新长，只记那时候看到的事。")
