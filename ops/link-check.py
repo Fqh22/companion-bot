@@ -178,8 +178,11 @@ def import_cycle_checks() -> None:
                         out.add(cand)
         return {x for x in out if x in mods}
 
-    graph = {m: edges(p) for m, p in mods.items()}
-    top = {m: edges(p, top_only=True) for m, p in mods.items()}
+    # 结构环只算**顶层** import：函数内 import 是显式的运行时解耦
+    # （chat.__init__ 里 import plugin_api 就是这样），它不会在 import 顺序上炸，
+    # 和「环内双向顶层 import」是两回事——后者由下面单独检查。
+    graph = {m: edges(p, top_only=True) for m, p in mods.items()}
+    top = graph
 
     index, low, stack, on, sccs = {}, {}, [], set(), []
     counter = [0]
