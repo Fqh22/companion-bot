@@ -18,17 +18,7 @@ from adapters.console import ConsoleChannel  # noqa: E402
 from adapters.fake import FakeChannel  # noqa: E402
 from app_core.engine import Engine, InboundMessage, OutboundMessage  # noqa: E402
 
-PASS = FAIL = 0
-
-
-def check(name, ok, extra=""):
-    global PASS, FAIL
-    if ok:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 class FakeCore:
@@ -68,5 +58,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    print(f"\n=== {PASS}/{PASS + FAIL} 通过 ===")
-    raise SystemExit(0 if FAIL == 0 else 1)
+    raise SystemExit(report())

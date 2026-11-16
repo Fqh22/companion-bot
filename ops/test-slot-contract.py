@@ -20,17 +20,7 @@ sys.path.insert(0, str(CODE))
 from app_core.chat_turn import (  # noqa: E402
     PREFETCH, RENDER_SLOTS, SLOTS, StageError, Turn)
 
-PASS = FAIL = 0
-
-
-def check(name: str, cond: bool, extra: str = "") -> None:
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print("PASS " + name)
-    else:
-        FAIL += 1
-        print("FAIL " + name + (" | " + str(extra) if extra else ""))
+from harness import check, report  # noqa: E402
 
 
 def mk() -> Turn:
@@ -123,8 +113,7 @@ def main() -> int:
           list(t1.extra_system) == list(t2.extra_system) == ["done", "confirm", "drop"],
           list(t2.extra_system))
 
-    print("\n=== 槽位契约：%d/%d 通过 ===" % (PASS, PASS + FAIL))
-    return 0 if FAIL == 0 else 1
+    return report()
 
 
 if __name__ == "__main__":
