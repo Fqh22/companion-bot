@@ -54,11 +54,14 @@ class ConsoleChannel:
 
     async def run(self, engine: Engine, session: str = "private:console") -> None:
         core = getattr(engine, "core", None)
-        # QQ / 飞书都把 core.reply_deadline 传给 TurnRunner，终端以前没传，
-        # 吃的是 runner.py 里硬编码的默认 45 —— 改配置时终端不跟随。
-        deadline = (float(getattr(core, "reply_deadline", 45))
-                    if core is not None else 45.0)
-        runner = TurnRunner(engine, self, caps=self.caps, deadline=deadline)
+        # 三个通道都从 core 读同一组时限；终端以前吃 runner.py 的硬编码默认值，
+        # 改配置时不跟随（批次 1 补了 deadline，这里再补 stall_seconds）。
+        deadline = (float(getattr(core, "reply_deadline", 90))
+                    if core is not None else 90.0)
+        stall = (float(getattr(core, "reply_stall_seconds", 30))
+                 if core is not None else 30.0)
+        runner = TurnRunner(engine, self, caps=self.caps, deadline=deadline,
+                            stall_seconds=stall)
         registry = default_registry(core) if core is not None else None
         self.out.write("console 模式；/help 看命令，/quit 退出。\n")
         self.out.flush()

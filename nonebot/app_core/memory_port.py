@@ -95,6 +95,7 @@ class CoreMemoryPort:
                     last_used=float(meta.get("last_access_time") or 0.0),
                     age_days=r.get("age_days"),
                     confidence=float(meta.get("importance") or 0.0),
+                    payload={"score": r.get("score")},
                 ))
             tr.append({"type": "fact", "n": len(rows), "limit": limit})
 
@@ -194,6 +195,7 @@ class CoreMemoryPort:
             vec=p.get("vec"),
             followups=list(p.get("followups") or []),
             range_key=str(p.get("range_key") or ""),
+            source_msg_ids=[str(x) for x in (p.get("source_msg_ids") or []) if x],
         )
 
     async def supersede(self, ref: str, by: str = "", why: str = "") -> bool:

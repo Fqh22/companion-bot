@@ -234,17 +234,21 @@ class ChatCore(ChatTurnMixin):
         }
         self.max_tool_rounds = max(1, int(llm.get("max_tool_rounds", MAX_TOOL_ROUNDS)))
         tool_cfg = cfg.get("tools") or {}
-        # 一次回复的总时限：再慢也不能让用户干等（工具 6 轮 × 90s 最坏能拖到 9 分钟）
-        self.reply_deadline = float(llm.get("reply_deadline_seconds", 45))
-        # 首字预算：取证阶段的上限。和总时限分开——45s 是兜底，10s 才是体感。
+        # 总时限只是「永远不结束」的兜底，不是体验目标：45s 原本是从
+        # 「工具 6 轮最坏 9 分钟」倒推的，反过来把长回复/多段语音切成半截。
+        # 现在放宽，另设无进展超时（runner.py 的 stall_seconds）。
+        self.reply_deadline = float(llm.get("reply_deadline_seconds", 90))
+        self.reply_stall_seconds = float(llm.get("reply_stall_seconds", 30))
+        # 首字预算：取证阶段的上限。用户感知的是首字，不是整轮。
         self.first_token_budget = float(llm.get("first_token_budget_seconds", 10))
-        # 工具预算从总时限**派生**：配置里写 120s，但外层 45s 就把整轮掐断了，
-        # 那个 120 永远到不了（线上 3 天日志「工具总预算用尽」0 次）。
-        # 留 5 秒给收尾和发送；单个工具也不该比一轮的三分之一还长。
+        # 工具预算从**首字预算**派生，不再被总时限绑架：总闸放宽到 90s 后，
+        # 若仍按 deadline/3 算，单工具会从 15s 悄悄涨到 30s，取证阶段反而变慢。
+        # 旧配置（45 / 10）下这两式数值恰好等于旧值 40s / 15s——行为不变，
+        # 但从此改总时限不会连带改工具预算。
         self.tool_total = min(float(tool_cfg.get("total_timeout_seconds", TOOL_TOTAL)),
-                              max(10.0, self.reply_deadline - 5))
+                              max(10.0, self.first_token_budget + 30))
         self.tool_timeout = min(float(tool_cfg.get("timeout_seconds", TOOL_TIMEOUT)),
-                                max(5.0, self.reply_deadline / 3))
+                                max(5.0, self.first_token_budget * 1.5))
         # 管理员 QQ 从 config 读，不在代码里硬编码。空值/"0" 表示未配置。
         self.admin_uid = str((cfg.get("admin") or {}).get("user_id") or "").strip()
         if self.admin_uid in ("", "0"):
@@ -1204,6 +1208,23 @@ class ChatCore(ChatTurnMixin):
         except Exception as e:  # noqa: BLE001
             log.debug("矛盾检测取候选失败：%s", e)
             return
+        if not cands:
+            return
+        # 确定性预筛：时序 / 水位 / 完全相同的文本交给 Python 判，只把
+        # 「语义上是否冲突」留给模型。被筛掉的也落一行，事后能查
+        # 「这次为什么没问模型」，而不是静默跳过。
+        try:
+            _new_row = self.memory._docs_by_ids([doc_id]).get(doc_id) or {}
+            _new_meta = _new_row.get("meta") or {}
+        except Exception:  # noqa: BLE001
+            _new_meta = {}
+        cands, dropped = contradict.prefilter(
+            cands, data.get("summary") or "", _new_meta)
+        for d in dropped:
+            contradict.record(
+                {"action": "keep", "why": "prefilter:" + d["reason"]},
+                {"doc_id": d["doc_id"], "score": d["score"], "text": d["text"]},
+                False, "prefilter-" + d["reason"], new_doc=doc_id, mode=mode)
         if not cands:
             return
         raw = await self.complete_summary(

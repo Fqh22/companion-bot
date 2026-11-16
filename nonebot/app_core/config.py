@@ -66,8 +66,13 @@ DEFAULTS = {
         "max_tokens": 1000,
         # 单次回复最多几轮工具调用。每多一轮就多一次完整 LLM 调用（约 +1.5s）。
         "max_tool_rounds": 6,
-        # 一次回复的总时限（秒）。工具 6 轮 × 90s 最坏能拖到 9 分钟，用户不会等。
-        "reply_deadline_seconds": 45,
+        # 宽松总上限（秒）：只防「永远不结束」，不是体验目标。
+        # 体验由首字预算 + 无进展超时共同决定（见 runner.py 的 watchdog）。
+        "reply_deadline_seconds": 90,
+        # 首字预算（秒）：取证阶段最多花这么久；用户感知的是首字，不是整轮。
+        "first_token_budget_seconds": 10,
+        # 无进展超时（秒）：发出第一句后，这么久没有新句子就收尾，不让用户干等。
+        "reply_stall_seconds": 30,
         # 思考模式：开着回复更有内容但更慢更贵，且 temperature 会失效。
         # 2026-10-31 实测后选择开启（首字 +0.8s，每次多约 100 输出 token）。
         "thinking": True,
@@ -116,6 +121,10 @@ DEFAULTS = {
         # BM25+RRF 影子：2026-11-14 判据被证伪（重合度只是代理指标），
         # 到期 2026-11-19 按「影子实验必须有截止时间」关闭。代码保留，默认不再跑。
         "shadow_retrieval": False,
+        # 检索门控：先判断「这轮要不要动用记忆」再召回。
+        # off=不判不记；shadow=只落盘判断与实召回条数；on=判不需要时跳过 fact 召回。
+        # 影子实验，截止 2026-11-30，见 docs/04-评测与实验.md。
+        "recall_gate": "off",
         # 同一段文字（去空白后完全相同）在这个窗口内不重复写第二条。
         # range_key 只保护带 range 的新记忆，老数据没有 range，只能靠文本兜底。
         "dup_window_minutes": 10,

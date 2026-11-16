@@ -111,6 +111,7 @@ class StoreMixin:
         range_key: str = "",
         mtype: str = "fact",          # fact / insight：区分「他说过什么」和「我理解他怎样」
         sources: list[str] | None = None,   # insight 的来源 doc_id；空 = 无出处，不允许
+        source_msg_ids: list[str] | None = None,  # 精确原文指针：产生这条记忆的消息 id
     ) -> str:
         # 幂等：同一段对话重复固化时直接返回已有 doc_id，不写第二条
         if range_key:
@@ -146,6 +147,9 @@ class StoreMixin:
             "followups": followups or [],
             # 来源可追溯：哪段对话、哪个水位区间产生的
             "source_range": range_key,
+            # 精确原文指针：能定位到具体消息 id 时记下来（即时记忆有，增量总结
+            # 只有水位区间）。查「哪句话产生了这条记忆」不用再去对水位。
+            "source_msg_ids": [str(x) for x in (source_msg_ids or []) if x],
             # 记忆类型：fact 是「他说过什么」，insight 是「我理解他怎样」。
             # insight 必须有 sources——没有出处的理解就是幻觉。
             "type": mtype,

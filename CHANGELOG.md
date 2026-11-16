@@ -2,6 +2,46 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 批次 2：A 主体连续性（超时语义、检索门控、原文指针、确定性裁决）
+
+- **改了什么**：
+  - **#34 超时语义**：`runner.py` 去掉 `asyncio.wait_for(45)` 一刀切，改为 watchdog 双层时限——
+    `reply_deadline_seconds=90` 宽松总上限只兜底，`reply_stall_seconds=30` 无进展超时
+    （发出首句后久无新句子才收尾），取证 / 首字阶段不受 stall 约束；取消仍转成
+    `TimeoutError` 走原兜底。`chat.py` 工具预算改从 `first_token_budget` 派生
+    （旧配置下数值仍 40s / 15s），不再被总闸绑架。三个通道统一从 core 读 deadline + stall。
+    QQ 超时已发段落补记历史后加收尾「先说到这。」，不再让用户「再说一遍」；
+    飞书超时补记已发文字并 `return`——顺手修掉一个真 bug：超时分支里 `out` 未赋值
+    却在下一行被 `getattr(out, "images")` 读取，会二次抛 `UnboundLocalError`。
+  - **检索门控（新影子）**：新增 `app_core/recall_gate.py`（纯规则、拿不准一律放行），
+    `memory.recall_gate=off|shadow|on` 默认 off；shadow 落 `shadow-recall-gate.jsonl`
+    （判断 + 实际召回条数），on 才跳过 fact 召回。依据 RealCompanion 2026-10：真实流量
+    仅约 3.4% 消息需要回忆、检测器 AUROC 0.530，瓶颈是「何时不检索」。截止 **2026-11-30**。
+  - **#5 原文指针 + trace**：`add_document` 新增 `source_msg_ids`（即时记忆写入本轮
+    `msg_id`）；`memory.recall()` 返回原始余弦分，经 `MemoryPort.payload` 传到
+    `memory_trace` 的 `injected[].score`；补 `deleted / probe_id / t_recall_ms`。
+  - **#6 裁决确定性化**：`contradict.prefilter()` 在送模型前挡掉「文本完全相同 /
+    同水位区间 / 时序倒挂」，被筛掉的也落 `contradictions.jsonl`（reason 前缀
+    `prefilter-`）；LLM 只判语义是否冲突，结果可复现且省一次调用。
+  - **#35 并发不变量**：复核确认每轮状态已在 `Turn`、实例只留配置 / 惰性单例 /
+    `_summarizing` 与模块级 `_mood_lock`（均为有意共享），无需重构；改为固化护栏
+    `ops/test-batch2-guards.py`，静态禁止把 trace / turn 挂回实例并带反例自检。
+  - 护栏与文档：新增 `ops/test-batch2-guards.py`（24/24），`ops/test-runner.py` 加 6 条
+    无进展超时用例（17/17），`smoke-all.py` 覆盖新模块与 `prefilter`（联动体检要求
+    `app_core` 每个模块都被 import）；CI 加一步；同步 `docs/01` §6、`docs/02` 时限与默认值、
+    `docs/04` trace 清单与影子台账、AGENTS §1。
+- **为什么**：45 秒是从「工具 6 轮最坏 9 分钟」倒推的兜底，却反过来把长回复 / 多段语音
+  切成半截、还让用户重说，与 A「关系连续性」直接冲突；真实陪伴流量里稀缺的是
+  「什么时候不该回忆」而不是更多检索通道；矛盾裁决的时序比较本就该由代码判。
+- **验证**：本地 `check-links` 21 篇 / 92 链接 / 87 处路径引用 / 5 项登记 PASS，
+  `test-check-links` 6/6、`lint-plugins` FAIL 0 / WARN 0、`lint-layers` PASS、
+  `test-guards` 4/4、`test-embed-guard` 12/12、`test-batch2-guards` 24/24、
+  `py_compile` 全过。云端**不重启预检**（正式部署前）：全量 `verify.sh` **5/5**、
+  `test-runner` 17/17、`test-batch2-guards` 24/24、`test-config-ui` 48/48。
+  首次预检曾抓到联动体检 FAIL（新模块 `recall_gate` 未进 smoke-all 覆盖），已修。
+- **部署**：本次为批次 2 首次部署，逐项结果见 `docs/05-改动台账.md` #4。
+  超时体感属对外行为，云端 verify 测不出，**需真机验收**。
+
 ## 2026-11-16 · 批次 1：embedding 维度守卫、影子收尾、配置对齐
 
 - **改了什么**：

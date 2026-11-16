@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import time
 from pathlib import Path
 
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
@@ -151,6 +152,44 @@ async def main() -> None:
     r7 = TurnRunner(FakeEngine([], OutboundMessage()), ch7, deadline=5)
     await r7._send_part("private:7", _P("drawing", "d.png"))
     check("不支持生成图的通道退化成图片", ch7.images == ["d.png"], str(ch7.images))
+
+    # 6. 无进展超时（批次 2）：首句发出后卡住，按 stall 收尾，而不是等总上限
+    class StallEngine(FakeEngine):
+        async def handle(self, msg, on_sentence=None, caps=None, delivery_policy=None):
+            if on_sentence:
+                await on_sentence("第一句。")
+            await asyncio.sleep(5)
+            return self.out
+
+    ch8 = FakeChannel()
+    t0 = time.monotonic()
+    stalled = False
+    try:
+        await TurnRunner(StallEngine([], OutboundMessage()), ch8,
+                         deadline=5, stall_seconds=0.2).run(
+            InboundMessage(session="private:8", text="hi"))
+    except asyncio.TimeoutError:
+        stalled = True
+    check("无进展超时会收尾并抛 TimeoutError", stalled)
+    check("收尾前已发出的句子保留", ch8.texts == ["第一句。"], str(ch8.texts))
+    check("无进展超时不会等到总上限", time.monotonic() - t0 < 2,
+          f"{time.monotonic() - t0:.2f}s")
+
+    # 7. 取证 / 首字阶段不受 stall 约束：慢一点但不发句子，仍应正常完成
+    ch9 = FakeChannel()
+    ok9 = True
+    try:
+        await TurnRunner(FakeEngine([], OutboundMessage(), delay=0.5), ch9,
+                         deadline=5, stall_seconds=0.2).run(
+            InboundMessage(session="private:9", text="hi"))
+    except asyncio.TimeoutError:
+        ok9 = False
+    check("首字阶段不被无进展超时误杀", ok9)
+
+    # 8. 默认值放宽：总上限只兜底，另有独立的无进展超时
+    r_def = TurnRunner(FakeEngine([], OutboundMessage()), FakeChannel())
+    check("总上限默认放宽（不再是 45）", r_def.deadline >= 60, str(r_def.deadline))
+    check("默认带无进展超时", r_def.stall_seconds > 0, str(r_def.stall_seconds))
 
     passed = sum(1 for r in RESULTS if r)
     print(f"\n=== {passed}/{len(RESULTS)} 通过 ===")

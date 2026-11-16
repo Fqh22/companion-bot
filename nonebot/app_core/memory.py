@@ -226,9 +226,13 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         order = np.asarray([i for i in order if ids[i] in _keep])
         # 带上「多久以前」：没有时间戳的话，「下周三出差」和「下周四出差」
         # 会并列出现，模型没法判断哪条更新。
+        # 同时带上原始余弦分：memory_trace 的 injected 要能看出「注入的是不是
+        # 勉强过线的一条」。final 是调制后的排序分，别把它当相似度报出去。
+        _score_by_id = {ids[i]: float(scores[i]) for i in order}
         for d in out:
             ct = float((d.get("meta") or {}).get("create_time") or 0)
             d["age_days"] = round((time.time() - ct) / 86400.0, 1) if ct else None
+            d["score"] = _score_by_id.get(d["doc_id"])
         if touch:
             self.touch([d["doc_id"] for d in out])
         # 调参用：看时间/重要性调制到底改变了什么。

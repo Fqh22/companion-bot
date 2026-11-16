@@ -434,17 +434,39 @@ class ChatTurnMixin:
         turn.seg_max = self.seg_max(turn.m)
 
     async def _prepare_recall(self, turn: Turn, user_text: str) -> None:
-        """召回记忆 + 二次召回影子。
+        """召回记忆 + 检索门控 + 二次召回影子。
 
         P1：fact 召回改走 `MemoryPort`（契约），结果与旧路径一致；
         `chat.memory_port=false` 可退回旧路径。
         """
+        _t_recall = time.perf_counter()
+        # 检索门控：默认 off（零开销）；shadow 只落盘判断，on 才真的跳过召回。
+        # 依据 RealCompanion 2026-10：真实流量仅约 3.4% 需要回忆，瓶颈是
+        # 「什么时候不检索」。影子截止 2026-11-30，见 docs/04-评测与实验.md。
+        _gm, _need, _why = "off", True, "off"
+        try:
+            _gm = str((config.load().get("memory") or {}).get(
+                "recall_gate", "off")).strip().lower()
+        except Exception:  # noqa: BLE001
+            pass
+        if _gm in ("shadow", "on"):
+            from app_core import recall_gate
+
+            _need, _why = recall_gate.decide(
+                user_text,
+                refers_previous=intent.refers_to_previous(user_text),
+                has_images=bool(turn.images))
+            turn.memory_trace.append({"type": "gate", "need": _need, "why": _why})
         port = None
         try:
             port = self._memory_port() if turn.owner else None
             if port is not None:
-                items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv,
-                                          trace=turn.memory_trace)
+                if _gm == "on" and not _need:
+                    items = []
+                    log.info("[门控] 判不需要回忆（%s），本轮跳过 fact 召回", _why)
+                else:
+                    items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv,
+                                              trace=turn.memory_trace)
                 turn.memories = [{
                     "doc_id": i.ref,
                     "text": i.text,
@@ -453,6 +475,8 @@ class ChatTurnMixin:
                     "meta": {"create_time": i.created,
                              "last_access_time": i.last_used},
                     "age_days": i.age_days,
+                    # 原始余弦分：trace 里要能看出「注入的是不是勉强过线的」
+                    "score": (i.payload or {}).get("score"),
                 } for i in items]
             else:
                 # 旧路径已删除：port 是唯一入口。为 None 只可能是配置关掉了契约
@@ -488,13 +512,27 @@ class ChatTurnMixin:
                         # 注入明细：评测要回答「注入的是哪条、多旧、原文是什么」，
                         # 只记 ids 不够——召回了错的看不出来。
                         "injected": [{"id": m.get("doc_id"),
+                                      "score": m.get("score"),
+                                      # 非 active 已在 _docs_by_ids 被过滤，
+                                      # 能进 prompt 的一定没被软删。
+                                      "deleted": False,
                                       "age_days": m.get("age_days"),
                                       "text": (m.get("text") or "")[:120]}
                                      for m in turn.memories],
+                        "probe_id": "",
+                        "t_recall_ms": round((time.perf_counter() - _t_recall) * 1000, 1),
                         "trace": turn.memory_trace,
                     }, ensure_ascii=False) + "\n")
             except Exception:  # noqa: BLE001
                 pass
+        # 门控影子：判断 + 实际召回条数成对落盘，事后才能算「判不需要的轮次
+        # 里，召回到底有没有被用上」。默认 off 时连这段都不进。
+        if _gm in ("shadow", "on") and turn.owner:
+            try:
+                shadow.record_recall_gate(turn.query, user_text, _need, _why,
+                                          len(turn.memories or []), _gm)
+            except Exception as e:  # noqa: BLE001
+                log.debug("门控影子失败：%s", e)
         # 二次召回（影子）：他这句是在回指上文时，用上一轮他的话再捞一次。
         # 只落盘、不改变本轮注入的 memories；touch=False 是为了不污染
         # 「被想起过」的记账——影子不该改变清理和重复降权的依据。
@@ -910,7 +948,9 @@ class ChatTurnMixin:
                         payload={"session": turn.session, "topics": ["即时"],
                                  "key_facts": [_inst],
                                  "vec": (_vec[0] if _vec else None),
-                                 "range_key": "instant:%s:%s" % (turn.session, turn.user_msg_id)}))
+                                 "range_key": "instant:%s:%s" % (turn.session, turn.user_msg_id),
+                                 # 即时记忆能精确到「他这一句话」，把原文指针存下来
+                                 "source_msg_ids": [str(turn.user_msg_id)]}))
             except Exception as e:  # noqa: BLE001
                 log.debug("即时记忆失败：%s", e)
                 from app_core import alerts as _alerts

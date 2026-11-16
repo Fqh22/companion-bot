@@ -151,6 +151,7 @@ from app_core import (  # noqa: E402
     attention as attention_mod, relational as relational_mod,
     alerts as alerts_mod,
     profile as profile_mod, contradict as contradict_mod, help as help_mod,
+    recall_gate as recall_gate_mod,
     maintenance as maint_mod, paths as paths_mod, review as review_mod,
     parse_log as parse_log_mod, reality as reality_mod,
     perception as perception_mod, correction as correction_mod,
@@ -171,6 +172,18 @@ from app_core import (  # noqa: E402
 
 check("默认根已指向临时目录（不写 %s）" % DEFAULT_ROOT,
       str(paths_mod.ROOT) == str(TMP / "root"), str(paths_mod.ROOT))
+
+# 批次 2 新增模块：覆盖率体检要真的碰到它们，不只是 import
+_g_need, _g_why = recall_gate_mod.decide("还记得上次那件事吗")
+check("检索门控：显式回忆放行", _g_need and _g_why == "explicit-recall", _g_why)
+_g_need2, _g_why2 = recall_gate_mod.decide("哈哈")
+check("检索门控：寒暄不检索", not _g_need2 and _g_why2 == "smalltalk", _g_why2)
+_pf_kept, _pf_drop = contradict_mod.prefilter(
+    [{"doc_id": "x", "text": "旧事实", "score": 0.9,
+      "meta": {"create_time": 1, "source_range": "s:1-2"}}],
+    "旧事实", {"create_time": 2, "source_range": "s:1-2"})
+check("矛盾预筛：同文本不送模型",
+      not _pf_kept and bool(_pf_drop) and _pf_drop[0]["reason"] == "same-text")
 
 LEARN = TMP / "learn"
 for p in (LEARN, LEARN / "notes", LEARN / "skills", LEARN / "raw"):

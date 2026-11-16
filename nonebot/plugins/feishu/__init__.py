@@ -456,16 +456,28 @@ async def _handle(data) -> None:
         inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id),
                              text=_model_text, images=images, event_id=mid,
                              voice=voice, session=session, store_text=text)
-        runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline)
+        runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
+                            stall_seconds=getattr(core, "reply_stall_seconds", 30))
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
                     f"{f'（{len(images)} 图）' if images else ''}")
         try:
             out = await runner.run(inbound)
         except asyncio.TimeoutError:
-            logger.error(f"[feishu] 回复超时（>{core.reply_deadline:.0f}s） {session}")
+            logger.error(f"[feishu] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） {session}")
             if ch.sent_text:
+                _tail = "这次想太久了，先说到这。"
+                # 已发文字要写回历史，否则下一轮它不知道自己说过什么
+                # （和 11-16 修的「副产物自知」是同一类问题）。
+                try:
+                    await core.record_assistant(
+                        session, "".join(ch.sent_text) + _tail, kind="text")
+                except Exception:  # noqa: BLE001
+                    pass
                 await asyncio.to_thread(
-                    _send_message, msg.chat_id, "text", {"text": "这次想太久了，先说到这。"})
+                    _send_message, msg.chat_id, "text", {"text": _tail})
+            # 超时时 out 未赋值，下面第 469 行原本还会读 getattr(out, "images")，
+            # 会二次抛 UnboundLocalError；发图/语音/画图也不该在超时后继续。
+            return
         if getattr(out, "images", None):
             try:
                 await core.record_assistant(

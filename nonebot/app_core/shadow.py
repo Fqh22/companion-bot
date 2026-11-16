@@ -32,6 +32,7 @@ GRAPH_LOG = DATA / "shadow-graph.jsonl"
 PROFILE_LOG = DATA / "shadow-profile.jsonl"
 SECOND_LOG = DATA / "shadow-second.jsonl"
 ATTENTION_LOG = DATA / "shadow-attention.jsonl"
+GATE_LOG = DATA / "shadow-recall-gate.jsonl"
 
 FOLLOWUP_PROMPT = (
     "你刚回了下面这句话。现在像突然想起什么，再补一句不超过 20 个字的话。\n"
@@ -74,6 +75,25 @@ def record_positive(user_text: str, reply: str) -> None:
         return
     _append(POSITIVE_LOG, {"ts": time.time(), "said": user_text[:120],
                            "reply": (reply or "")[:200]})
+
+
+def record_recall_gate(query: str, user_text: str, need: bool, why: str,
+                       recalled_n: int, mode: str = "shadow") -> None:
+    """记一次「这轮要不要回忆」的判断 + 实际召回条数。只写文件，不改回复。
+
+    判据刻意不用重合度那类代理指标（11-14 已被证伪）：要看的是端到端的
+    「判定不需要的轮次里，召回的记忆有没有被用上」，配合 memory_trace
+    的 injected 明细与重复告知率一起算，见 docs/04-评测与实验.md。
+    """
+    _append(GATE_LOG, {
+        "ts": time.time(),
+        "mode": mode,
+        "need": bool(need),
+        "why": why,
+        "q": (query or "")[:60],
+        "said": (user_text or "")[:80],
+        "recalled": int(recalled_n or 0),
+    })
 
 
 def record_retrieval(query: str, dense: list[str], bm25: list[str],

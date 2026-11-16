@@ -4,10 +4,12 @@
 会同时留在库里。召回按相似度取，两条都会被选中，模型看到互相矛盾的两条，
 只能猜；表现出来就是「它记混了」。
 
-**做法**：新记忆写入时，找几条高度相似的活跃旧记忆，问一次模型「是不是同一件事
-的两个版本」；是就把旧的标成 superseded（软删，可恢复）。
+**做法**：新记忆写入时，先做确定性预筛（`prefilter`），把「文本完全相同 /
+同一水位区间 / 时序倒挂」的候选挡掉；剩下的才问一次模型「是不是同一件事的
+两个版本」；是就把旧的标成 superseded（软删，可恢复）。
 
-**保守是有意的**：误杀一条真记忆比漏判一次矛盾更糟。所以四道闸：
+**保守是有意的**：误杀一条真记忆比漏判一次矛盾更糟。所以五道闸：
+0. 确定性预筛（时序、水位、重复交给代码，只把语义冲突留给模型）
 1. 相似度 >= CAND_MIN_SCORE 才去问（不相似的多半不是同一件事，白花钱还容易误判）
 2. 模型必须给出理由，且相似度 >= SUPERSEDE_MIN_SCORE 才真的改
 3. 每次最多改 MAX_PER_RUN 条（一次总结不该抹掉一串）
@@ -97,6 +99,40 @@ def parse(raw: str) -> list[dict]:
         out.append({"old": old, "action": act,
                     "why": " ".join(str(p.get("why") or "").split())[:40]})
     return out
+
+
+def prefilter(cands: list[dict], new_text: str,
+              new_meta: dict | None = None) -> tuple[list[dict], list[dict]]:
+    """送模型之前的确定性预筛：只把「语义上可能冲突」的留给模型。
+
+    时序、水位、完全相同的文本都不该交给模型判断——LLM 只负责认出
+    「这几条说的是同一件事」，比较交给 Python 才可复现，也省一次调用。
+    项目里 `timenorm.normalize` 把日期算术交给代码，是同一个思路。
+
+    返回 `(保留, 被筛掉)`；被筛掉的记录带 reason，由调用方落 jsonl，
+    这样「为什么这次没问模型」事后也查得到。
+    """
+    kept: list[dict] = []
+    dropped: list[dict] = []
+    nm = new_meta or {}
+    nt = " ".join(str(new_text or "").split())
+    new_range = str(nm.get("source_range") or "")
+    new_ct = float(nm.get("create_time") or 0)
+    for c in cands:
+        meta = c.get("meta") or {}
+        old_text = " ".join(str(c.get("text") or "").split())
+        if nt and old_text == nt:
+            why = "same-text"       # 重复由去重窗口管，不是矛盾
+        elif new_range and str(meta.get("source_range") or "") == new_range:
+            why = "same-range"      # 同一次总结产生的条目，不该自相取代
+        elif new_ct and float(meta.get("create_time") or 0) > new_ct:
+            why = "time-inverted"   # 旧记忆比新记忆还新，时序倒挂
+        else:
+            kept.append(c)
+            continue
+        dropped.append({"doc_id": c.get("doc_id"), "score": c.get("score"),
+                        "text": c.get("text") or "", "reason": why})
+    return kept, dropped
 
 
 def should_supersede(pair: dict, score: float, applied: int,

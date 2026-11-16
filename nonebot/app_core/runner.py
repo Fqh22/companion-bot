@@ -1,4 +1,4 @@
-"""[orchestration] 通道无关的一轮对话：typing、流式、总时限、分段节奏。
+"""[orchestration] 通道无关的一轮对话：typing、流式、时限、分段节奏。
 
 为什么要这一层：现在这套「锁 → 取回合 → 调引擎 → 边生成边发 → 补发尾巴」
 写在 plugins/chat 里，换通道就得重写 300 行。这里把它抽出来，通道只实现
@@ -13,7 +13,13 @@ Channel 的三个原语：
 会话锁：原设计说「留给入站侧的 TurnQueue」，但 TurnQueue 至今只有定义、没有使用点
 （2026-11-15 确认），并发轮次会各自 prepare 并互相覆盖记忆/情绪/跟催状态。
 所以锁放在这里——宁可违背这条注释，也不要留一个只存在于文档里的保障。
-typing 心跳和 45 秒硬线也在这里。
+typing 心跳与时限也在这里。
+
+时限不再是一把尺子（2026-11-16）：
+- `deadline` 是宽松总上限，只兜底，不决定「正常回复该多长」；
+- `stall_seconds` 是无进展超时：发出第一句之后，久无新句子就收尾。
+原来的 `wait_for(timeout=45)` 会用「取消整轮」把长回复/多段语音一刀切成半截，
+而 45 这个数字是从「工具 6 轮最坏 9 分钟」倒推的，反过来绑架了正常路径。
 """
 from __future__ import annotations
 
@@ -59,13 +65,17 @@ class TurnRunner:
     def __init__(self, engine: Engine, channel: Channel,
                  caps: Capability | None = None,
                  policy: DeliveryPolicy | None = None,
-                 deadline: float = 45.0,
+                 deadline: float = 90.0,
+                 stall_seconds: float = 30.0,
                  typing_interval: float = 5.0) -> None:
         self.engine = engine
         self.channel = channel
         self.caps = caps
         self.policy = policy
-        self.deadline = float(deadline)
+        # 宽松总上限：只防「永远不结束」，不是体验目标
+        self.deadline = max(1.0, float(deadline))
+        # 无进展超时：首句发出后多久没有新句子就收尾（取证阶段不受它约束）
+        self.stall_seconds = max(1.0, float(stall_seconds))
         self.typing_interval = float(typing_interval)
 
     async def _send_part(self, session: str, part) -> bool:
@@ -122,6 +132,29 @@ class TurnRunner:
             await asyncio.sleep(wait)
         return await self._send_part(session, _Part("text", text))
 
+    async def _watchdog(self, handle: asyncio.Task, started: float,
+                        state: dict) -> None:
+        """总上限 + 无进展超时；触发时取消整轮，由 `_run` 转成 TimeoutError。
+
+        取证/首字阶段（`state["sent"] == 0`）只受总上限约束：thinking 和工具
+        本来就可能慢，用「多久没出句子」去掐它等于惩罚正常回复。
+        发出第一句之后才算「生成在进行中」，这时久无进展就是真卡住了。
+        """
+        while not handle.done():
+            now = time.monotonic()
+            cap_left = self.deadline - (now - started)
+            stall_left = (self.stall_seconds - (now - state["last_progress"])
+                          if state["sent"] else float("inf"))
+            wait = min(cap_left, stall_left)
+            if wait <= 0:
+                state["why"] = "stall" if stall_left <= cap_left else "cap"
+                log.warning("[runner] 收尾：%s（已发 %d 段，%.1fs）",
+                            state["why"], state["sent"], now - started)
+                handle.cancel()
+                return
+            # 短 tick：deadline 很小时（测试里 0.2s）也要及时醒来
+            await asyncio.sleep(min(wait, 0.25))
+
     async def run(self, msg: InboundMessage) -> OutboundMessage:
         """跑一轮。同一会话串行（见 _SESSION_LOCKS），超时抛 asyncio.TimeoutError。"""
         lock = _SESSION_LOCKS.setdefault(msg.session, asyncio.Lock())
@@ -134,6 +167,8 @@ class TurnRunner:
         """真正的一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
         started = time.monotonic()
         sent = 0
+        # watchdog 与这句之间的共享状态：最后一次有进展的时刻、已发段数、收尾原因
+        state = {"last_progress": started, "sent": 0, "why": ""}
         # 立刻亮一次「正在输入」：等 task 调度会晚一个 tick，短回复可能整个错过
         try:
             await self.channel.typing(msg.session, True)
@@ -146,19 +181,32 @@ class TurnRunner:
 
             原来返回 None，chat_turn 无条件 append，发失败也当成了已发：
             后续「一个字都没发才重试」的判断会失效。
+            每次尝试都算一次「进展」，供 watchdog 判断是不是真卡住了。
             """
             nonlocal sent
+            state["last_progress"] = time.monotonic()
             if await self._pace_and_send(msg.session, part, sent, started):
                 sent += 1
+                state["sent"] = sent
                 return True
             return False
 
+        handle = asyncio.create_task(
+            self.engine.handle(msg, on_sentence=on_sentence, caps=self.caps,
+                               delivery_policy=self.policy))
+        watch = asyncio.create_task(self._watchdog(handle, started, state))
         try:
-            out = await asyncio.wait_for(
-                self.engine.handle(msg, on_sentence=on_sentence, caps=self.caps,
-                                   delivery_policy=self.policy),
-                timeout=self.deadline)
+            try:
+                out = await handle
+            except asyncio.CancelledError:
+                # watchdog 主动收尾 → 转成 TimeoutError，走通道插件原有的补记兜底；
+                # 外部取消（关服务等）时 state["why"] 为空，原样往上抛。
+                if state["why"]:
+                    raise asyncio.TimeoutError() from None
+                raise
         finally:
+            watch.cancel()
+            await asyncio.gather(watch, return_exceptions=True)
             typing.cancel()
             try:
                 await self.channel.typing(msg.session, False)

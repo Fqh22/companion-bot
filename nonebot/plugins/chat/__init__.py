@@ -351,7 +351,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     _model_text = (_READ_ALOUD_DIRECTIVE + prompt) if _read_aloud else prompt
     ch = QQChannel()
     ch.defer_text = _want_voice and VOICE_REPLY_MODE != "text_then_voice"
-    runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline)
+    runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline,
+                        stall_seconds=getattr(core, "reply_stall_seconds", 30))
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     if turn.meta.get("event_id"):
@@ -392,17 +393,25 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))
     except asyncio.TimeoutError:
-        logger.error(f"[chat] 回复超时（>{core.reply_deadline:.0f}s） {sid}，已发 {len(ch.sent)} 段")
+        logger.error(f"[chat] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） "
+                     f"{sid}，已发 {len(ch.sent)} 段")
         await core.mood_event("timeout")
         if ch.sent:
-            # 用户已经看到这几句了，必须写回历史：否则下一轮它完全不知道自己说过什么，
-            # 而 summary 也会把这条用户消息当成"没人回过"。
+            _tail = "先说到这。"
+            # 用户已经看到这几句了，必须连收尾一起写回历史：否则下一轮它完全
+            # 不知道自己说过什么，summary 也会把这条用户消息当成"没人回过"。
             try:
-                await core.remember_safe(sid, "assistant", "".join(ch.sent))
-                logger.info(f"[chat] 超时补记已发出的 {len(''.join(ch.sent))} 字")
+                await core.remember_safe(sid, "assistant", "".join(ch.sent) + _tail)
+                logger.info(f"[chat] 超时补记已发出的 {len(''.join(ch.sent))} 字 + 收尾")
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"[chat] 超时补记失败：{e}")
-        if not ch.sent:
+            # 原来这里什么都不发：半截回复没有结束感，还让用户「再说一遍」。
+            # 超时不是他的错，也不该把已经说过的话推翻重来。
+            try:
+                await chat.finish(_tail)
+            except Exception:
+                pass
+        else:
             try:
                 await chat.finish("我这会儿有点卡，你再说一遍？")
             except Exception:
