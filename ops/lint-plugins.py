@@ -571,6 +571,56 @@ def check_remember_stage() -> list[str]:
     return fails
 
 
+def check_turn_deps() -> list[str]:
+    """R5：ChatTurnMixin 对 ChatCore 的隐式依赖必须登记在 TURN_DEPS。
+
+    Mixin 通过 self 访问 ChatCore 的 19 个成员；改名/删除时没有静态检查，
+    只有跑起来才炸。这张表是 P4「显式化」的低成本版：新增依赖先登记。
+    """
+    f = CORE / "chat_turn.py"
+    try:
+        tree = ast.parse(f.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return [f"chat_turn.py 解析失败：{e}"]
+    deps: set[str] = set()
+    for n in tree.body:
+        if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "TURN_DEPS":
+            deps = {e.value for e in n.value.elts if isinstance(e, ast.Constant)}
+    if not deps:
+        return ["chat_turn.py: 找不到 TURN_DEPS（依赖清单）"]
+    methods: set[str] = set()
+    used: set[str] = set()
+    for n in tree.body:
+        if isinstance(n, ast.ClassDef) and n.name == "ChatTurnMixin":
+            for m in n.body:
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    methods.add(m.name)
+                    for x in ast.walk(m):
+                        if (isinstance(x, ast.Attribute) and isinstance(x.value, ast.Name)
+                                and x.value.id == "self"):
+                            used.add(x.attr)
+    inherited = {"_is_owner", "_log_prompt"}   # 来自 HistoryMixin
+    extra = used - methods - deps - inherited
+    fails = [f"chat_turn.py: 新增了未登记的 self.{x} 依赖（先加到 TURN_DEPS）"
+             for x in sorted(extra)]
+    # ChatCore 的成员分散在 chat.py + 三个 Mixin 文件里（B2 拆分后）
+    members: set[str] = set()
+    for fname in ("chat.py", "chat_reply.py", "history.py", "summary.py"):
+        try:
+            ctree = ast.parse((CORE / fname).read_text(encoding="utf-8"))
+        except Exception as e:  # noqa: BLE001
+            return fails + [f"{fname} 解析失败：{e}"]
+        for n in ast.walk(ctree):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                members.add(n.name)
+            elif (isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)
+                  and n.value.id == "self" and isinstance(n.ctx, ast.Store)):
+                members.add(n.attr)
+    for d in sorted(set(deps) - members):
+        fails.append(f"TURN_DEPS 里的 self.{d} 在 ChatCore 上找不到（改名/删了？）")
+    return fails
+
+
 def main() -> int:
     name = sys.argv[1].strip() if len(sys.argv) > 1 else None
     if not NB.is_dir():
@@ -591,6 +641,7 @@ def main() -> int:
         all_warns += api_warns
         all_fails += check_slot_writes()
         all_fails += check_remember_stage()
+        all_fails += check_turn_deps()
         all_fails += check_slot_table()
         all_fails += check_gather_local_sync()
         mp_fails, mp_warns = check_memory_port()

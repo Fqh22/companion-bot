@@ -24,6 +24,18 @@ from app_core.prompt import split_reply
 
 
 from app_core.chat_turn_commit import CommitMixin
+# ChatTurnMixin 对 ChatCore 的隐式依赖（P4 的低成本版，2026-11-16 盘点）。
+# Mixin 仍通过 self 访问，但这张表把「隐式」变成「可检查的」：
+# 新增一个 self.xxx、或 ChatCore 改名/删成员，ops/lint-plugins.py 会红。
+# 完整的一等上下文（TurnContext）没做——见 docs/04 §10。
+TURN_DEPS = {
+    "_affect_port", "_context_format", "_memory_port", "_run_tools",
+    "_style_mode", "_thinking_for", "build_messages", "caption_images",
+    "first_token_budget", "get_digest", "history", "history_max_chars",
+    "last_user_ts", "max_tokens", "memory", "persona_for",
+    "recall_query_items", "reply_deadline", "seg_max",
+}
+
 from app_core.chat_turn_base import (  # noqa: F401  兼容老调用方
     GEN_RESERVE, GENERATE, POST_WRITE, PREFETCH, READ_HISTORY, RENDER_SLOTS, SLOTS,
     StageError, Slot, Turn, _PATH_TIMEOUT, _chat, _share_tier_on, _topic_overlap,
