@@ -2,6 +2,46 @@
 
 只记里程碑。日常的小修在 git history 里。
 
+## 2026-11-16 · 重构批次 B0/B1a/B3a（分层护栏生效、密钥统一、四组壳环拆掉）
+
+- **改了什么**：
+  - **B0a 分层标记全覆盖**：`lint-layers.py` 改为从模块 docstring 首行的
+    `[domain]` / `[orchestration]` / `[infra]` 推导层，删掉手写的 DOMAIN/ORCH 名单
+    （它和标记是两套事实，94 个模块里只有 49 个被覆盖）。58 个文件补/修标记；
+    `asr` 由 domain 改 infra（HTTP 客户端），`insight` / `memory_instant` 改
+    orchestration（写记忆）。新增 `ops/test-lint-layers.py` 11 条反例：缺标记、
+    domain→编排、domain→IO、infra→编排、kernel→业务、新增环、插件→业务，
+    每条都确认会红。
+  - **B0b 插件 import 收口**：`lint-layers.check_plugins()` 此前是 `pass`
+    （文档写着「由 lint 强制」）。现在生效：插件只能 import 通道协议与基础设施
+    （engine/runner/delivery/message/pacing/turn/files/asr/tts/image_provider/kernel），
+    业务实现按文件冻结 29 条（`PLUGIN_LEGACY`），2026-12-31 到期后一律 FAIL。
+  - **B1a 拆四组壳环**：`followup` / `mood` / `remind` / `scheduler` 四组
+    「壳持有 DB 路径、store 反向动态读壳」的循环，改为路径定义在 store、壳 re-export；
+    测试补丁点同步移到 store（`followup_store` / `mood_store` /
+    `scheduling.remind` / `scheduling.scheduler`）。循环依赖 **6 组 → 2 组**
+    （只剩 learn↔review、learn↔wiki，留 B1b）。`lint-layers` 新增
+    `CYCLE_BASELINE`：新增环 FAIL，基线里的环消失时 WARN 提醒收线。
+  - **B3a 密钥统一**：10 处各自 `json.loads(paths.KEYS…)` 收到
+    `app_core/kernel/keys.py`（mtime 缓存 + `get`/`section`/`require`），
+    轮换密钥不再只有 llm 生效。
+  - **测试骨架**：新增 `ops/harness.py`（check/report/bootstrap/temp_root/copy_db），
+    approval / engine / delivery / kernel / identity / inbound / package 七个脚本先迁移。
+  - **部署工具**：本地没有 bash，新增 `ops/deploy.ps1`，门禁顺序与 `deploy.sh` 相同
+    （快照 → 上传 → `verify.sh --pre` → 重启 → 全量 verify），不做任何跳过。
+- **为什么**：复盘发现三件事——分层检查只覆盖 49/94 且最近三批新代码恰好落在
+  未覆盖侧、`check_plugins` 空转、6 组循环依赖把「改一个模块」变成「读五个模块」。
+  这批不改行为，只把边界变成可执行的约束，让后续拆分有红绿线。
+- **验证**：`lint-layers` PASS（95 个模块全标记）、`test-lint-layers` 11/11；
+  云端 `verify.sh --pre` 4/4、全量 6/6 通过。期间 pre-verify 抓到 1 条真回归
+  （拆环后调度器测试仍补壳常量，`missing_jobs` 查到空库），修测试补丁点后复跑全绿，
+  **没有带病重启**。
+- **顺手修**：`test-memory-port` 的 FakeMemory 缺 `source_msg_ids`（批次 4 加原文指针后
+  没同步假实现，云端专项跑出来）；`test-package` 在部署目录找不到仓库根的
+  `pyproject.toml`，改为存在才检查（CI 仍覆盖）。
+- **没做的**：B2 拆入口（TurnContext + 四段物理切片）、B1b 拆 learn、B3b 配置生成
+  与通道胶水上移——按计划在下一批，本轮不碰 `chat.py` / `chat_turn.py`。
+
 ## 2026-11-16 · 批次 4：C 可授权（审计层）与体验收尾
 
 - **改了什么**：

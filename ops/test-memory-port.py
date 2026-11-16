@@ -49,11 +49,13 @@ class FakeMemory:
         return doc_id == "d1"
 
     def add_document(self, text, session, importance, topics, key_facts,
-                     atoms=None, vec=None, followups=None, range_key=""):
+                     atoms=None, vec=None, followups=None, range_key="",
+                     source_msg_ids=None):
         self.calls.append({
             "text": text, "session": session, "importance": importance,
             "topics": topics, "key_facts": key_facts, "vec": vec,
             "followups": followups, "range_key": range_key,
+            "source_msg_ids": list(source_msg_ids or []),
         })
         return "doc-new"
 

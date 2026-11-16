@@ -27,9 +27,14 @@ class FakeCore:
 
 def main():
     check("版本号", __version__ == "0.1.0", __version__)
-    check("pyproject 可解析", tomllib.loads(
-        (HERE.parent / "pyproject.toml").read_text(encoding="utf-8"))["project"]["name"]
-        == "companion-core")
+    pyproject = HERE.parent / "pyproject.toml"
+    if pyproject.exists():
+        check("pyproject 可解析", tomllib.loads(
+            pyproject.read_text(encoding="utf-8"))["project"]["name"] == "companion-core")
+    else:
+        # 云端部署只带 nonebot/ + ops/，仓库根的 pyproject 不在部署范围内；
+        # CI 在仓库根跑，这条仍然生效。
+        print("SKIP pyproject（部署目录不带仓库根）")
 
     tmp = Path(tempfile.mkdtemp(prefix="core-config-"))
     old = os.environ.get("QQBOT_ROOT")
