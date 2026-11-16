@@ -1,9 +1,9 @@
 <div align="center">
 
-# companion · a memory that talks
+# companion · a portable continuing subject
 
-**Self-hosted long-term memory companion — it remembers you, and it has moods.**
-Chat is just the port; memory is the body.
+**Self-hosted and continuous across months: it remembers, knows when not to, and can finish small things you authorize.**
+Memory is a resource, not its identity; channels, models and memory engines are replaceable.
 
 [![CI](https://github.com/Fqh22/companion-bot/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/Fqh22/companion-bot/actions/workflows/lint.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -22,20 +22,22 @@ Chat is just the port; memory is the body.
 
 ## What it is
 
-A **long-term memory body**, not a chatbot bolted onto an LLM:
+A **portable, continuing companion subject**, not a chatbot bolted onto an LLM:
 
-- **Memory is the main path**: every turn is summarized into structured facts → embedded →
-  recalled when relevant. Things you said have a place to go; unused memories are archived,
-  not forgotten.
-- **Expression is the port**: mood, persona, pacing, segmentation and voice only change *how*
-  it speaks, never *what it remembers*.
-- **Platforms are adapters**: there is not a single `import nonebot` inside `app_core`.
-  QQ, Feishu and a terminal are just channels.
-- **Single-user, self-hosted**: it runs on your own server; data lives in local SQLite;
-  secrets never enter the repo.
+- **Restraint comes first**: did it hear you, did this go somewhere, was the dose right?
+  Real companion traffic needs the past in only ~3.4% of messages; the hard part is knowing
+  when *not* to retrieve, not to follow up, not to speak first.
+- **Memory is a resource**: facts are traceable, contradictions adjudicated, and expression
+  never contaminates what was recorded. It is consulted only when it should be.
+- **The subject is portable**: persona, memories and relationship state export to human-readable,
+  diffable, versionable files. Swap the model, channel or memory engine and it is still the same one.
+- **It can act, with authorization**: short tasks (reminders, lookups, filing, sending) are in scope,
+  but every side effect is traceable, reversible and authorized. No unsupervised planning.
+- **Platforms are adapters**: no `import nonebot` inside `app_core`; self-hosted, secrets stay out of the repo.
 
-It is **not** a multi-tenant platform, a public web UI, a multi-agent orchestrator, or a
-multi-step task executor.
+It is **not** a multi-tenant platform, a plugin marketplace, a public web UI, or an unsupervised
+multi-step executor. Nor does it chase human-like amnesia or distortion.
+Current definition: [docs/22-项目定义.md](docs/22-项目定义.md).
 
 ## Features
 
