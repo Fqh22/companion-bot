@@ -1,9 +1,14 @@
-"""[orchestration] 学习/复盘用的 system prompt 常量（纯文本，无运行时依赖）。
+"""[orchestration] 学习/复盘用的 system prompt 常量。
 
 从 learn.py 抽出来（2026-11-16）：review.py 只需要这几个常量，
 却要因此模块级 import learn —— 这是 learn↔review 环的一半。
+
+注意：SYSTEM_PROFILE 拼进了 profile.FIELDS（画像字段名），所以不是纯文本，
+但 profile 不依赖 learn，这条依赖是单向的。
 """
 from __future__ import annotations
+
+from app_core import profile as profile_mod
 
 SYSTEM_REVIEW = (
     "你在给自己记事。读今天真实发生过的对话，记下你真正会记住的东西："
