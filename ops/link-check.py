@@ -141,14 +141,12 @@ def static_checks() -> None:
 
 
 # ---------------- 静态：import 环 ----------------
-# 已存在的环是历史结构（门面反向引用 / learn-review-wiki 三角）。
-# 新环必须显式加进来，否则就是一个以后会在 import 顺序上炸的定时炸弹。
+# 已存在的环是历史结构。2026-11-16 重构后只剩 learn↔review 一组：
+#   - learn↔wiki：抽 notes_meta 后消失
+#   - mood/followup/remind/scheduler 四组：路径归 store 后消失
+# 与 ops/lint-layers.py 的 CYCLE_BASELINE 保持同源；两边都只许减。
 _ALLOWED_CYCLES = {
-    frozenset({"app_core.learn", "app_core.review", "app_core.wiki"}),
-    frozenset({"app_core.mood", "app_core.mood_store"}),
-    frozenset({"app_core.followup", "app_core.followup_store"}),
-    frozenset({"app_core.remind", "app_core.scheduling.remind"}),
-    frozenset({"app_core.scheduler", "app_core.scheduling.scheduler"}),
+    frozenset({"app_core.learn", "app_core.review"}),
 }
 
 
