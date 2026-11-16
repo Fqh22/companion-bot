@@ -152,7 +152,7 @@ from app_core import (  # noqa: E402
     message as message_mod, image_provider as image_mod,
     memory_index as memory_index_mod, memory_store as memory_store_mod,
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
-    remind as remind_mod,
+    remind as remind_mod, mcp as mcp_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
     history as history_mod, learn_constants as learn_constants_mod,
     learn_store as learn_store_mod, plugin_api as plugin_api_mod,
@@ -433,6 +433,17 @@ async def main() -> None:
               textsim_mod.similar("买牛奶", "准备面试材料") < 0.2)
         check("textsim.similar 空串为 0", textsim_mod.similar("", "x") == 0.0)
 
+
+        # ---------- MCP（只读外部工具） ----------
+        check("mcp 默认关时不连任何 server", mcp_mod.servers({}) == [])
+        _mcp_cfg = {"enabled": True, "servers": [
+            {"name": "x", "command": "y", "tools": [
+                {"name": "read_a", "description": "读"},
+                {"name": "write_b", "description": "写", "read_only": False}]}]}
+        _specs = mcp_mod.tool_specs(_mcp_cfg)
+        check("mcp 只注册只读工具",
+              [s[0] for s in _specs] == ["mcp__x__read_a"], str([s[0] for s in _specs]))
+        check("mcp 工具带外部标注", "外部工具" in _specs[0][1]["function"]["description"])
 
         # ---------- memgraph（共现实体连边） ----------
         shadow_mod.GRAPH_LOG = TMP / "smoke-shadow-graph.jsonl"
