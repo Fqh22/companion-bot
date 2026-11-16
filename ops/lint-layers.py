@@ -169,6 +169,63 @@ def check_kernel(mods: dict[Path, str], core: Path) -> None:
                     "（kernel 只放基础设施，依赖方向是业务 -> kernel）")
 
 
+# 插件可以直接 import 的 app_core 模块：通道协议与基础设施，不是业务实现。
+PLUGIN_ALLOWED = frozenset({
+    "chat", "group",                      # 宿主插件自己实例化 ChatCore / GroupCore
+    "config", "paths", "pacing", "delivery", "message",
+    "engine", "runner", "turn", "files", "asr", "tts", "image_provider",
+    "kernel", "adapters",
+})
+
+# 冻结存量：插件 -> 允许继续直接 import 的业务模块。
+# 这是迁移脚手架，不是永久门禁：到期日之后一律 FAIL；迁掉一个删一个。
+PLUGIN_LEGACY = {
+    "admin/__init__.py": {"help", "introspect", "learn", "audit", "tools", "profile"},
+    "commands/__init__.py": {"diary", "introspect", "kb", "learn", "meme", "mood", "remind", "wiki"},
+    "schedule/__init__.py": {"kb", "meme", "wiki", "scheduler"},
+    "group/__init__.py": {"group"},
+    "proactive/__init__.py": {"proactive_runtime", "proactive_channels"},
+    "chat/__init__.py": {"meme", "mood", "relational"},
+    "feishu/__init__.py": {"mood", "proactive_channels", "config"},
+}
+PLUGIN_LEGACY_DEADLINE = "2026-12-31"
+
+
+def check_plugins(core: Path) -> None:
+    """插件不得直接 import 业务实现；只能走 core 门面或通道协议模块。
+
+    为什么需要：插件是平台胶水，业务内部结构一旦被插件 import 焊死，
+    改内部就要同时改 7 个插件（2026-11-11 起 AGENTS 红线 3 的原意）。
+    存量按「文件 -> 模块」冻结，带到期日；新文件/新模块直接 FAIL。
+    """
+    from datetime import date
+
+    plugins = core.parent / "plugins"
+    if not plugins.is_dir():
+        return
+    expired = date.today().isoformat() > PLUGIN_LEGACY_DEADLINE
+    for p in sorted(plugins.rglob("*.py")):
+        rel = p.relative_to(plugins).as_posix()
+        legacy = PLUGIN_LEGACY.get(rel, set())
+        for t in _imports_of(p):
+            parts = t.split(".")
+            mod = parts[1] if len(parts) > 1 else ""
+            if not mod or mod in PLUGIN_ALLOWED:
+                continue
+            if mod in legacy and not expired:
+                WARNS.append(
+                    f"{p.relative_to(core.parent)}: 仍直接 import app_core.{mod}"
+                    f"（迁移白名单，{PLUGIN_LEGACY_DEADLINE} 到期；改走 core 门面）")
+            elif mod in legacy and expired:
+                FAILS.append(
+                    f"{p.relative_to(core.parent)}: 迁移白名单已到期（{PLUGIN_LEGACY_DEADLINE}），"
+                    f"仍直接 import app_core.{mod}")
+            else:
+                FAILS.append(
+                    f"{p.relative_to(core.parent)}: 插件不得直接 import 业务实现：app_core.{mod}"
+                    "（走 plugins.chat 的 core 门面；通道协议模块见 PLUGIN_ALLOWED）")
+
+
 def check_adapters(core: Path) -> None:
     adapters = core.parent / "adapters"
     if not adapters.is_dir():
@@ -217,6 +274,7 @@ def main() -> int:
     check_direction(mods, core)
     check_domain_io(mods, core)
     check_kernel(mods, core)
+    check_plugins(core)
     check_adapters(core)
     check_outsourced(core)
     for x in WARNS:

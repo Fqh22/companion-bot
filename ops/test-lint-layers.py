@@ -89,6 +89,18 @@ def main() -> int:
     check("adapters -> chat -> FAIL", rc == 1 and "adapters" in out, out[-400:])
     (tmp / "adapters" / "bad.py").unlink()
 
+    # 反例 7：插件直接 import 业务实现（不在冻结白名单里）
+    write(tmp, "plugins/newplug/__init__.py", '"""plugin"""\nfrom app_core import learn\n')
+    rc, out = run(core)
+    check("插件 -> 业务实现 -> FAIL", rc == 1 and "newplug" in out and "业务实现" in out, out[-400:])
+    (tmp / "plugins" / "newplug" / "__init__.py").unlink()
+
+    # 反例 8：插件 import 通道协议模块是合法的
+    write(tmp, "plugins/okplug/__init__.py", '"""plugin"""\nfrom app_core import engine\n')
+    rc, out = run(core)
+    check("插件 -> 通道协议 -> PASS", rc == 0, out[-400:])
+    (tmp / "plugins" / "okplug" / "__init__.py").unlink()
+
     # 清掉反例后必须回到 PASS
     rc, out = run(core)
     check("反例清掉后回到 PASS", rc == 0, out[-400:])
