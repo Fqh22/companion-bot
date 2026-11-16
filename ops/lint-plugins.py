@@ -288,6 +288,8 @@ _MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
     },
     # chat_turn.py 拆出的收尾段（2026-11-16）：即时记忆要直接拿向量
     "app_core/chat_turn_commit.py": {"memory": {"embed"}},
+    # 复盘 prompt 常量里拼了画像字段名（profile.FIELDS 是常量元组，不是记忆读写）
+    "app_core/learn_constants.py": {"profile": {"FIELDS"}},
     "app_core/tools.py": {
         "diary": {"list_days", "read"}, "kb": {"search_meta"},
         "learn": {"note_list", "note_write"}, "memory": {"read_full", "recall"},
