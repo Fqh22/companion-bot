@@ -55,8 +55,6 @@ Current definition: [docs/01-定义与决策.md](docs/01-定义与决策.md).
 
 ## Architecture
 
-![Architecture: kernel and channels](docs/assets/architecture.svg)
-
 ```text
 platform (QQ / Feishu / terminal / …)
    │  inbound

@@ -12,7 +12,7 @@
 而原来只查 `[xxx](yyy)`，一个都抓不到。
 范围改为扫描工作区而非 `git ls-files` —— 新建但还没 `git add` 的文档同样要检查。
 
-排除：.git / .workbuddy / assets / CHANGELOG.md / 05-改动台账.md
+排除：.git / .workbuddy / assets / CHANGELOG.md
       （后两者是历史流水，引用归档前路径是合理的）。
 锚点仍只校验文件存在，不校验 #fragment（中文锚点跨渲染器规则不同）。
 """
@@ -29,9 +29,10 @@ LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 DOC_REF = re.compile(r"docs/\d{2}-[^\s`)\]\"'（）,，。；<>：]*?\.md|docs/\d{2}(?![\w-])")
 REGISTRY_LINK = re.compile(r"\[[^\]]*\]\((\d{2}-[^\s)]+\.md)\)")
 SKIP = ("http://", "https://", "mailto:", "#", "tel:")
-EXCLUDE_DIRS = {".git", ".workbuddy", "assets", "__pycache__", "node_modules"}
+# 备份/ 是运行产物（云端 tgz、文档快照），不是文档；放进去的旧 md 不该被守门员检查
+EXCLUDE_DIRS = {".git", ".workbuddy", "assets", "__pycache__", "node_modules", "备份"}
 # 护栏脚本本身含故意写坏的反例，不能被自己扫到
-EXCLUDE_FILES = {"CHANGELOG.md", "05-改动台账.md",
+EXCLUDE_FILES = {"CHANGELOG.md",
                  "test-check-links.py", "test-guards.py"}
 REF_EXTS = {".md", ".py", ".yaml", ".yml", ".toml", ".sh"}
 

@@ -44,7 +44,7 @@ ops/verify.sh                    # 全量
 | `nonebot/plugins/` | 平台胶水 | NoneBot 的 `on_message/on_command` |
 | `nonebot/companion_core/` | 门面包 | `EngineConfig` + `create_engine` |
 | `ops/` | 运维/测试 | 每个脚本可独立跑 |
-| `docs/` | 文档 | 地图见 `docs/README.md`：01 定义与决策 / 02 系统与扩展 / 03 运维与通道 / 04 评测与实验 / 05 改动台账 |
+| `docs/` | 文档 | 地图见 `docs/README.md`：01 定义与决策 / 02 系统与扩展 / 03 运维与通道 / 04 评测与实验 |
 
 分层规则由 `ops/lint-layers.py` 强制（详见 `docs/02-系统与扩展.md`）：
 
