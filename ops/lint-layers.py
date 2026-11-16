@@ -36,6 +36,10 @@ def _core_dir(arg: str | None) -> Path:
     return HERE.parent / "app_core"
 
 
+# 模块级默认路径：ops/test-guards.py 会临时替换它来自检规则（命令行仍用 --core）。
+CORE = _core_dir(None)
+
+
 def _tag_of(path: Path) -> str | None:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))

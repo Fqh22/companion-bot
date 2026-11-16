@@ -9,7 +9,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "nonebot"))
+# 两种布局：仓库里 nonebot/ 在 ops 同级；云端 /opt/nonebot 下 app_core 直接同级。
+CODE = Path(__file__).resolve().parent.parent / "nonebot"
+if not (CODE / "app_core").is_dir():
+    CODE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(CODE))
 from app_core import embed_provider as ep  # noqa: E402
 
 FAILS: list[str] = []

@@ -63,9 +63,12 @@ def main() -> None:
         old_ll = ll.CORE
         ll.CORE = tmp
         try:
-            (tmp / "pacing.py").write_text("from app_core import runner\n", encoding="utf-8")
+            # B0a 起层由 docstring 首行标记声明，反例也必须带标记，否则先报「缺标记」
+            (tmp / "runner.py").write_text('"""[orchestration] 编排"""\n', encoding="utf-8")
+            (tmp / "pacing.py").write_text(
+                '"""[domain] 纯规则"""\nfrom app_core import runner\n', encoding="utf-8")
             ll.FAILS.clear()
-            ll.check_domain_layers()
+            ll.check_direction(ll.scan(ll.CORE), ll.CORE)
             hit = any("domain 不得 import 编排层" in x for x in ll.FAILS)
             check("抓 domain 反向依赖", hit, str(ll.FAILS)[:60])
         finally:
