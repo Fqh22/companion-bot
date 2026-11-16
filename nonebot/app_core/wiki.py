@@ -27,7 +27,7 @@ from pathlib import Path
 
 from app_core import paths as _paths
 
-from app_core import learn as learn_mod
+from app_core import notes_meta as notes_mod
 
 log = logging.getLogger("qqbot.wiki")
 
@@ -209,7 +209,7 @@ def archive_stale(max_pages: int = 5, dead_days: float = DEAD_DAYS) -> list[dict
     done: list[dict] = []
     for p in cands:
         try:
-            if learn_mod.set_meta(p["path"], status="已废弃"):
+            if notes_mod.set_meta(p["path"], status="已废弃"):
                 done.append(p)
         except Exception:
             continue
@@ -380,7 +380,7 @@ def index_text(max_pages: int = INDEX_MAX_PAGES, max_chars: int = INDEX_MAX_CHAR
         for it in items:
             if shown >= max_pages:
                 break
-            label = learn_mod.note_label({"source": it["source"],
+            label = notes_mod.note_label({"source": it["source"],
                                           "verified_ts": it["verified_ts"],
                                           "status": it["status"]})
             stale, d, _ttl = is_stale(it)
@@ -436,8 +436,8 @@ def read(key: str) -> str:
     except Exception:
         return "这页读不出来（文件可能被移走了）"
     # 打开时就报出处：模型得知道这段是它自己写的、还是有人给过的原始材料
-    meta = learn_mod.page_meta(hit)
-    label = learn_mod.note_label(meta)
+    meta = notes_mod.page_meta(hit)
+    label = notes_mod.note_label(meta)
     verified = meta.get("verified") or "未验证"
     head = f"[{label} 来源：{meta.get('source') or '自撰'}｜最后验证：{verified}｜{Path(hit).name}]"
     # 打开时就报时效：过期的知识不是不能用，但得让它先想着核实
@@ -488,8 +488,8 @@ def upsert_now(path) -> None:
     title = (m.group(1).strip() if m else stem)[:14]
     body = re.sub(r"(?m)^-\s*.+$", "", text).strip()
     summary = (body or text).replace("\n", " ")[:40]
-    meta = learn_mod.page_meta(path)
-    project = learn_mod.note_project(text)
+    meta = notes_mod.page_meta(path)
+    project = notes_mod.note_project(text)
     init()
     c = _conn()
     with c:
@@ -601,9 +601,9 @@ async def refresh(core, max_files: int = 40) -> int:
             pass
         title = title or _fallback_title(Path(path), text)
         summary = summary or text.replace("\n", " ")[:30]
-        project = learn_mod.note_project(text)
+        project = notes_mod.note_project(text)
         # 来源/验证/状态以文件头为准（没有就按目录兜底）；/kb_verify 改的是文件
-        meta = learn_mod.page_meta(path)
+        meta = notes_mod.page_meta(path)
         c = _conn()
         with c:
             c.execute(

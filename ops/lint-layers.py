@@ -246,7 +246,6 @@ def check_adapters(core: Path) -> None:
 # 已知循环依赖基线：只许减少，不许新增。拆掉一组就删一条（会 WARN 提醒）。
 CYCLE_BASELINE = {
     ("learn.py", "review.py"),
-    ("learn.py", "wiki.py"),
 }
 
 

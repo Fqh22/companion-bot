@@ -154,7 +154,7 @@ from app_core import (  # noqa: E402
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
     remind as remind_mod, retrieval as retrieval_mod,
     memgraph as memgraph_mod, scheduler as sched_mod,
-    history as history_mod,
+    history as history_mod, notes_meta as notes_meta_mod,
     shadow as shadow_mod, summary as summary_mod, summarize as summarize_mod,
     attention as attention_mod, relational as relational_mod,
     alerts as alerts_mod,
