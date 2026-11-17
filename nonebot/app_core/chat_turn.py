@@ -242,6 +242,11 @@ class ChatTurnMixin(CommitMixin):
                     turn.prefetch.setdefault("followup", []).append(
                         (1, "他像是在说「%s」已经办完了，但你没把握："
                         "在回复里顺口确认一句，别直接当成已完成。" % names[0]))
+            if res.get("touched"):
+                # 他回应了这件事（不一定是办完）：记一笔，压住 14 天内的追问
+                followup.mark_answered(res["touched"])
+                turn.prefetch.setdefault("followup", []).append(
+                    (0, "他刚回应了这件事（不一定是办完了）——别再问进展，也别催。"))
             if res.get("drop"):
                 turn.prefetch.setdefault("followup", []).append(
                     (2, "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"

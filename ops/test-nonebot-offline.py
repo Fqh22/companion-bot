@@ -1173,6 +1173,38 @@ async def main() -> None:
     check("「做了一半」记为部分完成",
           "partial" in (part["status"] or {}).values(), str(part))
 
+
+    # 答过还问：回应过（无完成信号）→ 记 answered_ts，14 天内不再主动问
+    followup_mod.add("搬家的事再想想", "memory", "doc-move")
+    _mv = [x for x in followup_mod.due_for_asking(1000) if "搬家" in x["text"]]
+    check("搬家的事进候选", bool(_mv), str(len(_mv)))
+    _touch = followup_mod.resolve("搬家那块我还在琢磨")
+    check("回应但没办完 → touched 而不是 done",
+          bool(_touch.get("touched")) and not _touch.get("done"), str(_touch))
+    followup_mod.mark_answered(_touch["touched"])
+    check("回应过的事不再进候选",
+          not any("搬家" in x["text"] for x in followup_mod.due_for_asking(1000)),
+          str([x["text"] for x in followup_mod.due_for_asking(1000)][:3]))
+
+    # 问了两次没人理 → postponed，不再主动问
+    followup_mod.add("体检预约", "memory", "doc-checkup")
+    _id = [x["id"] for x in followup_mod.due_for_asking(1000) if "体检" in x["text"]][0]
+    followup_mod.mark_ignored([_id])
+    check("一次没理还在候选",
+          any(x["id"] == _id for x in followup_mod.due_for_asking(1000)))
+    followup_mod.mark_ignored([_id])
+    check("两次没理转 postponed",
+          not any(x["id"] == _id for x in followup_mod.due_for_asking(1000)))
+    check("postponed 不再主动问",
+          followup_mod.describe_statuses().get("postponed", 0) >= 1)
+
+    # 关掉的事换个说法不能再进来（以前只跟未关闭的比）
+    followup_mod.add("整理季度报告归档", "memory", "doc-arch")
+    _arch = [x["id"] for x in followup_mod.pending(500) if "归档" in x["text"]]
+    followup_mod.mark_done(_arch)
+    check("关闭过的事换个说法被挡住",
+          not followup_mod.add("整理季度报告归档一下", "memory", "doc-arch2"))
+
     # ---------- P. 记忆固化幂等（写完库、没推水位就崩了） ----------
     doc_a = mem.add_document(text="幂等测试", session="s", importance=0.5,
                              topics=[], key_facts=[], range_key="dup:1")

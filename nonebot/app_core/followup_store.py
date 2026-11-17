@@ -44,6 +44,8 @@ def init() -> None:
         for ddl in (
             "ALTER TABLE followups ADD COLUMN status TEXT NOT NULL DEFAULT 'todo'",
             "ALTER TABLE followups ADD COLUMN status_ts REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN answered_ts REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 c.execute(ddl)
@@ -74,9 +76,11 @@ def add(text: str, source: str = "memory", ref_id: str = "") -> bool:
         try:
             from app_core.textsim import similar
 
+            # 未关闭的 + 最近 30 天关闭的都参与去重：
+            # 只比未关闭的，会让「已经说过的事」换个说法重新进来再问一遍。
             rows = c.execute(
-                "SELECT text FROM followups WHERE done=0 AND status!='cancelled'"
-            ).fetchall()
+                "SELECT text FROM followups WHERE (done=0 AND status!='cancelled') "
+                "OR created_ts > ?", (time.time() - 30 * 86400,)).fetchall()
             for (old,) in rows:
                 if similar(old, t) >= NEAR_DUP:
                     log.debug("跟进近似重复，跳过：%s ≈ %s", t[:20], old[:20])
@@ -110,13 +114,16 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
     c = _conn()
     # 多取一些再按语义过滤：过滤在 Python 侧，SQL 先按时间/次数/冷却筛。
     # 排序改成「没问过的优先，新的优先」——原来的 created_ts ASC 会先翻最老的账。
+    answer_cutoff = now - ANSWER_COOLDOWN_DAYS * 86400
     rows = c.execute(
         "SELECT id, text, source, created_ts, ask_count, status FROM followups "
-        "WHERE done=0 AND status!='confirming' "
+        "WHERE done=0 AND status NOT IN ('confirming','postponed') "
         "AND (last_asked_ts=0 OR last_asked_ts < ?) "
         "AND created_ts > ? AND ask_count < ? "
+        "AND (answered_ts=0 OR last_asked_ts > answered_ts OR answered_ts < ?) "
         "ORDER BY ask_count ASC, created_ts DESC LIMIT ?",
-        (cutoff, fresh, ASK_MAX_TIMES, max(limit * 3, limit))).fetchall()
+        (cutoff, fresh, ASK_MAX_TIMES, answer_cutoff,
+         max(limit * 3, limit))).fetchall()
     c.close()
     out = [{"id": r[0], "text": r[1], "source": r[2],
             "created": r[3], "asks": r[4], "status": r[5]}
@@ -133,6 +140,43 @@ def mark_asked(ids: list[int]) -> None:
             "UPDATE followups SET last_asked_ts=?, ask_count=ask_count+1 WHERE id=?",
             [(time.time(), i) for i in ids])
     c.close()
+
+def mark_answered(ids: list[int]) -> None:
+    """他回应了这件事（不一定是办完）。只记时间，不改状态。
+
+    为什么需要单独记：原来的状态机只有 todo/doing/done，他答一句「在弄」
+    匹配不上任何信号词，条目就一直停在 todo，冷却 5 天后又问一遍。
+    """
+    if not ids:
+        return
+    init()
+    c = _conn()
+    with c:
+        c.executemany(
+            "UPDATE followups SET answered_ts=? WHERE id=?",
+            [(time.time(), i) for i in ids])
+        c.executemany(
+            "UPDATE followups SET status='todo', status_ts=? "
+            "WHERE id=? AND status='postponed'",
+            [(time.time(), i) for i in ids])
+    c.close()
+
+
+def mark_ignored(ids: list[int]) -> None:
+    """问了没回应：+1；到 IGNORE_LIMIT 就转 postponed，不再主动问。"""
+    if not ids:
+        return
+    init()
+    c = _conn()
+    with c:
+        c.executemany("UPDATE followups SET ignored=ignored+1 WHERE id=?",
+                      [(i,) for i in ids])
+        c.executemany(
+            "UPDATE followups SET status='postponed', status_ts=? "
+            "WHERE id=? AND ignored>=?",
+            [(time.time(), i, IGNORE_LIMIT) for i in ids])
+    c.close()
+
 
 def set_status(fid: int, status: str) -> None:
     """改状态。done / cancelled 同时把 done 派生标记置 1。"""

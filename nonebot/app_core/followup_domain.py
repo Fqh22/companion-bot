@@ -5,6 +5,12 @@ import re
 
 MAX_TEXT = 160
 NEAR_DUP = 0.62
+# 他「回应过」但没说办完：只记一笔，不改状态，但要压住追问频率（单位：天）
+ANSWER_COOLDOWN_DAYS = 14
+# 问了没人理：累计这么多次就不再主动问（转 postponed，等他自己提）
+IGNORE_LIMIT = 2
+# 判「他确实聊到了这件事」的重合度下限（比 NEAR_DUP 松，因为只是回应不是复述）
+TOUCH_OVERLAP = 0.5
 COOLDOWN_DAYS = 5
 MAX_AGE_DAYS = 60
 MAX_ASKS = 6
@@ -88,6 +94,13 @@ def resolve_from(text: str, cands: list[tuple[int, str]],
             cands = [(la["id"], la["text"])]
             forced = True
     if not cands:
+        return out
+    # 没有任何完成/延期/取消信号，但他确实聊到了这件事：只记「回应过」。
+    # 这是「答过还问」的根治点——回应不等于办完，但也不该继续催。
+    if not (_signal_hit(t, DONE_SIGNALS) or _signal_hit(t, PARTIAL_SIGNALS)
+            or _signal_hit(t, POSTPONE_SIGNALS) or _signal_hit(t, DROP_SIGNALS)):
+        out["touched"] = [fid for fid, ftxt in cands
+                          if _overlap(ftxt, t) >= TOUCH_OVERLAP]
         return out
     if _signal_hit(t, PARTIAL_SIGNALS):
         for fid, _ in cands:

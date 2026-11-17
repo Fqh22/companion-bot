@@ -36,6 +36,7 @@ class ProactiveRuntime:
         self.db = Path(db_path or paths.CHAT_DB)
         self.interval = float(interval)
         self.start_delay = float(start_delay)
+        self._ignored_key = ""        # 同一个 key 的「没理」只记一次
 
     # ---------- 存储 ----------
     def _conn(self) -> sqlite3.Connection:
@@ -165,8 +166,45 @@ class ProactiveRuntime:
             return ""
 
     # ---------- 一轮 ----------
+    def _settle_ignored(self) -> None:
+        """上一次追问超过 REPLY_WINDOW 还没有回复 → 记一次「没理」。
+
+        两次没理的跟进会被 mark_ignored 转成 postponed，不再主动问。
+        以前只要发了就只更新「问过的时间」，冷却 5 天后照问。
+        """
+        from app_core import followup as fu_mod
+
+        try:
+            c = self._conn()
+            row = c.execute(
+                "SELECT topic_key, ts FROM proactive_log WHERE topic_key LIKE 'fu:%' "
+                "ORDER BY ts DESC LIMIT 1").fetchone()
+            c.close()
+        except Exception:  # noqa: BLE001
+            return
+        if not row:
+            return
+        key, sent = str(row[0]), float(row[1])
+        if time.time() - sent < REPLY_WINDOW:      # 还没到判定时间
+            return
+        if self.last_user_ts() >= sent:            # 他回过了
+            return
+        if self._ignored_key == key:               # 同一条只记一次
+            return
+        try:
+            fu_mod.mark_ignored([int(key[3:])])
+        except Exception as e:  # noqa: BLE001
+            log.debug("标记未回应失败：%s", e)
+            return
+        self._ignored_key = key
+        log.info("[proactive] %s 发出去 %d 小时没回应，记一次「没理」", key, REPLY_WINDOW // 3600)
+
     async def tick(self) -> None:
         self.init()
+        try:
+            self._settle_ignored()
+        except Exception as e:  # noqa: BLE001
+            log.debug("未回应检查失败：%s", e)
         now = datetime.now()
         try:
             m = mood.settle(mood.load())
