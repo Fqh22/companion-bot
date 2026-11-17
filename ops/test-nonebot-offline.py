@@ -1157,8 +1157,9 @@ async def main() -> None:
     # 上一版直接 any(词 in 文本)，「还没搞定」会被判成办完 → 这件事再也不会被问。
     check("「还没搞定」不算办完", not followup_mod.resolve("季度报告还没搞定")["done"])
     check("「没交了」不算办完", not followup_mod.resolve("季度报告没交了")["done"])
-    check("否定句不改状态",
-          not any(followup_mod.resolve("季度报告还没搞定").values()))
+    # 「还没搞定」现在会记一条 touched（他回应过），但**不能**改 done/status
+    _neg = followup_mod.resolve("季度报告还没搞定")
+    check("否定句不改状态", not _neg["done"] and not _neg["status"], str(_neg))
 
     before = followup_mod.stats()
     res = followup_mod.resolve("季度报告整理完了，累死")
@@ -1178,7 +1179,7 @@ async def main() -> None:
     followup_mod.add("搬家的事再想想", "memory", "doc-move")
     _mv = [x for x in followup_mod.due_for_asking(1000) if "搬家" in x["text"]]
     check("搬家的事进候选", bool(_mv), str(len(_mv)))
-    _touch = followup_mod.resolve("搬家那块我还在琢磨")
+    _touch = followup_mod.resolve("搬家的事我还在琢磨")
     check("回应但没办完 → touched 而不是 done",
           bool(_touch.get("touched")) and not _touch.get("done"), str(_touch))
     followup_mod.mark_answered(_touch["touched"])
