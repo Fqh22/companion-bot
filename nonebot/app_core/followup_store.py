@@ -8,9 +8,9 @@ import time
 from app_core import paths as _paths
 from app_core import textsim
 from app_core.followup_domain import (  # noqa: F401
-    ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS, KEEP_MAX_OPEN,
-    AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT, NEAR_DUP, STATUSES,
-    _overlap, askable, resolve_from,
+    ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
+    IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
+    NEAR_DUP, STATUSES, _overlap, askable, resolve_from,
 )
 
 log = logging.getLogger("qqbot.followup")
