@@ -1179,6 +1179,7 @@ async def main() -> None:
     followup_mod.add("搬家的事再想想", "memory", "doc-move")
     _mv = [x for x in followup_mod.due_for_asking(1000) if "搬家" in x["text"]]
     check("搬家的事进候选", bool(_mv), str(len(_mv)))
+    followup_mod.mark_asked([_mv[0]["id"]])       # 模拟「刚问过这件事」
     _touch = followup_mod.resolve("搬家的事我还在琢磨")
     check("回应但没办完 → touched 而不是 done",
           bool(_touch.get("touched")) and not _touch.get("done"), str(_touch))

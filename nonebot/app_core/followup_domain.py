@@ -10,7 +10,7 @@ ANSWER_COOLDOWN_DAYS = 14
 # 问了没人理：累计这么多次就不再主动问（转 postponed，等他自己提）
 IGNORE_LIMIT = 2
 # 判「他确实聊到了这件事」的重合度下限（比 NEAR_DUP 松，因为只是回应不是复述）
-TOUCH_OVERLAP = 0.5
+TOUCH_OVERLAP = 0.2
 COOLDOWN_DAYS = 5
 MAX_AGE_DAYS = 60
 MAX_ASKS = 6
@@ -93,6 +93,10 @@ def resolve_from(text: str, cands: list[tuple[int, str]],
                    or any(w in t for w in ("还没", "没呢", "没有", "忘了"))):
             cands = [(la["id"], la["text"])]
             forced = True
+        elif la and _overlap(la["text"], t) >= TOUCH_OVERLAP:
+            # 没命中任何信号词，但最近问过的那件事他确实在说 —— 记「回应过」
+            out["touched"] = [la["id"]]
+            return out
     if not cands:
         return out
     # 没有任何完成/延期/取消信号，但他确实聊到了这件事：只记「回应过」。
