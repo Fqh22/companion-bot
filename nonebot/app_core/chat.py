@@ -243,6 +243,13 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
                     self.admin_ids.append(_iid)
             except Exception as e:  # noqa: BLE001
                 log.warning("admin.identities 解析失败：%s", e)
+        # 平台自己的主人身份：飞书没有 QQ 号可共用时，会话是 feishu:<open_id>。
+        # 只在配置里明确写了 owner 才算可信身份；空配置不会进这个集合。
+        self.platform_owner_sessions: set[str] = set()
+        _fe = cfg.get("feishu") or {}
+        _fe_owner = str(_fe.get("owner_open_id") or "").strip()
+        if _fe.get("enabled") and _fe_owner:
+            self.platform_owner_sessions.add(f"feishu:{_fe_owner}")
 
         # 插件门面：命名空间对象（core.learn / core.audit / core.kb …），
         # 见 app_core/plugin_api.py；CORE_API 按两层登记检查。

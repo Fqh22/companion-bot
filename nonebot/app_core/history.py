@@ -107,9 +107,12 @@ class HistoryMixin:
         仍能聊，但没有主人记忆、没有写工具、不发主动消息；启动自检会报配置缺失。
         """
         ids = ([self.admin_uid] if self.admin_uid else []) + list(self.admin_ids)
-        if not ids:
-            return False
-        return any(session == f"private:{uid}" for uid in ids)
+        if ids and any(session == f"private:{uid}" for uid in ids):
+            return True
+        # 其他平台没有 QQ 号可共用时，用平台自己的主人会话
+        # （如 feishu.owner_open_id → "feishu:<open_id>"）。
+        # 这些是配置里明确写下的可信身份，不是"空配置默认放行"。
+        return session in getattr(self, "platform_owner_sessions", set())
 
     def is_owner(self, session: str) -> bool:
         """公共只读入口：插件判断会话身份用这个，不直接碰 _is_owner。"""

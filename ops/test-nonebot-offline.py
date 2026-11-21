@@ -848,6 +848,12 @@ async def main() -> None:
     core.admin_uid = ""
     check("主人判定：空配置不再默认放行（普通对话）",
           not core.is_owner("private:999"))
+    core.platform_owner_sessions = {"feishu:ou_test"}
+    check("主人判定：仅配置飞书主人也是 owner",
+          core.is_owner("feishu:ou_test"))
+    check("主人判定：其他飞书会话不是 owner",
+          not core.is_owner("feishu:ou_other"))
+    core.platform_owner_sessions = set()
     core.admin_uid = "111"
 
     _spied = []
