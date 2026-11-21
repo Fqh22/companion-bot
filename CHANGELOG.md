@@ -8,6 +8,35 @@
 > 2026-11-16 收敛：156 条 → 20 条。被删的日常记录在提交 `abe8234` 之前的 git 历史里。
 > 文档总量的教训：流水账越详细，越没人读——它只需要在「想查某一批」时能被搜到。
 
+## 2026-11-22 · 原子发布切换、投递确认与主人会话
+
+复审 `6437c18` 后补的第二批边界：
+
+- **发布切换改成整目录原子交换**：代码放进 `/opt/nonebot-releases/<sha>-<ts>/`；
+  `data/venv/config.yaml/.env` 在 `/opt/nonebot-shared`，ops 日志/state/ops.env 在
+  `/opt/nonebot-ops-state`。切换停服务后用 `renameat2(RENAME_EXCHANGE)` 一次交换
+  `/opt/nonebot` 与候选目录，失败自动切回；每个版本在 `releases/` 留硬链接快照，
+  回滚后回滚目标仍保留，新版本独有文件不会残留。
+  **踩过的坑**：最初把 `/opt/nonebot/app_core` 做成指向 release 的符号链接，
+  NoneBot 用 `Path.resolve().relative_to(cwd)` 算插件模块名，解析到 release 路径就
+  抛 `ValueError`、服务起不来；所以 live 必须是真实目录，只能整目录换。
+- **语音缓冲不再算已投递**：QQ/飞书 `defer_text` 分支只进缓冲、返回 False，
+  runner 不写历史；`outbound.deliver_voice_reply` 在语音或文字兜底真正发成功后
+  才写实际正文，两边都失败一个字都不写。
+- **图片按实际投递记账**：`OutboundMessage` 增加 `images_sent/audio_sent`，runner
+  回填发送结果；插件只在 `images_sent` 非空时记「另外发了一张图」。
+- **主动结算统一时间窗**：逐条结算只看「发送后 REPLY_WINDOW 内」的用户消息，
+  与 `reply_rate` 同口径；停机跨窗口不会被窗口外的一句回复整体免计。
+- **主人会话统一**：`config.owner_session` 支持仅飞书主人，`private_session` 返回
+  平台主人会话，实时总结改用 `private_session`；飞书主动消息与入站写同一条会话。
+  没有可信主人会话时 `last_user_ts/reply_rate` 不再查所有用户，结算与 tick 跳过。
+- **验证（本地）**：离线回归 **730/730**、runner **23/23**、批次 3 **27/27**、
+  批次 4 **42/42**、恢复演练自检 **6/6**、分层反例 **11/11**、`smoke-all` **284/284**。
+- **云端**：`e60491f` 已部署（release `e60491f-20261122-013735`），候选 `--pre`
+  **9/9**、全量 **11/11**；真实回滚到 `a2c55ff-...` 再切回均 active。
+  新布局下备份 `cloud-20261122-013911.tgz` + `restore-drill` 通过
+  （documents 427 / memory_atoms 2115 / messages 2110）。
+
 ## 2026-11-22 · 权限边界、备份恢复与投递可靠性
 
 按外部审查（基线 `26dc916`）修三批：身份与审批 → 发布与恢复 → 追问与投递。
