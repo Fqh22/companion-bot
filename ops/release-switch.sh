@@ -91,7 +91,9 @@ prepare() {
 
 archive_live() {
   local aid="$1" dst="$RELEASES/$1"
-  if [ -e "$dst" ]; then return 0; fi
+  # 只有带完整标记的目录才算可回滚的版本；失败实验留下的半成品要重建。
+  if [ -f "$dst/.deployed_sha" ] && [ -f "$dst/.release_id" ]; then return 0; fi
+  [ -e "$dst" ] && rm -rf "$dst"
   cp -al "$NB" "$dst"
 }
 

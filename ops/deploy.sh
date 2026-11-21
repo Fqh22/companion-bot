@@ -48,10 +48,10 @@ if [ -z "$PREV_REL" ]; then
   PREV="$("${SSH[@]}" "cat /opt/nonebot/.deployed_sha 2>/dev/null" | tr -d "[:space:]" || true)"
   PREV_REL="legacy-${PREV:-unknown}"
 fi
-ROLLBACK="ssh $HOST 'sudo -n bash /opt/nonebot/ops/release-switch.sh rollback $PREV_REL'"
+ROLLBACK="ssh $HOST 'sudo -n bash $REL_DIR/ops/release-switch.sh rollback $PREV_REL'"
 
 echo "== 1/7 云端旧版本快照（回滚点）"
-"${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha .release_id && sudo -n ls -l /opt/backup/code-$TS.tgz"
+"${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha && sudo -n ls -l /opt/backup/code-$TS.tgz"
 
 echo "== 2/7 构建 release：$REL_DIR"
 "${SSH[@]}" "sudo -n rm -rf '$REL_DIR' && sudo -n mkdir -p '$REL_DIR/ops'"

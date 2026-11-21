@@ -58,10 +58,10 @@ if ($nowRel) {
     if ($Prev) { $Prev = $Prev.Trim() }
     if ($Prev) { $PrevRel = "legacy-$Prev" } else { $PrevRel = "legacy-unknown" }
 }
-$Rollback = "ssh $SshHost 'sudo -n bash /opt/nonebot/ops/release-switch.sh rollback $PrevRel'"
+$Rollback = "ssh $SshHost 'sudo -n bash $RelDir/ops/release-switch.sh rollback $PrevRel'"
 
 Write-Host "== 1/7 云端旧版本快照（回滚点）"
-Invoke-Remote "sudo -n mkdir -p /opt/backup; sudo -n tar czf /opt/backup/code-$Ts.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha .release_id; sudo -n ls -l /opt/backup/code-$Ts.tgz"
+Invoke-Remote "sudo -n mkdir -p /opt/backup; sudo -n tar czf /opt/backup/code-$Ts.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha; sudo -n ls -l /opt/backup/code-$Ts.tgz"
 
 Write-Host "== 2/7 构建 release：$RelDir"
 Invoke-Remote "sudo -n rm -rf $RelDir; sudo -n mkdir -p $RelDir/ops"
@@ -120,3 +120,4 @@ Write-Host "== 7/7 完成：HEAD $Sha 已部署；回滚目标 $PrevRel"
 Write-Host "== 回滚：$Rollback"
 Write-Host "== 快照：/opt/backup/code-$Ts.tgz"
 Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
+exit 0
