@@ -1866,6 +1866,11 @@ async def main() -> None:
           any("admin.user_id" in m for m in core.config_issues()),
           str(core.config_issues())[:40])
     check("admin 没配时状态行带警告", "未配置" in core.config_status())
+    core.platform_owner_sessions = {"feishu:ou_test"}
+    check("仅平台主人时自检不误报管理员缺失",
+          not any("admin.user_id" in m for m in core.config_issues()),
+          str(core.config_issues())[:60])
+    core.platform_owner_sessions = set()
     core.admin_uid = real_uid or "10001"
     check("admin 配了就不报警", not core.config_issues(), str(core.config_issues()))
 

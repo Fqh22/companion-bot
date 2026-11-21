@@ -24,6 +24,11 @@ log = logging.getLogger("qqbot.chat")
 
 class ReplyMixin:
 
+    def _owner_configured(self) -> bool:
+        """有没有任何可信主人身份：QQ 号、admin.identities，或平台主人（飞书）。"""
+        return bool(self.admin_uid or self.admin_ids
+                    or getattr(self, "platform_owner_sessions", set()))
+
     def config_issues(self) -> list[str]:
         """启动自检：只查「不报错但静默失效」的配置。
 
@@ -32,7 +37,7 @@ class ReplyMixin:
         这种失败模式不该靠人记住文档，所以启动时打 ERROR、/ping 里也报。
         """
         issues: list[str] = []
-        if not self.admin_uid and not self.admin_ids:
+        if not self._owner_configured():
             issues.append(
                 "admin.user_id / admin.identities 未配置：没有可信主人身份，"
                 "所有会话都按普通用户处理（无私有记忆、无写工具、不发主动消息）。"
@@ -57,7 +62,7 @@ class ReplyMixin:
 
     def config_status(self) -> str:
         """一行配置状态，给 /ping 用。只报「有没有配」，不回显 QQ 号。"""
-        if not self.admin_uid and not self.admin_ids:
+        if not self._owner_configured():
             return "⚠ admin.user_id / admin.identities 未配置（普通对话模式：无记忆、无写工具、不主动发消息）"
         return f"管理员已配置 · 模型 {self.model} · 工具上限 {self.max_tool_rounds} 轮"
 
