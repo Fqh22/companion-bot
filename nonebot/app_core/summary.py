@@ -16,7 +16,8 @@ import time
 import aiosqlite
 
 from app_core import (alerts, config, contradict, followup, followup_store,
-                      insight, kb, learn, maintenance, mood, purge, summarize, wiki)
+                      insight, kb, learn, maintenance, mood, purge, summarize,
+                      timenorm, wiki)
 from app_core import paths as _paths
 from app_core import vocab as vocab_mod
 
@@ -38,6 +39,25 @@ DIGEST_SYSTEM = (
     "悬而未决的问题、他的偏好和约定；删掉寒暄、重复和已经过时的细节。"
     "用陈述句，不要第一人称，不要 Markdown，不要标题。只输出纪要正文。"
 )
+
+
+def _dated_payload(data: dict, anchor_ts: float) -> dict:
+    """把总结 JSON 里残留的相对日期按**来源对话时间**换成绝对日期。
+
+    format_dialog 已经逐条按各自消息的时间换算过一遍，这里只是第二道网：
+    兜住模型自己写出来的「明天」。基准取这段对话最后一条消息的时间——它最
+    接近模型理解的那个「现在」。拿不到来源时间就原样保留（不猜）。
+    """
+    now = timenorm.anchor(anchor_ts)
+    if now is None:
+        return data
+    for key in ("summary", "digest"):
+        if isinstance(data.get(key), str) and data.get(key):
+            data[key] = timenorm.normalize(data[key], now=now)
+    for key in ("key_facts", "followups", "atoms"):
+        if isinstance(data.get(key), list):
+            data[key] = [timenorm.normalize(str(x), now=now) for x in data[key]]
+    return data
 
 
 class SummaryMixin:
@@ -308,14 +328,17 @@ class SummaryMixin:
             return
         async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
-                "SELECT id, role, content FROM messages "
+                "SELECT id, role, content, ts FROM messages "
                 "WHERE session=? AND id>? ORDER BY id LIMIT ?",
                 (session, last_id, SUMMARY_BATCH))
             rows = await cur.fetchall()
         if len(rows) < 4:
             return
         target = int(rows[-1][0])
-        dialog = summarize.format_dialog([(r[1], r[2]) for r in rows])
+        # 逐条带时间：一批对话可能横跨几天，同两句「明天」不是同一天（2026-11-22）。
+        dialog = summarize.format_dialog([(r[1], r[2], r[3]) for r in rows])
+        # 相对日期的换算基准 = 这段对话最后一条消息的时间（最接近模型眼里的「现在」）
+        anchor_ts = float(rows[-1][3] or 0)
         # 必须用 summary 模型（deepseek-chat）：flash 在长 JSON 上约 1/3 会截断，
         # 截断后 parse 不出 summary，这段对话就静默丢失了。
         # 纪要一起要：同一次调用顺带产出「旧纪要 + 这段对话」的新纪要。
@@ -342,6 +365,8 @@ class SummaryMixin:
                  f"【这段对话】\n\n{dialog}\n\n整理成一条长期记忆，并更新纪要。")}],
             max_tokens=1600, json_mode=True)
         data = summarize.parse(raw)
+        # 第二道网：模型自己写出来的相对日期，按来源对话时间换算（见 _dated_payload）
+        data = _dated_payload(data, anchor_ts)
         # 归并到已有词表：模型偶尔还是会给「求职面试」这种自造的近义标签，
         # 而基于实体的连边只认完全相同的字符串。
         if data.get("topics"):
@@ -369,6 +394,8 @@ class SummaryMixin:
                 "vec": vec,
                 "followups": data.get("followups", []),
                 "range_key": f"{session}:{last_id}-{target}",
+                # 这段对话到哪一刻为止：写库层的相对日期换算、记忆的 source_ts 都用它
+                "anchor_ts": anchor_ts,
             }
             port = self._memory_port()
             if port is not None:
@@ -386,7 +413,8 @@ class SummaryMixin:
                     key_facts=data.get("key_facts", []),
                     vec=vec,
                     followups=data.get("followups", []),
-                    range_key=f"{session}:{last_id}-{target}")
+                    range_key=f"{session}:{last_id}-{target}",
+                    anchor_ts=anchor_ts)
             # 矛盾检测：新记忆可能让旧记忆过时（「在找工作」→「已入职」）。
             # 只在相似度够高时才多问一次模型；失败不影响写入。
             try:
@@ -404,11 +432,12 @@ class SummaryMixin:
                             await port_t.remember(MemoryItem(
                                 type="task", text=str(_t), source="memory",
                                 payload={"kind": "followup", "source": "memory",
-                                         "ref": doc_id}))
+                                         "ref": doc_id, "source_ts": anchor_ts}))
                         except Exception as e:  # noqa: BLE001
                             log.debug("跟进写入跳过（%s）：%s", type(e).__name__, _t)
                 else:
-                    followup.add_many(data["followups"], "memory", doc_id)
+                    followup.add_many(data["followups"], "memory", doc_id,
+                                      source_ts=anchor_ts)
             # 滚动纪要：历史原文只留最近 2500 字，更早的靠这段纪要接住。
             # 优先用同一次调用带回来的 digest；模型没给（或太短）再退回单独一次调用，
             # 保证旧行为可用，不会因为一次 JSON 缺字段就把纪要停更。

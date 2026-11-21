@@ -56,7 +56,7 @@ README = """# companion 主体快照 · format_version {version}
 | `profile.json` | 画像字段与置信度 |
 | `relations.md` | 关系小抄（长期关系状态） |
 | `corrections.md` | 他纠正过的事 |
-| `followups.json` | 还没跟进的话头 |
+| `followups.json` | 还没跟进的话头；`source_ts` 是「他什么时候说的」，与入库时间分开 |
 | `manifest.json` | 每份文件的 sha256 / 字节数 / 条目数，源状态与导出错误 |
 
 **没导出的**：向量 blob（换 embedding 后跑 `ops/rebuild-vectors.py --apply` 重建）、

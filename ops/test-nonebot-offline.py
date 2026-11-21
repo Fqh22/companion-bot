@@ -1751,8 +1751,11 @@ async def main() -> None:
     finally:
         core.complete_raw = _old_raw
     _mc = sqlite3.connect(TMP / "livingmemory.db")
-    _n3 = _mc.execute("select count(*) from documents where text like '%生日%'"
-                      ).fetchone()[0]
+    # 按**精确文本**数，不按 LIKE '%生日%'：这份库是生产库的只读副本，
+    # 生产里只要有一条提到「生日」的记忆，LIKE 就会数成 2、把去重逻辑判成坏的
+    # （2026-11-22 实测：线上新增一条含「生日」的记忆后这里误红）。
+    _n3 = _mc.execute("select count(*) from documents where text=?",
+                      ("他生日是3月",)).fetchone()[0]
     _mc.close()
     check("同一条纠正只写一次", _n3 == 1, str(_n3))
 

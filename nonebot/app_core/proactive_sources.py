@@ -16,8 +16,19 @@ def followup_candidates(limit: int = 5, now: float | None = None) -> list[tuple]
     out = []
     try:
         for it in followup.due_for_asking(limit):
-            days = max(0, int((now - float(it["created"] or 0)) / 86400))
-            when = "今天" if days == 0 else f"约 {days} 天前"
+            # 「几天前他说过」要用**他说这句话的时间**，不是跟进记录入库的时间：
+            # 延迟总结（崩溃 / 重启后补总结）会让入库日比说话日晚几天。
+            # 旧记录没有 source_ts：summary 来源的入库时间不可靠，就说「之前」，
+            # 不在主动消息里断言一个可能错的日期（2026-11-22）。
+            src = float(it.get("source_ts") or 0)
+            if src:
+                days = max(0, int((now - src) / 86400))
+                when = "今天" if days == 0 else f"约 {days} 天前"
+            elif str(it.get("source") or "") == "memory":
+                when = "之前"
+            else:
+                days = max(0, int((now - float(it["created"] or 0)) / 86400))
+                when = "今天" if days == 0 else f"约 {days} 天前"
             out.append((f"fu:{it['id']}", it["text"],
                         f"{when}他说要做的事，顺口问问进展"))
     except Exception:

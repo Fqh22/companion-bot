@@ -179,7 +179,8 @@ class CoreMemoryPort:
             from app_core import followup, followup_store
 
             if not followup.add(item.text, str(p.get("source") or "memory"),
-                                 str(p.get("ref") or "")):
+                                 str(p.get("ref") or ""),
+                                 source_ts=float(p.get("source_ts") or 0) or None):
                 raise RuntimeError("跟进创建失败（可能近似重复，或不像待办）")
             fid = followup_store.id_for_text(item.text)
             return f"followup:{fid}" if fid else "followup:"
@@ -196,6 +197,8 @@ class CoreMemoryPort:
             followups=list(p.get("followups") or []),
             range_key=str(p.get("range_key") or ""),
             source_msg_ids=[str(x) for x in (p.get("source_msg_ids") or []) if x],
+            # 相对日期的换算基准 = 这段话说出来的时间（没有就保留原文，不猜）
+            anchor_ts=float(p.get("anchor_ts") or 0) or None,
         )
 
     async def supersede(self, ref: str, by: str = "", why: str = "") -> bool:

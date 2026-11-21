@@ -104,14 +104,18 @@ class CommitMixin:
                     from app_core.memory_port import MemoryItem
 
                     _vec = await self.memory.embed([_inst])
+                    # 相对日期的换算基准 = 这条消息的落库时间（不是写记忆那一刻）：
+                    # 跨午夜时两者能差一天，而「我下周三面试」的日期就是那天算出来的。
+                    _src_ts = await self.message_ts(turn.user_msg_id) or time.time()
                     await _port.remember(MemoryItem(
                         type="fact", text=_inst, source="instant", confidence=0.35,
                         payload={"session": turn.session, "topics": ["即时"],
                                  "key_facts": [_inst],
                                  "vec": (_vec[0] if _vec else None),
                                  "range_key": "instant:%s:%s" % (turn.session, turn.user_msg_id),
-                                 # 即时记忆能精确到「他这一句话」，把原文指针存下来
-                                 "source_msg_ids": [str(turn.user_msg_id)]}))
+                                 # 即时记忆能精确到「他这一句话」，把原文指针和时间存下来
+                                 "source_msg_ids": [str(turn.user_msg_id)],
+                                 "anchor_ts": _src_ts}))
             except Exception as e:  # noqa: BLE001
                 log.debug("即时记忆失败：%s", e)
                 from app_core import alerts as _alerts

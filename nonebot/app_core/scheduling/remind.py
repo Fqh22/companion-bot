@@ -127,8 +127,23 @@ def _parse(when: str, now: float | None = None) -> float | None:
     return _parse_loose(s, now)
 
 
+def freeze_when(when: str, now: float | None = None) -> str:
+    """把相对时间在**提交时**换算成绝对时间 "YYYY-MM-DD HH:MM"。
+
+    授权门（tools.require_approval）把工具入参原样落盘、等主人批准后再执行；
+    「明天九点」如果留到批准时才解析，日期会按**批准那一刻**重新算。审批窗口
+    只有 10 分钟，但跨午夜就晚一天（2026-11-22 复查）。解析不了原样返回，
+    让 add 照常回「时间看不懂」，不猜。
+    """
+    ts = _parse(when, now)
+    if ts is None:
+        return when
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
+
+
 def _fmt(ts: float) -> str:
-    return datetime.fromtimestamp(ts).strftime("%m-%d %H:%M")
+    # 带年份：最远能提前 180 天，跨年后「11-21」这种月日写法会看不出来是哪年
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
 
 
 def _norm(s: str) -> str:

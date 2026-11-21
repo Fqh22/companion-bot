@@ -1121,9 +1121,9 @@
     ]
   },
   "c09-followup-done": {
-    "sha": "62329d6d0702a82405842b6bf5adb0d7478281dfbaec7aae08605753728bc143",
+    "sha": "c44d34163e588304f8155fca6508add01ba95c5506373c2c82c026a558a5835b",
     "n": 29,
-    "chars": 1265,
+    "chars": 1314,
     "blocks": [
       {
         "role": "system",
@@ -1212,13 +1212,13 @@
       },
       {
         "role": "user",
-        "chars": 7,
-        "label": "下周三有个面试"
+        "chars": 37,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "assistant",
-        "chars": 9,
-        "label": "记着了，面完跟我说"
+        "chars": 28,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "system",
@@ -1273,9 +1273,9 @@
     ]
   },
   "c10-followup-confirm": {
-    "sha": "b875998495fdee4b110ed00e1c5c1a93d5f05426b6018c8797e86499a3948229",
+    "sha": "ca275c96bbfd6e407086103f29b2d9907a81bbe204e8ee9d91cb548be78d3324",
     "n": 29,
-    "chars": 1282,
+    "chars": 1331,
     "blocks": [
       {
         "role": "system",
@@ -1364,13 +1364,13 @@
       },
       {
         "role": "user",
-        "chars": 7,
-        "label": "下周三有个面试"
+        "chars": 37,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "assistant",
-        "chars": 9,
-        "label": "记着了，面完跟我说"
+        "chars": 28,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "system",
@@ -1425,9 +1425,9 @@
     ]
   },
   "c11-followup-drop": {
-    "sha": "13bed7c84e67bfcbfb08cb543597f302fbaa10cc87c28c3f197b07253725f208",
+    "sha": "d28efe6063ffb419a69c83d336174dfe9f2fa44d613930bf559381902072f2b5",
     "n": 29,
-    "chars": 1267,
+    "chars": 1316,
     "blocks": [
       {
         "role": "system",
@@ -1516,13 +1516,13 @@
       },
       {
         "role": "user",
-        "chars": 7,
-        "label": "下周三有个面试"
+        "chars": 37,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "assistant",
-        "chars": 9,
-        "label": "记着了，面完跟我说"
+        "chars": 28,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "system",
@@ -4187,9 +4187,9 @@
     ]
   },
   "c37-just-said": {
-    "sha": "cce3932f2689e39d702ee32a2726fcc6511e38580598fe6142ee4c10cc1c2ca6",
+    "sha": "d8aaf73d509ce17409504622035d09279ef7a8979080100f41138557ec64cab9",
     "n": 27,
-    "chars": 1223,
+    "chars": 1242,
     "blocks": [
       {
         "role": "system",
@@ -4278,8 +4278,8 @@
       },
       {
         "role": "user",
-        "chars": 7,
-        "label": "我今天去体检了"
+        "chars": 26,
+        "label": "[2026-11-15 20:0"
       },
       {
         "role": "system",

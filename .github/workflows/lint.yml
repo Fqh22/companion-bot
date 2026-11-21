@@ -74,6 +74,10 @@ jobs:
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
         run: python ops/test-nonebot-offline.py
+      - name: 日期锚点回归（历史 / 总结 / 记忆写入 / 授权时间）
+        env:
+          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
+        run: python ops/test-dates.py
       - name: 全链路体检（假模型）
         env:
           QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot

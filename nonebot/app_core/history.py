@@ -52,19 +52,39 @@ class HistoryMixin:
         limit = max_items or self.history_max_items
         async with aiosqlite.connect(DB, timeout=15) as db:
             cur = await db.execute(
-                "SELECT role, content FROM messages WHERE session=? ORDER BY id DESC LIMIT ?",
+                "SELECT role, content, ts FROM messages "
+                "WHERE session=? ORDER BY id DESC LIMIT ?",
                 (session, limit))
             rows = await cur.fetchall()
         picked, used = [], 0
-        for role, content in rows:
+        for role, content, ts in rows:
             # 先按单条上限压缩，再计入预算：否则一条超长消息会把整段预算吃光
             shown = _clip(content, self.history_item_max)
             c = len(shown)
             if picked and used + c > budget:
                 break
-            picked.append({"role": role, "content": shown})
+            # ts 跟着走：prompt 要用**每条消息自己的时间**标日期 / 换算相对日期
+            # （2026-11-22）。库里存的仍是原话，日期只在送给模型的那份副本里。
+            picked.append({"role": role, "content": shown, "ts": float(ts or 0)})
             used += c
         return list(reversed(picked))
+
+    async def message_ts(self, row_id: int) -> float:
+        """某条消息的落库时间戳；拿不到返回 0。
+
+        即时记忆（memory_instant）写库时要把「我下周三面试」换算成绝对日期，
+        基准必须是**这条消息的时间**，不是写记忆那一刻——两者跨午夜时差一天。
+        """
+        if not row_id:
+            return 0.0
+        try:
+            async with aiosqlite.connect(DB, timeout=15) as db:
+                cur = await db.execute(
+                    "SELECT ts FROM messages WHERE id=?", (int(row_id),))
+                row = await cur.fetchone()
+        except Exception:  # noqa: BLE001
+            return 0.0
+        return float((row or [0])[0] or 0)
 
     async def last_user_ts(self, session: str) -> float:
         """上一条用户消息的时间戳。本轮消息还没写，所以不用 before_id 排除。

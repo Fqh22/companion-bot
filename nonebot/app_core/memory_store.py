@@ -119,7 +119,22 @@ class StoreMixin:
         mtype: str = "fact",          # fact / insight：区分「他说过什么」和「我理解他怎样」
         sources: list[str] | None = None,   # insight 的来源 doc_id；空 = 无出处，不允许
         source_msg_ids: list[str] | None = None,  # 精确原文指针：产生这条记忆的消息 id
+        anchor_ts: float | None = None,    # 这段内容说出来的时间；相对日期的换算基准
     ) -> str:
+        # 相对日期按「来源对话的时间」换算成绝对日期；来源时间不明就保留原文。
+        # 以前这里用 datetime.now()（写库当天）当基准：批量总结跨天时不报错，
+        # 但会给旧消息补一个晚几天的日期（2026-11-22 复现：同一句「明天」，
+        # 11-20 说应是 11-21，11-22 写库算成 11-23）。宁可留下「明天」这种
+        # 不确定性，也不写一个确定的错日期。
+        src = timenorm.anchor(anchor_ts)
+        if src is not None:
+            text = timenorm.normalize(text, now=src)
+            key_facts = [timenorm.normalize(str(x), now=src)
+                         for x in (key_facts or [])]
+            followups = [timenorm.normalize(str(x), now=src)
+                         for x in (followups or [])]
+            if atoms:
+                atoms = [timenorm.normalize(str(x), now=src) for x in atoms]
         # 幂等：同一段对话重复固化时直接返回已有 doc_id，不写第二条
         if range_key:
             c0 = self._conn()
@@ -136,8 +151,6 @@ class StoreMixin:
         if dup:
             log.info("窗口内已有同样内容，跳过重复写入：%s", dup[:8])
             return dup
-        # 相对时间在写入侧就归一化成绝对日期：模型会算错一天，Python 不会。
-        text = timenorm.normalize(text)
         self._shadow_dedup(text, vec)
         doc_id = str(uuid.uuid4())
         now = time.time()
@@ -146,6 +159,9 @@ class StoreMixin:
             "persona_id": PERSONA_ID,
             "importance": importance,
             "create_time": now,
+            # 这句话是什么时候说的（不是什么时候写进库的）。延迟总结 / 崩溃补总结
+            # 时两者能差几天，跟进和「几天前他说过」都该用这一列。
+            "source_ts": float(anchor_ts or 0),
             "last_access_time": now,
             "status": "active",
             "topics": topics,

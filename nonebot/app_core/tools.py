@@ -253,13 +253,26 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None,
             log.warning("授权状态检查失败，写操作已阻止：%s", e)
             return "授权状态检查失败，这次没有执行（见日志）。"
         if needs:
+            # 提交阶段就把提醒时间冻成绝对时间：批准时再解析「明天九点」会按
+            # 批准那一刻重算，跨午夜就晚一天（2026-11-22）。
+            args = dict(args or {})
+            frozen_when = ""
+            if name == "remind_me" and args.get("when"):
+                try:
+                    args["when"] = remind.freeze_when(str(args["when"]))
+                    frozen_when = str(args["when"])
+                except Exception as e:  # noqa: BLE001
+                    log.debug("提醒时间冻结失败（照原样登记）：%s", e)
             try:
                 rid = audit.propose(name, args)
             except Exception as e:  # noqa: BLE001
                 log.warning("授权登记失败，写操作已阻止：%s", e)
                 return "授权登记失败，这次没有执行（见日志）。"
-            return (f"这一步会改动东西，需要你授权：发 /approve {rid}"
-                    "（10 分钟内有效）。不发就不做。")
+            ret = (f"这一步会改动东西，需要你授权：发 /approve {rid}"
+                   "（10 分钟内有效）。不发就不做。")
+            if frozen_when:
+                ret += f"\n提醒时间：{frozen_when}（批准时按这个时间执行，不会重算）"
+            return ret
     # 工具使用埋点：只记名字和成败，用来决定「砍哪些」——没有数据时砍工具是拍脑袋。
     try:
         import json as _json

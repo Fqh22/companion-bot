@@ -45,12 +45,13 @@ class FakeMemory:
 
     def add_document(self, text, session, importance, topics, key_facts,
                      atoms=None, vec=None, followups=None, range_key="",
-                     source_msg_ids=None):
+                     source_msg_ids=None, anchor_ts=None):
         self.calls.append({
             "text": text, "session": session, "importance": importance,
             "topics": topics, "key_facts": key_facts, "vec": vec,
             "followups": followups, "range_key": range_key,
             "source_msg_ids": list(source_msg_ids or []),
+            "anchor_ts": anchor_ts,
         })
         return "doc-new"
 
@@ -108,6 +109,12 @@ async def main() -> None:
           call["topics"] == ["工作"] and call["key_facts"] == ["在找工作"]
           and call["vec"] == [0.1, 0.2] and call["range_key"] == "private:1:1-9")
     check("followups 映射正确", call["followups"] == ["问进度"])
+    # 2026-11-22：相对日期的换算基准要透传到存储（不然写库层只能拿写库当天猜）
+    await port.remember(MemoryItem(type="fact", text="明天交稿", confidence=0.8,
+                                   payload=dict(payload, anchor_ts=1795179600.0)))
+    check("来源时间（anchor_ts）透传到存储",
+          core.memory.calls[-1]["anchor_ts"] == 1795179600.0,
+          str(core.memory.calls[-1].get("anchor_ts")))
 
     # 一致性：旧调用与契约调用产生的参数完全相同
     core2 = FakeCore()

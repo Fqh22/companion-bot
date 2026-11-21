@@ -43,13 +43,14 @@ def parse_range(meta: dict) -> tuple[str, int, int] | None:
         return None
 
 
-def load_dialog(session: str, lo: int, hi: int) -> list[tuple[str, str]]:
+def load_dialog(session: str, lo: int, hi: int) -> list[tuple]:
     c = sqlite3.connect(f"file:{CHAT_DB}?mode=ro", uri=True)
     rows = c.execute(
-        "SELECT role, content FROM messages WHERE session=? AND id>? AND id<=? "
+        "SELECT role, content, ts FROM messages WHERE session=? AND id>? AND id<=? "
         "ORDER BY id", (session, lo, hi)).fetchall()
     c.close()
-    return [(r[0], r[1]) for r in rows]
+    # 带 ts：format_dialog 按每条消息自己的时间换算相对日期（2026-11-22）
+    return [(r[0], r[1], r[2]) for r in rows]
 
 
 async def rebuild_one(core, did: int, doc_id: str, text: str, meta: dict,

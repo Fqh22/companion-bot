@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from app_core import parse_log
+from app_core import parse_log, timenorm
 
 SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 JSON，不要解释：
 {
@@ -16,12 +16,16 @@ SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 J
  "progress": "advance | repeat | switch",
  "digest": "200-300 字，把【旧纪要】和这段新对话合成一段「更早的对话纪要」"
 }
+【时间】每行开头的 [YYYY-MM-DD HH:MM] 是他说那句话的真实时间；行内的相对日期
+  （明天/昨天等）已经按各自的说话时间换算成绝对日期。summary / key_facts / followups
+  里提到时间一律写 YYYY-MM-DD，不要写「明天」「昨天」「下周」。
+  「他说计划要做某件事」写成「他说要 / 计划」，不要写成已经做完；做没做完只看对话里说没说。
 importance：日常寒暄 0.25-0.4；有信息量或明显情绪 0.5-0.7；重要事件/长期约定 0.75-0.95。
-followups 只写「他明确承诺或交代要做的具体事」，比如「周四前交稿」「去闲鱼查 4080S 价格」。
+followups 只写「他明确承诺或交代要做的具体事」，比如「2026-11-21 前交稿」「去闲鱼查 4080S 价格」。
 以下一律不写（线上踩过：这些会被当成他的待办天天追问）：
   - 你自己的待办/动作（「我需要整理…」「补讲…」「告诉他…」）
   - 他没回答的问题（「他还没回复…」「他没确认…」）
-  - 一次性日程（「明天下午面试」「当天去体检」）——那归提醒
+  - 一次性日程（「11-21 下午面试」「当天去体检」）——那归提醒
   - 给他的规则/偏好（「以后先搜索再答」）
 泛泛的打算、随口一提的想法、他已经在做的事，都不算；宁少勿多，0-2 条最常见。
 progress：只看「他的问题解决了没有」，不要猜他满不满意——
@@ -51,12 +55,29 @@ def vocab_hint(vocab: list[str]) -> str:
     )
 
 
-def format_dialog(rows: list[tuple[str, str]]) -> str:
+def format_dialog(rows: list[tuple]) -> str:
+    """把一段消息排成给模型看的对话，每行带**真实说话时间**。
+
+    `[2026-11-20 21:30][他] …` 这样的前缀让模型知道这句话是哪天说的；行内的
+    相对日期按**这条消息自己的时间**换算：一批对话可能横跨几天，两句「明天」
+    指的是不同的日子（2026-11-22 修）。
+    rows 允许只有 (role, content)（老调用方 / 没有时间列的库）：那就只排原文，
+    没有来源时间就不猜日期。
+    """
     lines = []
-    for role, content in rows:
+    for row in rows:
+        role = row[0]
+        content = row[1]
+        ts = float(row[2]) if len(row) > 2 and row[2] else 0.0
         who = "他" if role == "user" else "我"
         text = (content or "").strip().replace("\n", " ")[:400]
-        if text:
+        if not text:
+            continue
+        if ts:
+            d = timenorm.from_ts(ts)
+            lines.append(f"[{d:%Y-%m-%d %H:%M}][{who}] "
+                         + timenorm.normalize(text, now=d))
+        else:
             lines.append(f"[{who}] {text}")
     return "\n".join(lines)
 

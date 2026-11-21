@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import re
 
+from app_core import timenorm
+
 
 def clip(text: str, n: int) -> str:
     """按字数截断，并在真被截断时补省略号。
@@ -598,6 +600,35 @@ def style_block(user_text: str, history: list[dict] | None = None,
     return head
 
 
+STAMP_FMT = "[{:%Y-%m-%d %H:%M}] "
+
+
+def dated_history(history: list[dict] | None) -> list[dict]:
+    """把历史消息换成**带原话日期**的 prompt 副本。
+
+    模型只看 role/content 时不知道一句话是哪天说的：他 11-20 说「明天要交稿」，
+    11-22 再提时模型会拿「今天是 11-22」解释那句「明天」，于是复述成 11-23。
+    库里保留原话（可追溯），这里只改送给模型的那份：前面标日期，明确的相对
+    日期按**这条消息自己的时间**换算成绝对日期。
+
+    没有 ts 的调用方（老测试 / 手工拼的 history）原样透传，不猜日期。
+    """
+    out: list[dict] = []
+    for h in history or ():
+        role = str(h.get("role") or "user")
+        text = h.get("content")
+        if not isinstance(text, str) or not text:
+            out.append({"role": role, "content": text})
+            continue
+        d = timenorm.anchor(h.get("ts"))
+        if d is None:
+            out.append({"role": role, "content": text})
+            continue
+        out.append({"role": role,
+                    "content": STAMP_FMT.format(d) + timenorm.normalize(text, now=d)})
+    return out
+
+
 def build_messages(persona: dict, history: list[dict], user_text: str,
                    memories: list[dict] | None = None,
                    mood_text: str = "", knowledge: str = "",
@@ -661,7 +692,9 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
     for i in range(0, len(dialogs) - 1, 2):
         msgs.append({"role": "user", "content": dialogs[i]})
         msgs.append({"role": "assistant", "content": dialogs[i + 1]})
-    msgs.extend(history)
+    # 历史只以「带日期副本」进模型：原话仍在 chat.db，模型拿到的是
+    # 「[2026-11-21 09:12] 2026-11-22（周日）交稿」这种能直接读的版本（2026-11-22）。
+    msgs.extend(dated_history(history))
     compact = str(context_format).lower() == "compact"
     if compact:
         if mood_text:

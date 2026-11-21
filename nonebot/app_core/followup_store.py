@@ -46,6 +46,9 @@ def init() -> None:
             "ALTER TABLE followups ADD COLUMN status_ts REAL NOT NULL DEFAULT 0",
             "ALTER TABLE followups ADD COLUMN answered_ts REAL NOT NULL DEFAULT 0",
             "ALTER TABLE followups ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
+            # 这件事是「什么时候说的」：created_ts 是入库时间，延迟总结时两者
+            # 能差几天，主动消息里的「约 N 天前他说过」要用 source_ts。
+            "ALTER TABLE followups ADD COLUMN source_ts REAL NOT NULL DEFAULT 0",
         ):
             try:
                 c.execute(ddl)
@@ -55,7 +58,8 @@ def init() -> None:
                   "WHERE done=1 AND status='todo'")
     c.close()
 
-def add(text: str, source: str = "memory", ref_id: str = "") -> bool:
+def add(text: str, source: str = "memory", ref_id: str = "",
+        source_ts: float | None = None) -> bool:
     """加一条。**文本相同或近似**都跳过。
 
     只靠唯一索引挡不住「换个说法」：实测同一件事进过两条
@@ -88,8 +92,9 @@ def add(text: str, source: str = "memory", ref_id: str = "") -> bool:
         except Exception:  # noqa: BLE001
             pass                                  # 相似度算不出来也不影响写入
         cur = c.execute(
-            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts) "
-            "VALUES (?,?,?,?)", (t, source, str(ref_id), time.time()))
+            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts, source_ts) "
+            "VALUES (?,?,?,?,?)",
+            (t, source, str(ref_id), time.time(), float(source_ts or 0)))
         c.commit()
         # 用 rowcount 而不是 total_changes：后者是连接级累计值，判断不准
         return cur.rowcount > 0
@@ -98,10 +103,11 @@ def add(text: str, source: str = "memory", ref_id: str = "") -> bool:
     finally:
         c.close()
 
-def add_many(items: list[str], source: str = "memory", ref_id: str = "") -> int:
+def add_many(items: list[str], source: str = "memory", ref_id: str = "",
+             source_ts: float | None = None) -> int:
     n = 0
     for it in items or []:
-        if add(it, source, ref_id):
+        if add(it, source, ref_id, source_ts=source_ts):
             n += 1
     return n
 
@@ -116,7 +122,8 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
     # 排序改成「没问过的优先，新的优先」——原来的 created_ts ASC 会先翻最老的账。
     answer_cutoff = now - ANSWER_COOLDOWN_DAYS * 86400
     rows = c.execute(
-        "SELECT id, text, source, created_ts, ask_count, status FROM followups "
+        "SELECT id, text, source, created_ts, ask_count, status, source_ts "
+        "FROM followups "
         "WHERE done=0 AND status NOT IN ('confirming','postponed') "
         "AND (last_asked_ts=0 OR last_asked_ts < ?) "
         "AND created_ts > ? AND ask_count < ? "
@@ -126,7 +133,8 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
          max(limit * 3, limit))).fetchall()
     c.close()
     out = [{"id": r[0], "text": r[1], "source": r[2],
-            "created": r[3], "asks": r[4], "status": r[5]}
+            "created": r[3], "asks": r[4], "status": r[5],
+            "source_ts": float(r[6] or 0)}
            for r in rows if askable(r[1])]
     return out[:limit]
 

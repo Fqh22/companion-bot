@@ -1,14 +1,14 @@
 {
   "files": {
-    "ops/test-prompt-golden.py": "8b72d94627926e2f12e5034eaf53007deb17728542891c74a1f534a30ca78168",
+    "ops/test-prompt-golden.py": "ed96fee8c0df83acd5243c61821a3f2d6b4c203e39d79c9f3aec3ba93800de26",
     "ops/fixtures/freeze.py": "5cd32ba04eabae0dc5c137841730678e1f08101aa274b01950c23ef046db37ef",
-    "ops/fixtures/seed.py": "9cf214655c5017d5fb0b18f629e4fd50fe13d991b3c1310ecb80006968c92f49",
+    "ops/fixtures/seed.py": "d2834d6185cb69d551763c0e54393c4fb3a2363fb54a18ef57711bb68862e62b",
     "ops/fixtures/prompt-cases.jsonl": "438687518267cec63fde191d9587e28464d5671735493d401f3b20c51776a5d5",
-    "ops/fixtures/prompt-baseline.json": "4c9ca0bf5dadc5db85a836176203bd27559c59a36ce40965f00d186e68833cd5"
+    "ops/fixtures/prompt-baseline.json": "2ebb3a8bd9d73617b9f38190555dd9f484e771958392c16e99d6c9ff5af4e1a6"
   },
   "origin_code": "7c68caf",
-  "git_head": "7c68caf",
-  "tool_commit": "7c68caf",
+  "git_head": "b5f00bb",
+  "tool_commit": "b5f00bb",
   "python": "3.12.3",
   "metadata": {
     "platform": "Linux"
