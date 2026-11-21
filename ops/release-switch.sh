@@ -82,6 +82,38 @@ link_runtime() {
   return 0
 }
 
+# 停服务前等一等正在生成的那一轮：用户刚发消息、助手还没回时，
+# 直接 stop 会把已经生成好的回复截掉（2026-11-22 01:38 实际发生过）。
+wait_idle() {
+  local max="${1:-60}" waited=0 state db="$NB/data/chat.db"
+  [ -f "$db" ] || return 0
+  while [ "$waited" -lt "$max" ]; do
+    state="$(python3 - "$db" <<'PY'
+import sqlite3, sys, time
+try:
+    c = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True)
+    row = c.execute(
+        "SELECT "
+        " (SELECT MAX(ts) FROM messages WHERE role='user' AND session NOT LIKE 'group:%'),"
+        " (SELECT MAX(ts) FROM messages WHERE role='assistant' AND session NOT LIKE 'group:%')"
+    ).fetchone()
+    c.close()
+    u, a = float(row[0] or 0), float(row[1] or 0)
+    # 只拦「刚刚发的、还在生成」的那轮；几十分钟前的未回消息不该拖住部署。
+    print("busy" if u > a and time.time() - u < 120 else "idle")
+except Exception:
+    print("idle")
+PY
+)"
+    [ "$state" = "idle" ] && return 0
+    echo "release-switch: 当前一轮还在生成，等待收尾（已等 ${waited}s）" >&2
+    sleep 2
+    waited=$((waited + 2))
+  done
+  echo "release-switch: 等待超时，继续切换" >&2
+  return 0
+}
+
 prepare() {
   local rel="$1"
   [ -d "$rel" ] || die "release 不存在：$rel"
@@ -110,6 +142,7 @@ migrate() {
   local can="$1" id="$2" old_id leg
   old_id="legacy-$(cat "$NB/.deployed_sha" 2>/dev/null | tr -d "[:space:]" || echo unknown)"
   echo "release-switch: 首次迁移，旧版本保留为 $RELEASES/$old_id"
+  wait_idle 60
   "$SYSTEMCTL" stop nonebot 2>/dev/null || true
   mkdir -p "$SHARED" "$RELEASES" "$STATE"
   for n in data venv config.yaml .env; do
@@ -145,6 +178,7 @@ activate() {
   fi
   old_id="$(cat "$NB/.release_id" 2>/dev/null || echo old-$TS)"
   printf "%s\n" "$id" > "$can/.release_id"
+  wait_idle 60
   "$SYSTEMCTL" stop nonebot 2>/dev/null || true
   archive_live "$old_id"
   swap_in "$can"
@@ -166,6 +200,7 @@ rollback() {
   local id="$1" tgt="$RELEASES/$1" cur
   [ -d "$tgt" ] || die "回滚目标不存在：$tgt"
   cur="$(cat "$NB/.release_id" 2>/dev/null || echo current-$TS)"
+  wait_idle 60
   "$SYSTEMCTL" stop nonebot 2>/dev/null || true
   archive_live "$cur"
   swap_in "$tgt"
