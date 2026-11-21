@@ -11,8 +11,8 @@
 # 验证失败时生产目录、current 和版本标记都不动。
 #
 # 用法：
-#   $env:QQBOT_HOST = "ubuntu@150.158.90.134"
-#   $env:QQBOT_KEY  = "C:\Users\59911\Documents\Projects\qq-bot-v2\qq_bot.pem"
+#   $env:QQBOT_HOST = "ubuntu@<SERVER_IP>"
+#   $env:QQBOT_KEY  = "<HOME>\Documents\Projects\qq-bot-v2\qq_bot.pem"
 #   powershell -File ops/deploy.ps1
 #   powershell -File ops/deploy.ps1 -NoRestart      # 只构建+验证，不切换
 #   powershell -File ops/deploy.ps1 -SkipVerify     # 跳过候选验证（紧急回滚用）
