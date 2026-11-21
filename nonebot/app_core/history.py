@@ -101,12 +101,19 @@ class HistoryMixin:
     def _is_owner(self, session: str) -> bool:
         """这个会话是不是他本人。
 
-        没配 admin 时一律当本人——否则一上线整个机器人哑掉，比放开更糟。
+        **没配可信身份时不是本人**。以前这里 return True（"总比哑掉好"），
+        代价是配置被清空或新环境漏配时，任意会话都能拿到私有记忆和写工具——
+        权限边界不能靠"应该配了"来保证。现在缺省退成普通对话：
+        仍能聊，但没有主人记忆、没有写工具、不发主动消息；启动自检会报配置缺失。
         """
         ids = ([self.admin_uid] if self.admin_uid else []) + list(self.admin_ids)
         if not ids:
-            return True
+            return False
         return any(session == f"private:{uid}" for uid in ids)
+
+    def is_owner(self, session: str) -> bool:
+        """公共只读入口：插件判断会话身份用这个，不直接碰 _is_owner。"""
+        return self._is_owner(session)
 
     def private_session(self) -> str:
         uid = self.admin_uid or (self.admin_ids[0] if self.admin_ids else "")

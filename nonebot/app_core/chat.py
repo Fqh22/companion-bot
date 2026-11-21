@@ -151,7 +151,7 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         reply / reply_deadline / last_prompts   一轮回复 + 截止时间 + 上轮 prompt
         mood_event                              记一次「机器人自己经历的事」
         usage_stats / config_issues / config_status
-        persona / persona_for / reload_persona / private_session
+        persona / persona_for / reload_persona / private_session / is_owner
         memory / scheduler / pacing / proactive / files / group / chat
         caption_images                          图片描述
         record_assistant / append_to_message     主动消息写回历史 / 给消息补图注

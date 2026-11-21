@@ -23,8 +23,10 @@ mkdir -p "$STAGE/sqlite" "$STAGE/qqbot-data" "$STAGE/nonebot-data" "$STAGE/code"
 log "=== backup start ($TS) ==="
 
 # 1) SQLite 一致性导出
+# 缺库不能静默跳过：以前 continue 会产出「看着成功、其实没记忆」的备份，
+# 恢复演练再严也救不回来。必需库不在就直接失败。
 for db in /opt/qqbot-data/livingmemory.db /opt/nonebot/data/chat.db; do
-    [ -f "$db" ] || continue
+    [ -f "$db" ] || die "缺少必需库: $db"
     rel="${db#/opt/}"
     dst="$STAGE/sqlite/$rel"
     mkdir -p "$(dirname "$dst")"
@@ -61,6 +63,42 @@ cp /etc/systemd/system/nonebot.service "$STAGE/nonebot.service" 2>/dev/null || t
 # ops 下的入口脚本与运维 python 都进备份：云端有些 .py 只在机器上（export-*/probe-*），
 # 不备份的话重装/恢复演练会丢。日志、state、ops.env（含 webhook 等配置）明确不备。
 cp -a /opt/nonebot/ops/*.sh /opt/nonebot/ops/*.py "$STAGE/ops/" 2>/dev/null || true
+
+# 4.5) 写清单：恢复演练据此核对「文件全不全、行数对不对」。
+# 没有清单的备份只能证明「能解压」，证明不了「解出来是这份数据」。
+"$PY" - "$STAGE" <<'PY' || die "manifest"
+import hashlib, json, sqlite3, sys, time
+from pathlib import Path
+
+stage = Path(sys.argv[1])
+required = {
+    "sqlite/qqbot-data/livingmemory.db": ("documents", "memory_atoms"),
+    "sqlite/nonebot/data/chat.db": ("messages",),
+}
+files, dbs = {}, {}
+for p in sorted(stage.rglob("*")):
+    if p.is_file():
+        rel = p.relative_to(stage).as_posix()
+        blob = p.read_bytes()
+        files[rel] = {"sha256": hashlib.sha256(blob).hexdigest(), "bytes": len(blob)}
+for rel, tables in required.items():
+    p = stage / rel
+    if not p.is_file():
+        print("missing required db: " + rel, file=sys.stderr)
+        sys.exit(1)
+    c = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    counts = {}
+    for t in tables:
+        try:
+            counts[t] = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        except Exception:
+            counts[t] = -1
+    c.close()
+    dbs[rel] = {"tables": counts}
+(stage / "manifest.json").write_text(json.dumps({
+    "format": 2, "created_at": time.time(), "files": files, "dbs": dbs,
+}, ensure_ascii=False), encoding="utf-8")
+PY
 
 # 5) 打包 + 校验 + 轮转
 tar -C "$STAGE" -czf "$OUT" . || die "tar pack"

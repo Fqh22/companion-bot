@@ -162,31 +162,45 @@ def mark_answered(ids: list[int]) -> None:
     c.close()
 
 
-def mark_ignored(ids: list[int]) -> None:
-    """问了没回应：+1；到 IGNORE_LIMIT 就转 postponed，不再主动问。"""
+def mark_ignored(ids: list[int], conn: sqlite3.Connection | None = None) -> None:
+    """问了没回应：+1；到 IGNORE_LIMIT 就转 postponed，不再主动问。
+
+    `conn` 可传入一个已开事务的连接（主动消息用它把"这条发送已结算"和
+    "这条跟进 +1 没理"放进同一个事务，避免结算了却没加计数）。
+    """
     if not ids:
         return
-    init()
-    c = _conn()
-    with c:
-        c.executemany("UPDATE followups SET ignored=ignored+1 WHERE id=?",
-                      [(i,) for i in ids])
-        c.executemany(
-            "UPDATE followups SET status='postponed', status_ts=? "
-            "WHERE id=? AND ignored>=?",
-            [(time.time(), i, IGNORE_LIMIT) for i in ids])
-    c.close()
+    if conn is None:
+        init()
+    c = conn or _conn()
+    try:
+        with c:
+            c.executemany("UPDATE followups SET ignored=ignored+1 WHERE id=?",
+                          [(i,) for i in ids])
+            c.executemany(
+                "UPDATE followups SET status='postponed', status_ts=? "
+                "WHERE id=? AND ignored>=?",
+                [(time.time(), i, IGNORE_LIMIT) for i in ids])
+    finally:
+        if conn is None:
+            c.close()
 
 
 def set_status(fid: int, status: str) -> None:
-    """改状态。done / cancelled 同时把 done 派生标记置 1。"""
+    """改状态。done / cancelled 同时把 done 派生标记置 1。
+
+    **状态更新和回应时间一起落库**：他这次确实回应了（哪怕是"做了一半"），
+    只改状态不记 answered_ts，14 天冷却的判据就看不到这次回应。
+    """
     if status not in STATUSES:
         return
     init()
     c = _conn()
+    now = time.time()
     with c:
-        c.execute("UPDATE followups SET status=?, status_ts=?, done=? WHERE id=?",
-                  (status, time.time(), 1 if status in CLOSED else 0, fid))
+        c.execute("UPDATE followups SET status=?, status_ts=?, answered_ts=?, "
+                  "done=? WHERE id=?",
+                  (status, now, now, 1 if status in CLOSED else 0, fid))
     c.close()
 
 def mark_done(ids: list[int]) -> int:
@@ -195,8 +209,9 @@ def mark_done(ids: list[int]) -> int:
     init()
     c = _conn()
     with c:
-        c.executemany("UPDATE followups SET status='done', status_ts=?, done=1 WHERE id=?",
-                      [(time.time(), i) for i in ids])
+        c.executemany("UPDATE followups SET status='done', status_ts=?, answered_ts=?, "
+                      "done=1 WHERE id=?",
+                      [(time.time(), time.time(), i) for i in ids])
         n = c.total_changes
     c.close()
     return n
@@ -280,8 +295,9 @@ def confirm_pending(text: str, window_hours: float = 24) -> int:
     if rows:
         with c:
             c.executemany(
-                "UPDATE followups SET status='done', done=1, status_ts=? WHERE id=?",
-                [(time.time(), r[0]) for r in rows])
+                "UPDATE followups SET status='done', done=1, status_ts=?, answered_ts=? "
+                "WHERE id=?",
+                [(time.time(), time.time(), r[0]) for r in rows])
     c.close()
     return len(rows)
 

@@ -695,6 +695,7 @@ async def main() -> None:
         from app_core import llm as llm_mod
         from app_core import config as config_mod
         from app_core import share_tier as tier_mod
+        from app_core import seen as seen_mod
 
         # 分享轮档位：判的是「他给了多少授权」，不是内容类型
         _t_emo = tier_mod.judge("", "Q版卡通人物鼓脸生气")[0]

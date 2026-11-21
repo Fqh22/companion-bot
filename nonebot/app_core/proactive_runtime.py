@@ -36,7 +36,6 @@ class ProactiveRuntime:
         self.db = Path(db_path or paths.CHAT_DB)
         self.interval = float(interval)
         self.start_delay = float(start_delay)
-        self._ignored_key = ""        # 同一个 key 的「没理」只记一次
 
     # ---------- 存储 ----------
     def _conn(self) -> sqlite3.Connection:
@@ -55,6 +54,24 @@ class ProactiveRuntime:
                 "topic TEXT NOT NULL,"
                 "text TEXT NOT NULL)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_proactive_ts ON proactive_log(ts)")
+            # 逐次结算：每一条发送自己记「有没有被回应」，不再靠"最新一条 + 内存
+            # 去重"。旧版本重启后会把同一次发送重算一遍，同一话题发两次也只算一次。
+            _cols = {str(r[1]) for r in c.execute(
+                "PRAGMA table_info(proactive_log)").fetchall()}
+            _upgrading = "settled_ts" not in _cols
+            for ddl in (
+                "ALTER TABLE proactive_log ADD COLUMN settled_ts REAL NOT NULL DEFAULT 0",
+                "ALTER TABLE proactive_log ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
+            ):
+                try:
+                    c.execute(ddl)
+                except Exception:  # noqa: BLE001  列已存在
+                    pass
+            if _upgrading:
+                # 只迁移升级前就已经存在的行：旧逻辑已经结算过其中最新一条，
+                # 补记会把历史全部算成"没理"。升级之后新写入的行保持 0，
+                # 即使进程重启也会正常结算（不会被这条迁移吞掉）。
+                c.execute("UPDATE proactive_log SET settled_ts=ts")
         c.close()
 
     def _one(self, sql: str, args: tuple = ()) -> float:
@@ -167,37 +184,59 @@ class ProactiveRuntime:
 
     # ---------- 一轮 ----------
     def _settle_ignored(self) -> None:
-        """上一次追问超过 REPLY_WINDOW 还没有回复 → 记一次「没理」。
+        """逐条结算：每条超过 REPLY_WINDOW 的发送，各自判断有没有被回应。
 
         两次没理的跟进会被 mark_ignored 转成 postponed，不再主动问。
-        以前只要发了就只更新「问过的时间」，冷却 5 天后照问。
+        旧实现只看"最新一条 + 内存里的 key"：同一话题发两次只记一次没理，
+        进程重启后内存清空，同一次发送又被重算。现在状态落在 proactive_log
+        的 settled_ts 上，同一条只结算一次，重启不重计。
         """
         from app_core import followup as fu_mod
 
         try:
+            fu_mod.init()
+        except Exception as e:  # noqa: BLE001
+            log.debug("跟进表初始化失败：%s", e)
+            return
+        now = time.time()
+        cutoff = now - REPLY_WINDOW
+        try:
             c = self._conn()
-            row = c.execute(
-                "SELECT topic_key, ts FROM proactive_log WHERE topic_key LIKE 'fu:%' "
-                "ORDER BY ts DESC LIMIT 1").fetchone()
-            c.close()
-        except Exception:  # noqa: BLE001
-            return
-        if not row:
-            return
-        key, sent = str(row[0]), float(row[1])
-        if time.time() - sent < REPLY_WINDOW:      # 还没到判定时间
-            return
-        if self.last_user_ts() >= sent:            # 他回过了
-            return
-        if self._ignored_key == key:               # 同一条只记一次
+        except Exception as e:  # noqa: BLE001
+            log.debug("读取主动消息记录失败：%s", e)
             return
         try:
-            fu_mod.mark_ignored([int(key[3:])])
-        except Exception as e:  # noqa: BLE001
-            log.debug("标记未回应失败：%s", e)
-            return
-        self._ignored_key = key
-        log.info("[proactive] %s 发出去 %d 小时没回应，记一次「没理」", key, REPLY_WINDOW // 3600)
+            rows = c.execute(
+                "SELECT id, topic_key, ts FROM proactive_log "
+                "WHERE settled_ts=0 AND ts<=? ORDER BY ts ASC", (cutoff,)).fetchall()
+            for pid, key, sent in rows:
+                sent = float(sent)
+                try:
+                    if self.last_user_ts() >= sent:     # 他回过了
+                        with c:
+                            c.execute("UPDATE proactive_log SET settled_ts=? "
+                                      "WHERE id=? AND settled_ts=0", (now, pid))
+                        continue
+                    fid = None
+                    if str(key).startswith("fu:"):
+                        try:
+                            fid = int(str(key)[3:])
+                        except ValueError:
+                            fid = None
+                    with c:
+                        cur = c.execute(
+                            "UPDATE proactive_log SET settled_ts=?, ignored=1 "
+                            "WHERE id=? AND settled_ts=0", (now, pid))
+                        if cur.rowcount and fid is not None:
+                            # 同一个事务里加 "没理"：结算了却没加计数，等于白问。
+                            fu_mod.mark_ignored([fid], conn=c)
+                    if cur.rowcount:
+                        log.info("[proactive] %s 发出去 %d 小时没回应，记一次「没理」",
+                                 key, REPLY_WINDOW // 3600)
+                except Exception as e:  # noqa: BLE001
+                    log.debug("结算 %s 失败：%s", key, e)
+        finally:
+            c.close()
 
     async def tick(self) -> None:
         self.init()

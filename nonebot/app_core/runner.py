@@ -78,39 +78,65 @@ class TurnRunner:
         self.stall_seconds = max(1.0, float(stall_seconds))
         self.typing_interval = float(typing_interval)
 
-    async def _send_part(self, session: str, part) -> bool:
+    def _remaining(self, started: float) -> float:
+        """离整轮总上限还剩多少秒；用到 0 就停止一切平台调用。"""
+        return max(0.0, self.deadline - (time.monotonic() - started))
+
+    async def _send_part(self, session: str, part, timeout: float | None = None) -> bool:
         """按形式发送；平台不支持的形式在这里降级。
 
         降级放在 runner 而不是 adapter：adapter 只回答「我会什么」，
         「不会的时候退成什么」是编排层的决定，换平台不用重复写。
+        `timeout` 是硬上限：平台 API 挂住时，这一轮必须能收尾、锁必须释放，
+        下一轮才能继续。
         """
         forms = getattr(self.channel, "forms", None) or {"text", "image"}
         if part.form in forms:
             try:
-                ok = bool(await self.channel.send_part(session, part))
+                if timeout is None:
+                    ok = bool(await self.channel.send_part(session, part))
+                else:
+                    if timeout <= 0:
+                        return False
+                    ok = bool(await asyncio.wait_for(
+                        self.channel.send_part(session, part), timeout=timeout))
+            except asyncio.TimeoutError:
+                log.warning("[runner] 发送 %s 超时（>%.1fs）", part.form, timeout or 0)
+                ok = False
             except Exception as e:  # noqa: BLE001
                 log.warning("[runner] 发送 %s 失败：%s", part.form, e)
                 ok = False
             if not ok and part.form == "voice":
                 # 声明支持 != 发得出去：合成/上传失败时也要有文字兜底
                 return await self._send_part(
-                    session, _Part("text", "（这条本来是语音，这里发不了）"))
+                    session, _Part("text", "（这条本来是语音，这里发不了）"), timeout)
             return ok
         if part.form == "voice":
             # 语音发不了就说一句，不要静默丢——用户会以为漏回了
-            return await self._send_part(session, _Part("text", "（这条本来是语音，这里发不了）"))
+            return await self._send_part(
+                session, _Part("text", "（这条本来是语音，这里发不了）"), timeout)
         if part.form == "drawing" and "image" in forms:
             # 不支持「生成图」的通道就退化成普通图片（docs/02-系统与扩展.md 的降级规则）
-            return await self._send_part(session, _Part("image", part.content))
+            return await self._send_part(session, _Part("image", part.content), timeout)
         log.info("[runner] 通道 %s 不支持 %s，已跳过", getattr(self.channel, "caps", "?"), part.form)
         return False
+
+    async def _typing_safe(self, session: str, on: bool,
+                           timeout: float = 5.0) -> None:
+        """typing 是锦上添花：平台卡住时不能把它变成整轮的阻塞点。"""
+        try:
+            await asyncio.wait_for(self.channel.typing(session, on), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.debug("[runner] typing(%s) 超时", on)
+        except Exception as e:  # noqa: BLE001
+            log.debug("[runner] typing(%s) 失败：%s", on, e)
 
     async def _typing_loop(self, session: str) -> None:
         """心跳：第一次由 run() 立刻发，这里只负责续期。"""
         try:
             while True:
                 await asyncio.sleep(self.typing_interval)
-                await self.channel.typing(session, True)
+                await self._typing_safe(session, True)
         except asyncio.CancelledError:
             raise
 
@@ -130,7 +156,10 @@ class TurnRunner:
         wait = min(gap + pace, max(0.0, left - 4))    # 留 4 秒给发送和收尾
         if wait > 0:
             await asyncio.sleep(wait)
-        return await self._send_part(session, _Part("text", text))
+        # 发送本身也吃时限：平台 API 挂住时，到点就放弃，别把会话锁拖死。
+        return await self._send_part(
+            session, _Part("text", text),
+            timeout=self._remaining(started))
 
     async def _watchdog(self, handle: asyncio.Task, started: float,
                         state: dict) -> None:
@@ -163,17 +192,36 @@ class TurnRunner:
         async with lock:
             return await self._run(msg)
 
+    async def _remember_confirmed(self, msg: InboundMessage,
+                                  parts: list[str]) -> None:
+        """只把通道确认发出去的文本写回历史。
+
+        以前 commit 先入库、runner 后发送：发送失败时历史里也留着用户根本
+        没收到的话（流式尾段 / 非流式回复 / 超时补发都踩过）。现在历史由这里
+        统一写，parts 里每一段都是 on_sentence/_pace_and_send 返回成功的。
+        """
+        text = "".join(p for p in (parts or []) if p)
+        if not text.strip():
+            return
+        core = getattr(self.engine, "core", None)
+        remember = getattr(core, "remember_safe", None)
+        if remember is None:      # 测试里的 FakeEngine：没有历史库
+            return
+        try:
+            # shield：超时取消路径上也要把已发出的内容写完，否则下一轮失忆。
+            await asyncio.shield(remember(msg.session, "assistant", text))
+        except Exception as e:  # noqa: BLE001
+            log.warning("[runner] 写回已发送回复失败：%s", e)
+
     async def _run(self, msg: InboundMessage) -> OutboundMessage:
         """真正的一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
         started = time.monotonic()
         sent = 0
+        confirmed: list[str] = []      # 通道确认收到的段，历史只写这些
         # watchdog 与这句之间的共享状态：最后一次有进展的时刻、已发段数、收尾原因
         state = {"last_progress": started, "sent": 0, "why": ""}
         # 立刻亮一次「正在输入」：等 task 调度会晚一个 tick，短回复可能整个错过
-        try:
-            await self.channel.typing(msg.session, True)
-        except Exception:  # noqa: BLE001
-            pass
+        await self._typing_safe(msg.session, True)
         typing = asyncio.create_task(self._typing_loop(msg.session))
 
         async def on_sentence(part: str) -> bool:
@@ -188,42 +236,39 @@ class TurnRunner:
             if await self._pace_and_send(msg.session, part, sent, started):
                 sent += 1
                 state["sent"] = sent
+                confirmed.append(part)
                 return True
             return False
 
+        # defer_history：由这里在发送确认后写历史，引擎不先入库。
         handle = asyncio.create_task(
             self.engine.handle(msg, on_sentence=on_sentence, caps=self.caps,
-                               delivery_policy=self.policy))
+                               delivery_policy=self.policy, defer_history=True))
         watch = asyncio.create_task(self._watchdog(handle, started, state))
         try:
             try:
                 out = await handle
             except asyncio.CancelledError:
-                # watchdog 主动收尾 → 转成 TimeoutError，走通道插件原有的补记兜底；
+                # watchdog 主动收尾 → 转成 TimeoutError，走通道插件原有的补收尾；
                 # 外部取消（关服务等）时 state["why"] 为空，原样往上抛。
+                # 已发出的段由 finally 写回历史。
                 if state["why"]:
                     raise asyncio.TimeoutError() from None
                 raise
+            for part in out.chunks:
+                if await self._pace_and_send(msg.session, part, sent, started):
+                    sent += 1
+                    confirmed.append(part)
+            for path in out.images:
+                await self._send_part(msg.session, _Part("image", path),
+                                      timeout=self._remaining(started))
+            for path in out.audio:
+                await self._send_part(msg.session, _Part("voice", path),
+                                      timeout=self._remaining(started))
+            return out
         finally:
             watch.cancel()
             await asyncio.gather(watch, return_exceptions=True)
             typing.cancel()
-            try:
-                await self.channel.typing(msg.session, False)
-            except Exception:  # noqa: BLE001
-                pass
-
-        for i, part in enumerate(out.chunks):
-            if await self._pace_and_send(msg.session, part, sent + i, started):
-                sent += 1
-        for path in out.images:
-            try:
-                await self._send_part(msg.session, _Part("image", path))
-            except Exception:  # noqa: BLE001
-                pass
-        for path in out.audio:
-            try:
-                await self._send_part(msg.session, _Part("voice", path))
-            except Exception:  # noqa: BLE001
-                pass
-        return out
+            await self._typing_safe(msg.session, False)
+            await self._remember_confirmed(msg, confirmed)

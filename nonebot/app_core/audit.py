@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
 
 from app_core import paths as _paths
+
+log = logging.getLogger("qqbot.audit")
 
 AUDIT_LOG = _paths.DATA / "audit.jsonl"
 PENDING_FILE = _paths.DATA / "audit-pending.json"
@@ -145,43 +149,59 @@ def propose(name: str, args: dict, session: str = "",
     """登记一个待授权请求，返回 `/approve` 用的 id。"""
     p = Path(pending_path) if pending_path else PENDING_FILE
     now = time.time()
-    items = {k: v for k, v in _load_pending(p).items()
-             if now - float(v.get("ts") or 0) < PENDING_TTL}
-    rid = uuid.uuid4().hex[:8]
-    items[rid] = {"ts": now, "name": name,
-                  "args": dict(args or {}), "session": session}
-    # 只留最近 MAX_PENDING 条，别让没人管的请求一直堆着
-    items = dict(sorted(items.items(), key=lambda kv: -float(kv[1].get("ts") or 0))
-                 [:MAX_PENDING])
-    try:
+    # 与 decide 共用一把锁：并发 propose 会互相覆盖待授权条目。
+    with _DECIDE_LOCK:
+        items = {k: v for k, v in _load_pending(p).items()
+                 if now - float(v.get("ts") or 0) < PENDING_TTL}
+        rid = uuid.uuid4().hex[:8]
+        items[rid] = {"ts": now, "name": name,
+                      "args": dict(args or {}), "session": session}
+        # 只留最近 MAX_PENDING 条，别让没人管的请求一直堆着
+        items = dict(sorted(items.items(), key=lambda kv: -float(kv[1].get("ts") or 0))
+                     [:MAX_PENDING])
+        # 登记必须落盘成功才算数：落盘失败还返回 id，主人会拿到一个不存在的
+        # 授权号。让异常上抛，由 tools.execute 拒绝本次写操作。
         _write(p, json.dumps(items, ensure_ascii=False, indent=1))
-    except Exception:  # noqa: BLE001
-        pass
     record(name, target=target_of(name, args), actor="model", status="pending",
            request_id=rid, session=session, path=log_path)
     return rid
 
 
+# 同一进程内的批准串行：两个 /approve 同时读同一份 pending 再各自写回，
+# 后写的会覆盖先写的，两边都拿到可执行请求 → 同一 ID 执行两次。
+# 跨进程（配置面板等）不共享这把锁，但落盘仍是"先写后执行"的原子领取。
+_DECIDE_LOCK = threading.Lock()
+
+
 def decide(request_id: str, approved: bool, by: str = "",
            pending_path: Path | None = None,
            log_path: Path | None = None) -> dict | None:
-    """批准 / 拒绝；返回原来的请求（供调用方重放执行），过期或不存在的返回 None。"""
+    """批准 / 拒绝；返回原来的请求（供调用方重放执行），过期或不存在的返回 None。
+
+    **先原子领取再执行**：把请求从 pending 里删掉并落盘成功之后才返回 item。
+    落盘失败就返回 None——调用方不会执行；同一 ID 也不会因为"删失败但仍返回"
+    被重放。返回之后即使执行失败，请求也不会回到 pending（at-most-once）。
+    """
     p = Path(pending_path) if pending_path else PENDING_FILE
-    items = _load_pending(p)
-    item = items.pop(str(request_id or "").strip(), None)
-    if item is None:
-        return None
-    status = "approved" if approved else "denied"
-    if time.time() - float(item.get("ts") or 0) >= PENDING_TTL:
-        status = "expired"
-    try:
-        _write(p, json.dumps(items, ensure_ascii=False, indent=1))
-    except Exception:  # noqa: BLE001
-        pass
-    record(str(item.get("name") or ""), target=target_of(
-        str(item.get("name") or ""), item.get("args") or {}),
-        actor=by or "owner", status=status, request_id=str(request_id),
-        session=str(item.get("session") or ""), path=log_path)
+    rid = str(request_id or "").strip()
+    with _DECIDE_LOCK:
+        items = _load_pending(p)
+        item = items.pop(rid, None)
+        if item is None:
+            return None
+        status = "approved" if approved else "denied"
+        if time.time() - float(item.get("ts") or 0) >= PENDING_TTL:
+            status = "expired"
+        try:
+            _write(p, json.dumps(items, ensure_ascii=False, indent=1))
+        except Exception as e:  # noqa: BLE001
+            # 没删掉就不能执行：否则下次批准还能再执行一遍。
+            log.error("待授权记录落盘失败，拒绝执行 %s：%s", rid, e)
+            return None
+        record(str(item.get("name") or ""), target=target_of(
+            str(item.get("name") or ""), item.get("args") or {}),
+            actor=by or "owner", status=status, request_id=rid,
+            session=str(item.get("session") or ""), path=log_path)
     return item if status == "approved" else None
 
 

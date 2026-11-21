@@ -76,7 +76,8 @@ class Engine:
 
     async def handle(self, msg: InboundMessage, on_sentence=None,
                      caps: Capability | None = None,
-                     delivery_policy: DeliveryPolicy | None = None) -> OutboundMessage:
+                     delivery_policy: DeliveryPolicy | None = None,
+                     defer_history: bool = False) -> OutboundMessage:
         kwargs = {}
         if caps is not None:
             kwargs["caps"] = caps
@@ -84,5 +85,6 @@ class Engine:
             kwargs["delivery_policy"] = delivery_policy
         replies, images = await self.core.reply(
             msg.session, msg.text, list(msg.images) or None,
-            on_sentence=on_sentence, store_text=msg.store_text, **kwargs)
+            on_sentence=on_sentence, store_text=msg.store_text,
+            defer_history=defer_history, **kwargs)
         return OutboundMessage(chunks=list(replies or []), images=list(images or []))

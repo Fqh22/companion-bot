@@ -68,13 +68,27 @@ class FakeChannel:
             self.typing_off += 1
 
 
+class FakeCore:
+    """只记历史，验证「通道确认了才写」。"""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+
+    async def remember_safe(self, session: str, role: str, text: str) -> int:
+        self.lines.append(text)
+        return 1
+
+
 class FakeEngine:
-    def __init__(self, parts: list[str], out: OutboundMessage, delay: float = 0.0):
+    def __init__(self, parts: list[str], out: OutboundMessage, delay: float = 0.0,
+                 core: FakeCore | None = None):
         self.parts = parts
         self.out = out
         self.delay = delay
+        self.core = core
 
-    async def handle(self, msg, on_sentence=None, caps=None, delivery_policy=None):
+    async def handle(self, msg, on_sentence=None, caps=None, delivery_policy=None,
+                     defer_history=False):
         for p in self.parts:
             if on_sentence:
                 await on_sentence(p)
@@ -96,7 +110,8 @@ async def main() -> None:
 
     # 2. 超时抛 TimeoutError，且 typing 被关掉
     ch2 = FakeChannel()
-    eng2 = FakeEngine([], OutboundMessage(), delay=1.0)
+    # deadline 在 runner 里被夹到最少 1.0s；延迟必须长于它，否则是竞态。
+    eng2 = FakeEngine([], OutboundMessage(), delay=2.0)
     timed_out = False
     try:
         await TurnRunner(eng2, ch2, deadline=0.2).run(
@@ -150,7 +165,8 @@ async def main() -> None:
 
     # 6. 无进展超时（批次 2）：首句发出后卡住，按 stall 收尾，而不是等总上限
     class StallEngine(FakeEngine):
-        async def handle(self, msg, on_sentence=None, caps=None, delivery_policy=None):
+        async def handle(self, msg, on_sentence=None, caps=None, delivery_policy=None,
+                         defer_history=False):
             if on_sentence:
                 await on_sentence("第一句。")
             await asyncio.sleep(5)
@@ -185,6 +201,44 @@ async def main() -> None:
     r_def = TurnRunner(FakeEngine([], OutboundMessage()), FakeChannel())
     check("总上限默认放宽（不再是 45）", r_def.deadline >= 60, str(r_def.deadline))
     check("默认带无进展超时", r_def.stall_seconds > 0, str(r_def.stall_seconds))
+
+    # 9. 历史只写通道确认过的段：首段成功、尾段失败 → 只记首段
+    class FailTailChannel(FakeChannel):
+        async def send_text(self, session, text):
+            if text.startswith("首段"):
+                self.texts.append(text)
+                return True
+            return False
+
+    core9 = FakeCore()
+    eng9 = FakeEngine(["首段。"], OutboundMessage(chunks=["尾段。"]), core=core9)
+    await TurnRunner(eng9, FailTailChannel(), deadline=5).run(
+        InboundMessage(session="private:9", text="hi"))
+    check("首段成功尾段失败 → 历史只有首段", core9.lines == ["首段。"], str(core9.lines))
+
+    core10 = FakeCore()
+    await TurnRunner(FakeEngine(["全部。"], OutboundMessage(), core=core10),
+                     FailChannel(), deadline=5).run(
+        InboundMessage(session="private:10", text="hi"))
+    check("全部发送失败 → 一条历史都不写", core10.lines == [], str(core10.lines))
+
+    # 10. 平台发送挂死 → 到时限收尾，且会话锁释放，下一轮能继续
+    class HangChannel(FakeChannel):
+        async def send_text(self, session, text):
+            await asyncio.sleep(30)
+            return True
+
+    t0 = time.monotonic()
+    await TurnRunner(FakeEngine(["挂住。"], OutboundMessage(chunks=[])),
+                     HangChannel(), deadline=0.5).run(
+        InboundMessage(session="private:11", text="hi"))
+    check("平台发送挂死时本轮能收尾", time.monotonic() - t0 < 3,
+          f"{time.monotonic() - t0:.2f}s")
+    ch11 = FakeChannel()
+    await asyncio.wait_for(
+        TurnRunner(FakeEngine(["下一轮。"], OutboundMessage()), ch11, deadline=5).run(
+            InboundMessage(session="private:11", text="hi")), timeout=3)
+    check("挂死之后同会话下一轮能继续", ch11.texts == ["下一轮。"], str(ch11.texts))
 
     return report()
 

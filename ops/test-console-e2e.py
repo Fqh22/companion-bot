@@ -82,6 +82,8 @@ async def main():
     check("admin.identities 映射后是 owner", core._is_owner("private:c-test"))
     check("admin.identities 以外不是 owner", not core._is_owner("private:other"))
     check("private_session 用映射 ID", core.private_session() == "private:c-test")
+    core.admin_ids = []
+    check("空身份配置不默认放行", not core.is_owner("private:anyone"))
 
 
 if __name__ == "__main__":

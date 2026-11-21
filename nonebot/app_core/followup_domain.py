@@ -28,6 +28,31 @@ _RULE = re.compile(r"^(以后|每次|下次)|以后他让我|先搜索对比再�
 _ONE_OFF = re.compile(
     r"^(当天|今天|明天|后天|周[一二三四五六日]).{0,20}"
     r"(面试|考试|会议|体检|报到|开庭|航班|车次|复查)|^面试前")
+# 「裸状态回复」：整句就是回答，不夹带别的对象。
+# 只有这种短句才允许绑定到「最近问过的那条」；「我把饭做完了」虽然也有
+# 「做完了」，但说的是饭，不能拿去关掉数据库脚本那条待办。
+_BARE_REPLY = re.compile(
+    r"^(?:还?没(?:有|呢|弄)?|没呢|没有|不是|对|是|是的|嗯+|好|好的|行|可以|"
+    r"快了|快弄完了|快做完了|快好了|在弄|在做|做着|弄着呢|搞着呢|改着呢|"
+    r"做了一半|弄了一半|一半|刚开始|还在弄|有点进展|做了一部分|"
+    r"搞定了|完成了|做完了|弄完了|改完了|改好了|修完了|修好了|弄好了|"
+    r"答过了|处理过了|看过了|做过了|弄过了|交了|办完了|差不多了|"
+    r"延期了|推迟了|往后推|改天了?|暂时不|先不弄|算了|忘了|不记得|"
+    r"不弄了|不用了)$")
+# 明确指代「刚才那件事」的说法：允许把完成/部分进展绑定到最近问过的那条。
+# 「我把饭做完了」没有任何指代词，就不能认领数据库脚本那条。
+_DEICTIC = ("这件事", "那件事", "这个事", "那个事", "刚才", "之前", "已经",
+            "上面说的", "刚说的", "那个", "这个")
+
+
+def _bare_reply(text: str) -> bool:
+    t = (text or "").strip()
+    return 0 < len(t) <= 8 and bool(_BARE_REPLY.match(t))
+
+
+def _refers_to_asked(text: str) -> bool:
+    t = (text or "").strip()
+    return len(t) <= 20 and any(w in t for w in _DEICTIC)
 
 STATUSES = ("todo", "doing", "partial", "confirming", "done", "cancelled", "postponed")
 CLOSED = ("done", "cancelled")
@@ -86,25 +111,37 @@ def resolve_from(text: str, cands: list[tuple[int, str]],
     if len(t) < 2:
         return out
     forced = False
+    forced_id: int | None = None
     if not cands:
         la = last_asked
-        if la and (_signal_hit(t, DONE_SIGNALS) or _signal_hit(t, PARTIAL_SIGNALS)
+        if la:
+            hit = (_signal_hit(t, DONE_SIGNALS) or _signal_hit(t, PARTIAL_SIGNALS)
                    or _signal_hit(t, POSTPONE_SIGNALS) or _signal_hit(t, DROP_SIGNALS)
-                   or any(w in t for w in ("还没", "没呢", "没有", "忘了"))):
-            cands = [(la["id"], la["text"])]
-            forced = True
-        elif la and _overlap(la["text"], t) >= TOUCH_OVERLAP:
-            # 没命中任何信号词，但最近问过的那件事他确实在说 —— 记「回应过」
-            out["touched"] = [la["id"]]
-            return out
+                   or any(w in t for w in ("还没", "没呢", "没有", "忘了")))
+            ov = _overlap(la["text"], t)
+            # 绑定最近那条需要至少一个证据：内容重合，或者整句就是裸状态回复
+            # （「还没」「还在弄」）。只看"最近问过"会把无关的完成句也认领过去。
+            if hit and (ov >= TOUCH_OVERLAP or _bare_reply(t)
+                        or _refers_to_asked(t)):
+                cands = [(la["id"], la["text"])]
+                forced = True
+                forced_id = la["id"]
+            elif ov >= TOUCH_OVERLAP:
+                # 没命中任何信号词，但最近问过的那件事他确实在说 —— 记「回应过」
+                out["touched"] = [la["id"]]
+                return out
     if not cands:
         return out
     # 没有任何完成/延期/取消信号，但他确实聊到了这件事：只记「回应过」。
     # 这是「答过还问」的根治点——回应不等于办完，但也不该继续催。
     if not (_signal_hit(t, DONE_SIGNALS) or _signal_hit(t, PARTIAL_SIGNALS)
             or _signal_hit(t, POSTPONE_SIGNALS) or _signal_hit(t, DROP_SIGNALS)):
-        out["touched"] = [fid for fid, ftxt in cands
-                          if _overlap(ftxt, t) >= TOUCH_OVERLAP]
+        if forced_id is not None:
+            # 短答复（如「还没」）本来就和原句对不上字面，绑定的对象就是答案。
+            out["touched"] = [forced_id]
+        else:
+            out["touched"] = [fid for fid, ftxt in cands
+                              if _overlap(ftxt, t) >= TOUCH_OVERLAP]
         return out
     if _signal_hit(t, PARTIAL_SIGNALS):
         for fid, _ in cands:

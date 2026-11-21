@@ -34,6 +34,7 @@ from nonebot import get_driver, logger
 
 from app_core import asr, config, paths, tts
 from app_core.delivery import Capability
+from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
 
@@ -69,7 +70,8 @@ def _read_aloud_requested(text: str) -> bool:
 
 _client: "lark.Client | None" = None
 _loop: asyncio.AbstractEventLoop | None = None
-_seen: set[str] = set()
+# 有界去重：超过 500 条只淘汰最旧的，不再 clear() 连刚收到的 ID 一起清掉。
+_seen = BoundedSeen(500)
 _chat_of: dict[str, str] = {}
 _SAVE = paths.DATA / "files"
 # 主动消息要用 chat_id，但 `_chat_of` 以前只在内存里（重启就丢）。
@@ -414,12 +416,8 @@ async def _handle(data) -> None:
             logger.info(f"[feishu] 非主人消息忽略 open_id={open_id[:10]}")
             return
         mid = str(msg.message_id or "")
-        if mid and mid in _seen:
+        if mid and not _seen.add(mid):
             return
-        if mid:
-            _seen.add(mid)
-            if len(_seen) > 500:
-                _seen.clear()
 
         parsed = parse_content(msg.message_type, msg.content)
         text = str(parsed["text"] or "")
@@ -473,15 +471,15 @@ async def _handle(data) -> None:
             logger.error(f"[feishu] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） {session}")
             if ch.sent_text:
                 _tail = "这次想太久了，先说到这。"
-                # 已发文字要写回历史，否则下一轮它不知道自己说过什么
-                # （和 11-16 修的「副产物自知」是同一类问题）。
-                try:
-                    await core.record_assistant(
-                        session, "".join(ch.sent_text) + _tail, kind="text")
-                except Exception:  # noqa: BLE001
-                    pass
-                await asyncio.to_thread(
+                # 先发再记：发送失败时不能把这句写进历史。已发出的正文由
+                # runner 在超时路径上按确认结果写回，这里只补收尾。
+                sent_ok = await asyncio.to_thread(
                     _send_message, msg.chat_id, "text", {"text": _tail})
+                if sent_ok:
+                    try:
+                        await core.record_assistant(session, _tail, kind="text")
+                    except Exception:  # noqa: BLE001
+                        pass
             # 超时时 out 未赋值，下面第 469 行原本还会读 getattr(out, "images")，
             # 会二次抛 UnboundLocalError；发图/语音/画图也不该在超时后继续。
             return

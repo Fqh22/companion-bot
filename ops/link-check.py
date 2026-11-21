@@ -245,6 +245,10 @@ async def dynamic_checks(chat_mod) -> None:
     from nonebot.adapters.onebot.v11 import Message, MessageSegment, PrivateMessageEvent
     from app_core import pacing
 
+    # 这些用例测的是主人私聊链路：把 10001 配成主人。否则凌晨跑测试时
+    # 会被「非主人 0-8 点不回复」挡掉，失败原因和被测接线完全无关。
+    chat_mod.core.admin_uid = "10001"
+    chat_mod.core.admin_ids = []
     # 节奏会真的 sleep，测试里清零
     pacing.pace_seconds = lambda *a, **k: 0.0
     pacing.gap_seconds = lambda *a, **k: 0.0

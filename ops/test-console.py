@@ -23,12 +23,12 @@ from harness import check, report  # noqa: E402
 
 class FakeCore:
     async def reply(self, session, text, images=None, on_sentence=None,
-                    store_text=None):
+                    store_text=None, **kw):
         return ["收到", "第二句"], ["img.png"]
 
 
 class FakeEngine:
-    async def handle(self, msg, on_sentence=None):
+    async def handle(self, msg, on_sentence=None, **kw):
         return OutboundMessage(chunks=["假回复"], images=[])
 
 

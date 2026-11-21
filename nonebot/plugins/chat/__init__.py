@@ -208,8 +208,11 @@ class QQChannel:
 
     forms = {"text", "image", "voice", "drawing"}
 
-    def __init__(self) -> None:
+    def __init__(self, reply_to: str | None = None) -> None:
         self.sent: list[str] = []
+        # 引用回复要引用「本轮」那条消息：跟着实例走，不能放模块级字典。
+        # 放字典里会在拿会话锁之前就被下一条排队消息覆盖（同会话竞态）。
+        self.reply_to = str(reply_to or "") or None
         # 语音形态下先压住文字：voice / voice_then_text 时攒起来，等语音发完再处理
         self.defer_text = False
         self.buffered: list[str] = []
@@ -234,9 +237,7 @@ class QQChannel:
             self.sent.append(text)
             return True
         # 只有第一段带引用：后面几段接在它自己那条后面才对
-        reply_id = None
-        if QUOTE_REPLY and not self.sent:
-            reply_id = _current_event_id.get(session)
+        reply_id = self.reply_to if (QUOTE_REPLY and not self.sent) else None
         ok = await _send_text(text, reply_id=reply_id)
         if ok:
             self.sent.append(text)
@@ -277,11 +278,6 @@ class QQChannel:
         await _set_typing(session, on)
 
 
-# 引用回复要用「本轮用户消息的 id」，而 runner 只认 Channel 接口。
-# 用一个按会话存放的临时表传进去，避免把 QQ 的 event 概念泄进 app_core。
-_current_event_id: dict[str, str] = {}
-
-
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     prompt, stored = turn.compose()
     # 语音回复只在两种情况下发：他发语音，或者他明确要求。要在跑之前知道，
@@ -290,14 +286,13 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
     _read_aloud = _read_aloud_requested(prompt)
     _model_text = (_READ_ALOUD_DIRECTIVE + prompt) if _read_aloud else prompt
-    ch = QQChannel()
+    # 引用 ID 跟本轮实例走：下一条消息的 turn 再创建自己的 ch，互不覆盖。
+    ch = QQChannel(reply_to=turn.meta.get("event_id"))
     ch.defer_text = _want_voice and VOICE_REPLY_MODE != "text_then_voice"
     runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline,
                         stall_seconds=getattr(core, "reply_stall_seconds", 30))
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
-    if turn.meta.get("event_id"):
-        _current_event_id[sid] = str(turn.meta["event_id"])
     try:
         async with _lock(sid):
             msg = to_inbound(
@@ -339,19 +334,15 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         await core.mood_event("timeout")
         if ch.sent:
             _tail = "先说到这。"
-            # 用户已经看到这几句了，必须连收尾一起写回历史：否则下一轮它完全
-            # 不知道自己说过什么，summary 也会把这条用户消息当成"没人回过"。
-            try:
-                await core.remember_safe(sid, "assistant", "".join(ch.sent) + _tail)
-                logger.info(f"[chat] 超时补记已发出的 {len(''.join(ch.sent))} 字 + 收尾")
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"[chat] 超时补记失败：{e}")
-            # 原来这里什么都不发：半截回复没有结束感，还让用户「再说一遍」。
-            # 超时不是他的错，也不该把已经说过的话推翻重来。
+            # 顺序反过来：**先发**收尾，发成功了才写历史。以前先写后发，
+            # 发送失败时历史里就多了一句用户从没见过的「先说到这」。
+            # 已发出的正文由 runner 在超时路径上写回，这里只补收尾这一句。
             try:
                 await chat.finish(_tail)
-            except Exception:
-                pass
+                await core.remember_safe(sid, "assistant", _tail)
+                logger.info(f"[chat] 超时补记收尾（已发 {len(ch.sent)} 段）")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"[chat] 超时补发/补记失败：{e}")
         else:
             try:
                 await chat.finish("我这会儿有点卡，你再说一遍？")
@@ -363,8 +354,6 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             await chat.finish(f"出错了：{type(e).__name__}")
         except Exception:
             pass
-    finally:
-        _current_event_id.pop(sid, None)
 
 
 async def _caption_later(msg_id: int, paths: list[str]) -> None:
@@ -627,8 +616,9 @@ async def _handle(event: MessageEvent):
         "event_id": str(getattr(event, "message_id", "") or ""),
         "reply_to": str(getattr(_reply, "message_id", "") or "") or None,
     }
-    _admin = str((config.load().get("admin") or {}).get("user_id") or "0")
-    _owner = _admin in ("", "0") or str(event.user_id) == _admin
+    # 身份判定统一走 core（含 admin.identities 与平台映射）；缺省时不是主人。
+    # 以前这里把空 admin 当主人，等于绕过 core 的口径自己开了一道门。
+    _owner = core.is_owner(sid)
 
     # 外人版人格写着「0 点到 8 点不回复」。只对别人生效——主人半夜找它不该被晾着。
     if not _owner and core.relational.is_quiet_hour(datetime.now().hour):

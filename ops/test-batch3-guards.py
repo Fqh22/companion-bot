@@ -87,7 +87,7 @@ def export_checks() -> None:
     with tempfile.TemporaryDirectory(prefix="subject-guard-") as td:
         root = Path(td)
         src = make_sources(root / "src")
-        parts = es.collect(src, now=1700000000.0)
+        parts, report = es.collect(src, now=1700000000.0)
         out = root / "out"
         out.mkdir()
         for name, blob in parts.items():
@@ -126,6 +126,34 @@ def export_checks() -> None:
         (out / "relations.md").unlink()
         ok3, _ = es.verify(out)
         check("主体导出：缺分片会被校验抓到", not ok3)
+
+        # 反例：损坏的 SQLite 源不能产出「校验通过的空快照」。
+        bad_src = make_sources(root / "bad")
+        bad_src["mem_db"].write_bytes(b"this is not a sqlite database")
+        parts_b, report_b = es.collect(bad_src, now=1700000000.0)
+        manifest_b = json.loads(parts_b["manifest.json"].decode("utf-8"))
+        check("主体导出：损坏的 SQLite 源记为 failed",
+              report_b["sources"].get("mem_db") == "failed"
+              and bool(manifest_b.get("errors")), str(report_b["sources"]))
+        out_b = root / "out_bad"
+        out_b.mkdir()
+        for name, blob in parts_b.items():
+            (out_b / name).write_bytes(blob)
+        ok_b, _ = es.verify(out_b)
+        check("主体导出：损坏源生成的快照校验不通过", not ok_b)
+
+        # 空环境：所有源都缺 → 允许（missing），导出仍可校验通过。
+        empty = {k: root / "empty" / f"{k}.missing" for k in src}
+        parts_e, report_e = es.collect(empty, now=1700000000.0)
+        out_e = root / "out_empty"
+        out_e.mkdir()
+        for name, blob in parts_e.items():
+            (out_e / name).write_bytes(blob)
+        ok_e, err_e = es.verify(out_e)
+        check("主体导出：空环境（全 missing）可导出且校验通过",
+              ok_e and not report_e["errors"]
+              and all(v == "missing" for v in report_e["sources"].values()),
+              "; ".join(err_e))
 
 
 def observability_checks() -> None:

@@ -34,8 +34,8 @@ class ReplyMixin:
         issues: list[str] = []
         if not self.admin_uid and not self.admin_ids:
             issues.append(
-                "admin.user_id / admin.identities 未配置：所有人都会被当成本人"
-                "（可用全部工具、读已有记忆），但记忆不会写入、主动消息与定时推送全部发不出去。"
+                "admin.user_id / admin.identities 未配置：没有可信主人身份，"
+                "所有会话都按普通用户处理（无私有记忆、无写工具、不发主动消息）。"
                 "改 /opt/nonebot/config.yaml 后 systemctl restart nonebot")
         if not str(self.api or "").strip():
             issues.append("llm.api 为空：所有对话都会失败")
@@ -58,7 +58,7 @@ class ReplyMixin:
     def config_status(self) -> str:
         """一行配置状态，给 /ping 用。只报「有没有配」，不回显 QQ 号。"""
         if not self.admin_uid and not self.admin_ids:
-            return "⚠ admin.user_id / admin.identities 未配置（记忆不写入、主动消息不发）"
+            return "⚠ admin.user_id / admin.identities 未配置（普通对话模式：无记忆、无写工具、不主动发消息）"
         return f"管理员已配置 · 模型 {self.model} · 工具上限 {self.max_tool_rounds} 轮"
 
     def _sync_llm_db(self) -> None:
@@ -253,7 +253,8 @@ class ReplyMixin:
                     on_sentence=None,
                     store_text: str | None = None,
                     caps: Capability | None = None,
-                    delivery_policy: DeliveryPolicy | None = None) -> tuple[list[str], list[str]]:
+                    delivery_policy: DeliveryPolicy | None = None,
+                    defer_history: bool = False) -> tuple[list[str], list[str]]:
         """返回 (分段后的回复, 待发送的图片路径)。
 
         images：本轮用户发来的图片本地路径。只注入当前这轮，历史里只留文字标记。
@@ -261,13 +262,16 @@ class ReplyMixin:
         历史里存一份压缩摘要，否则每轮都要把 8000 字重新发一遍。
         on_sentence：传了就启用流式，收到完整句子立即回调；返回值为还没发出去的尾巴。
 
+        defer_history：为 True 时把 assistant 历史交给通道层，在每段发送确认后
+        再写（runner 用）。直接调用方保持旧行为：commit 里写。
+
         流水线四段：prepare 取上下文 → compose 拼 prompt → generate 调模型 →
         commit 收尾。拆分不改行为，只是把原来一个 356 行的局部作用域切开。
         """
         turn = await self._turn_prepare(session, user_text, images, store_text)
         await self._turn_compose(turn)
         await self._turn_generate(turn, on_sentence)
-        await self._turn_commit(turn, on_sentence)
+        await self._turn_commit(turn, on_sentence, defer_history=defer_history)
 
         def _plan(text: str) -> list[str]:
             policy = delivery_policy or DeliveryPolicy(max_chars=turn.seg_max)

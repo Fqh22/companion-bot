@@ -835,11 +835,19 @@ async def main() -> None:
 
     # ---------- F3. 主人隔离：别人能聊，但读不到我的库 ----------
     _saved_uid = core.admin_uid
+    _saved_ids = list(core.admin_ids)
+    # 四条路径：QQ 主人 / 普通用户 / 飞书等映射身份 / 空配置。
+    core.admin_ids = []
     core.admin_uid = "111"
-    check("主人判定：本人是 owner", core._is_owner("private:111"))
-    check("主人判定：别人不是 owner", not core._is_owner("private:222"))
+    check("主人判定：QQ 本人是 owner", core.is_owner("private:111"))
+    check("主人判定：普通用户不是 owner", not core.is_owner("private:222"))
+    core.admin_ids = ["c-feishu"]
+    check("主人判定：admin.identities 映射身份是 owner",
+          core.is_owner("private:c-feishu"))
+    core.admin_ids = []
     core.admin_uid = ""
-    check("没配 admin 时谁都是 owner（不然一上线全哑）", core._is_owner("private:999"))
+    check("主人判定：空配置不再默认放行（普通对话）",
+          not core.is_owner("private:999"))
     core.admin_uid = "111"
 
     _spied = []
@@ -905,6 +913,7 @@ async def main() -> None:
 
     core.memory.recall = _real_recall
     core.admin_uid = _saved_uid
+    core.admin_ids = _saved_ids
 
     # ---------- G. 模型全挂时降级不抛异常 ----------
     async def boom(*a, **kw):
@@ -2606,6 +2615,77 @@ async def main() -> None:
     _st = _con.execute("SELECT status, done FROM followups WHERE id=?", (_fidd,)).fetchone()
     _con.close()
     check("「忘了」标成已取消而不是完成", _st == ("cancelled", 1), str(_st))
+
+    # ---- 归因收窄：无关完成句不能关掉最近问过的那条；否定/部分进展要留痕 ----
+    followup_mod.add("把数据库脚本跑一遍", "memory", "doc-db")
+    _fid_db = _fid_of("把数据库脚本跑一遍")
+    followup_mod.mark_asked([_fid_db])
+    _unrel = followup_mod.resolve("我把饭做完了")
+    check("无关完成句不关闭最近追问",
+          _fid_db not in (_unrel.get("done") or [])
+          and _fid_db not in (_unrel.get("status") or {})
+          and _fid_db not in (_unrel.get("drop") or []), str(_unrel))
+
+    _neg2 = followup_mod.resolve("还没")
+    check("否定短答复绑定刚问过的那条",
+          _fid_db in (_neg2.get("touched") or []) and not _neg2.get("done"),
+          str(_neg2))
+    followup_mod.mark_answered(_neg2["touched"])
+    _c2 = sqlite3.connect(TMP / "chat.db")
+    _ans = _c2.execute("SELECT answered_ts FROM followups WHERE id=?",
+                       (_fid_db,)).fetchone()[0]
+    _c2.close()
+    check("否定短答复刷新了回应时间", float(_ans or 0) > 0, str(_ans))
+    check("回应后不再进追问候选",
+          _fid_db not in [x["id"] for x in followup_mod.due_for_asking(1000)],
+          str([x["text"] for x in followup_mod.due_for_asking(1000)][:3]))
+
+    _part2 = followup_mod.resolve("还在弄")
+    check("部分进展绑定刚问过的那条",
+          (_part2.get("status") or {}).get(_fid_db) == "partial", str(_part2))
+    followup_mod.apply(_part2)
+    _c2 = sqlite3.connect(TMP / "chat.db")
+    _row_p = _c2.execute("SELECT status, answered_ts FROM followups WHERE id=?",
+                         (_fid_db,)).fetchone()
+    _c2.close()
+    check("部分进展同时刷新回应时间",
+          _row_p[0] == "partial" and float(_row_p[1] or 0) > 0, str(_row_p))
+
+    # ---- 主动追问：每一条发送各自结算，重启不重计 ----
+    from app_core.proactive_runtime import ProactiveRuntime
+
+    class _PCore:
+        def private_session(self) -> str:
+            return "private:proactive-test"
+
+    followup_mod.add("测试主动追问结算", "memory", "doc-pro")
+    _fid_p = _fid_of("测试主动追问结算")
+    _pr = ProactiveRuntime(_PCore(), send=lambda t: True, db_path=TMP / "chat.db")
+    _pr.init()
+    _pc = sqlite3.connect(TMP / "chat.db")
+    _old = time.time() - 3 * 3600
+    with _pc:
+        _pc.executemany(
+            "INSERT INTO proactive_log(ts,topic_key,topic,text,settled_ts,ignored) "
+            "VALUES(?,?,?,?,0,0)",
+            [(_old, f"fu:{_fid_p}", "x", "y"),
+             (_old + 1, f"fu:{_fid_p}", "x", "y")])
+    _pc.close()
+    _pr._settle_ignored()
+    _pc = sqlite3.connect(TMP / "chat.db")
+    _row_i = _pc.execute("SELECT ignored, status FROM followups WHERE id=?",
+                         (_fid_p,)).fetchone()
+    _pc.close()
+    check("两次没回应各记一次（同一话题不合并）",
+          _row_i[0] == 2 and _row_i[1] == "postponed", str(_row_i))
+    _pr2 = ProactiveRuntime(_PCore(), send=lambda t: True, db_path=TMP / "chat.db")
+    _pr2.init()
+    _pr2._settle_ignored()
+    _pc = sqlite3.connect(TMP / "chat.db")
+    _row_i2 = _pc.execute("SELECT ignored FROM followups WHERE id=?",
+                          (_fid_p,)).fetchone()
+    _pc.close()
+    check("重启后同一次发送不重计", _row_i2[0] == 2, str(_row_i2))
 
     _cold = prompt_fresh.style_block("嗯", [], {}, [], burst=3,
                                      recent_user_lens=[1, 1, 2])

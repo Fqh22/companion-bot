@@ -201,7 +201,7 @@ PLUGIN_ALLOWED = frozenset({
     "chat", "group",                      # 宿主插件自己实例化 ChatCore / GroupCore
     "config", "paths", "pacing", "delivery", "message", "outbound",
     "engine", "runner", "turn", "files", "asr", "tts", "image_provider",
-    "kernel", "adapters",
+    "kernel", "adapters", "seen",       # seen：无 IO 的有界去重，事件入口共用
 })
 
 # 冻结存量：插件 -> 允许继续直接 import 的业务模块。

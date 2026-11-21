@@ -16,7 +16,8 @@ CONFIG_PATH = _paths.NB / "config.yaml"
 DEFAULTS = {
     "admin": {
         # 管理员 QQ。仓库里是占位 "0"，部署时在云端 config.yaml 填真实号。
-        # 留空或 "0" 的后果：记忆不写入、主动消息与定时推送发不出去。
+        # 留空或 "0" 的后果：没有可信主人身份，所有会话按普通用户处理
+        # （无私有记忆、无写工具、不发主动消息）。
         "user_id": "0",
         # 多入口管理员：QQ 继续用 user_id；console/其他平台登记到这里。
         # 例如 [{"platform": "console", "user_id": "local"}]

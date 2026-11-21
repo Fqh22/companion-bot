@@ -18,13 +18,15 @@ from app_core.chat_turn_base import POST_WRITE, log
 
 class CommitMixin:
 
-    async def _turn_commit(self, turn: Turn, on_sentence) -> None:
+    async def _turn_commit(self, turn: Turn, on_sentence,
+                           defer_history: bool = False) -> None:
         """收尾：落库 → 记忆 → 观测 → 发送收尾。四段顺序不能换。"""
         turn.stage = POST_WRITE
         await self._commit_write_user(turn)
         await self._commit_memory(turn)
         self._commit_observe(turn)
-        await self._commit_finalize(turn, on_sentence)
+        await self._commit_finalize(turn, on_sentence,
+                                    defer_history=defer_history)
 
     async def _commit_write_user(self, turn: Turn) -> None:
         """1/4 落库：本轮 user 消息（shield 住取消）、统计行、图注写回。"""
@@ -165,31 +167,48 @@ class CommitMixin:
             except Exception as e:  # noqa: BLE001
                 log.debug("事实检查记录失败：%s", e)
 
-    async def _commit_finalize(self, turn: Turn, on_sentence) -> None:
-        """4/4 收尾：剪建议 → 写历史 → 现实校验 → 后台纠正 → 排下一次总结。"""
+    async def _commit_finalize(self, turn: Turn, on_sentence,
+                               defer_history: bool = False) -> None:
+        """4/4 收尾：剪建议 → 写历史 → 现实校验 → 后台纠正 → 排下一次总结。
+
+        `defer_history=True`：由通道层（runner）在**发送确认后**写历史。
+        引擎这里只负责算"这一轮说了什么"，不再先入库后发送。
+        """
         # 事后硬剪只属于 rules 模式；model 模式让模型自己决定，不再二次加工。
         # **但他在征求意见时不剪**——「该不该/怎么办」的答案本身就是建议。
         _model_first = self._style_mode() == "model"
         _allow_advice = True if _model_first else prompt_mod.wants_advice(turn.user_text)
         if turn.streamed:
-            if turn.held and not _allow_advice:
-                # 扣住的这句一直没等到下一句，说明它就是结尾 —— 丢掉，除非后面还有尾巴
-                if not turn.buffer.strip():
+            # 扣住的这句一直没等到下一句：允许建议时发，不允许且后面没尾巴就丢。
+            _tail_ready = True
+            if turn.held:
+                _send_held = _allow_advice or bool(turn.buffer.strip())
+                if not _send_held:
                     log.info("[chat] 剪掉结尾建议（流式）：%s", turn.held[-40:])
                 else:
                     try:
-                        await on_sentence(turn.held)
-                        turn.sent_parts.append(turn.held)
+                        if await on_sentence(turn.held):
+                            turn.sent_parts.append(turn.held)
+                        else:
+                            # 没发出去：放回待发尾段，交给通道层重试；
+                            # 绝不能只因为"试过了"就写进历史。
+                            turn.buffer = turn.held + (turn.buffer or "")
+                            _tail_ready = False
                     except Exception as e:  # noqa: BLE001
                         log.debug("流式补发失败：%s", e)
+                        turn.buffer = turn.held + (turn.buffer or "")
+                        _tail_ready = False
                 turn.held = ""
-            elif turn.held:
+            # 尾段在收尾阶段发：仍在整轮 watchdog 的时限内，且返回值决定
+            # 它是否算"已发出"（历史只写确认过的部分）。
+            if _tail_ready and turn.buffer.strip():
+                _tail = turn.buffer
                 try:
-                    await on_sentence(turn.held)
-                    turn.sent_parts.append(turn.held)
+                    if await on_sentence(_tail):
+                        turn.sent_parts.append(_tail)
+                        turn.buffer = ""
                 except Exception as e:  # noqa: BLE001
-                    log.debug("流式补发失败：%s", e)
-                turn.held = ""
+                    log.debug("流式尾段发送失败：%s", e)
         elif not _model_first:
             try:
                 # 先去掉轻浮语气词，再剪结尾建议；顺序反了会把「哈哈，建议你…」剪歪
@@ -211,7 +230,12 @@ class CommitMixin:
         # 非流式用剪完建议、去掉语气词之后的文本。放在剪之后再写，否则历史里留着
         # 用户根本没看到的话，下一轮它会以为「我上面不是说过了」。
         if turn.streamed:
-            sent_text = "".join(turn.sent_parts) + (turn.buffer if turn.buffer.strip() else "")
+            # 通道层（defer_history）只算确认发出去的片段；没发出去的尾段交给
+            # runner 重试，不进历史。直接调用方（defer_history=False）保持旧语义：
+            # 回调可能不返回 bool，尾段仍按"将要发出"计入。
+            sent_text = "".join(turn.sent_parts)
+            if turn.buffer.strip() and not defer_history:
+                sent_text += turn.buffer
         else:
             sent_text = turn.text or turn.buffer
         # 工具轮：第一轮流式内容没成句、第二轮正文又是非流式时，上面会是空串。
@@ -241,6 +265,9 @@ class CommitMixin:
                         "buffer=%d text=%d meta=%s", turn.streamed,
                         len(turn.sent_parts), len(turn.buffer or ""),
                         len(turn.text or ""), turn.meta_leak)
+        elif defer_history:
+            # 通道层拿到每段的发送结果后写；这里不抢先入库。
+            pass
         elif not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
         # 当场纠正：命中信号 + 上一轮有回复，后台判断（不阻塞本轮）。

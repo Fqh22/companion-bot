@@ -6,10 +6,12 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -105,6 +107,65 @@ def audit_checks() -> None:
           audit.requires_approval("note_write", cfg={"tools": {"require_approval": True}})
           and not audit.requires_approval("kb_read", cfg={"tools": {"require_approval": True}}))
 
+    # 故障注入：审批系统坏掉时，写工具必须**不执行**（不能吞异常继续写）。
+    from app_core import tools
+
+    def _boom(*_a, **_k):
+        raise OSError("disk full")
+
+    called: list[int] = []
+
+    async def _fake_handler(core, args, images):
+        called.append(1)
+        return "写了"
+
+    _old_handler = tools.HANDLERS["note_write"]
+    _old_propose, _old_requires = audit.propose, audit.requires_approval
+    tools.HANDLERS["note_write"] = _fake_handler
+    try:
+        audit.requires_approval = lambda name, cfg=None: True
+        audit.propose = _boom
+        out = asyncio.run(tools.execute(None, "note_write", {"title": "x"}))
+        check("授权登记失败 → 写工具一次都没执行", called == [] and "没有执行" in out, out)
+
+        with tempfile.TemporaryDirectory(prefix="audit-claim-") as td2:
+            q = Path(td2)
+            pending2, log2 = q / "pending.json", q / "audit.jsonl"
+            pending2.write_text(json.dumps({
+                "rid": {"ts": time.time(), "name": "note_write",
+                        "args": {}, "session": ""}}), encoding="utf-8")
+            _old_write = audit._write
+            audit._write = _boom
+            try:
+                got = audit.decide("rid", True, pending_path=pending2, log_path=log2)
+            finally:
+                audit._write = _old_write
+            check("领取落盘失败 → 不返回可执行请求", got is None)
+            # 请求仍在盘上，但上一次没有执行；恢复后可以正常批准一次。
+            got2 = audit.decide("rid", True, pending_path=pending2, log_path=log2)
+            check("落盘恢复后只能批准一次",
+                  got2 is not None and audit.decide(
+                      "rid", True, pending_path=pending2, log_path=log2) is None)
+    finally:
+        tools.HANDLERS["note_write"] = _old_handler
+        audit.propose, audit.requires_approval = _old_propose, _old_requires
+
+
+def dedupe_checks() -> None:
+    from app_core.seen import BoundedSeen
+
+    seen = BoundedSeen(3)
+    check("有界去重：新 ID 返回 True", seen.add("a") and seen.add("b") and seen.add("c"))
+    check("有界去重：重复 ID 返回 False", not seen.add("a"))
+    # 第 4 个进来时淘汰最旧的 b；a 刚被访问过，应该留下。
+    seen.add("d")
+    check("有界去重：容量边界只淘汰最旧，不整体清空",
+          "a" in seen and "c" in seen and "d" in seen and "b" not in seen,
+          str(list(seen._items)))
+    check("有界去重：边界之后的重复仍被拦住",
+          not seen.add("a") and not seen.add("d"))
+    check("有界去重：空 ID 不参与去重", seen.add(""))
+
 
 def channel_checks() -> None:
     seen: list[str] = []
@@ -177,6 +238,7 @@ def wiring_checks() -> None:
 def main() -> None:
     voice_checks()
     audit_checks()
+    dedupe_checks()
     channel_checks()
     wiring_checks()
     if FAILS:

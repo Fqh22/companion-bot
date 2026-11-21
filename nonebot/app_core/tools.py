@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from app_core import diary, kb, learn, meme, remind, web, wiki
+from app_core import audit, diary, kb, learn, meme, remind, web, wiki
 
 log = logging.getLogger("qqbot.tools")
 
@@ -243,16 +243,23 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None,
             return f"外部工具暂时不可用：{e}"
     if handler is None:
         return f"未知工具：{name}"
-    try:
-        from app_core import audit
-        side = name in audit.SIDE_EFFECT_TOOLS
-        if side and not approved and audit.requires_approval(name):
-            rid = audit.propose(name, args)
+    side = name in audit.SIDE_EFFECT_TOOLS
+    if side and not approved:
+        # 授权门是权限边界，失败必须**关**：检查或登记任何一个失败，都当没批准。
+        # 以前这里把异常吞成 side=False，等于审批系统一出故障，写工具就绕开门执行。
+        try:
+            needs = audit.requires_approval(name)
+        except Exception as e:  # noqa: BLE001
+            log.warning("授权状态检查失败，写操作已阻止：%s", e)
+            return "授权状态检查失败，这次没有执行（见日志）。"
+        if needs:
+            try:
+                rid = audit.propose(name, args)
+            except Exception as e:  # noqa: BLE001
+                log.warning("授权登记失败，写操作已阻止：%s", e)
+                return "授权登记失败，这次没有执行（见日志）。"
             return (f"这一步会改动东西，需要你授权：发 /approve {rid}"
                     "（10 分钟内有效）。不发就不做。")
-    except Exception:  # noqa: BLE001  审计不可用时不阻断工具
-        audit = None
-        side = False
     # 工具使用埋点：只记名字和成败，用来决定「砍哪些」——没有数据时砍工具是拍脑袋。
     try:
         import json as _json
@@ -266,7 +273,7 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None,
     except Exception:  # noqa: BLE001
         pass
     def _log(status: str, after: str = "") -> None:
-        if not side or audit is None:
+        if not side:
             return
         try:
             audit.record(name, target=audit.target_of(name, args),

@@ -8,8 +8,15 @@
 关系 / 纠正 / 跟进——换引擎时仍然不知道「还缺什么」。
 
 本脚本把主体合成一个目录，并附 `manifest.json`（每份文件的 sha256 / 字节数
-/ 条目数）。所有 JSON 排序缩进、JSONL 每行一个稳定 dict、统一 LF，
-放进 git 后 `git diff` 能直接看出「人格哪句改了、哪条记忆被取代了」。
+/ 条目数，以及每个源的状态）。所有 JSON 排序缩进、JSONL 每行一个稳定 dict、
+统一 LF，放进 git 后 `git diff` 能直接看出「人格哪句改了、哪条记忆被取代了」。
+
+**区分三种情况**（这是 2026-11-22 修的点）：
+- `missing`：文件本来就没有（允许，显式记进清单）；
+- `empty`：文件在、结构可读、就是 0 条（允许，记 0）；
+- `failed`：文件在但读不了/损坏 → **导出失败**，清单里带 errors，
+  `--verify` 也不会通过。以前损坏的 SQLite 被折叠成空数据，导出一份
+  「校验通过的空快照」，等于把事故伪装成成功。
 
 **刻意不导出**：
 - 向量 blob：换 embedding 后本来就要重建（`ops/rebuild-vectors.py --apply`）；
@@ -34,6 +41,8 @@ from pathlib import Path
 
 FORMAT_VERSION = 1
 MEMORY_TABLES = ("documents", "memory_atoms")
+REQUIRED_PARTS = ("README.md", "persona.json", "memory.jsonl", "profile.json",
+                  "relations.md", "corrections.md", "followups.json")
 
 README = """# companion 主体快照 · format_version {version}
 
@@ -48,7 +57,7 @@ README = """# companion 主体快照 · format_version {version}
 | `relations.md` | 关系小抄（长期关系状态） |
 | `corrections.md` | 他纠正过的事 |
 | `followups.json` | 还没跟进的话头 |
-| `manifest.json` | 每份文件的 sha256 / 字节数 / 条目数，用于自校验 |
+| `manifest.json` | 每份文件的 sha256 / 字节数 / 条目数，源状态与导出错误 |
 
 **没导出的**：向量 blob（换 embedding 后跑 `ops/rebuild-vectors.py --apply` 重建）、
 `keys.json` / `config.yaml`（凭证与部署配置）、聊天历史（体量与隐私）。
@@ -96,57 +105,124 @@ def default_sources() -> dict[str, Path]:
     }
 
 
-def _read_table(path: Path, table: str) -> list[dict]:
+def _read_table(path: Path, table: str) -> tuple[list[dict], str]:
+    """返回 (rows, state)。state: ok / empty / missing / missing_table。
+
+    读失败**抛错**，不折叠成空列表——否则损坏的库和空库在清单里长得一样。
+    """
     if not path.exists():
-        return []
+        return [], "missing"
     try:
         c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         try:
             cur = c.execute("select * from %s" % table)
             cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, [_clean(v) for v in row]))
+            rows = [dict(zip(cols, [_clean(v) for v in row]))
                     for row in cur.fetchall()]
         finally:
             c.close()
-    except sqlite3.Error:
-        return []
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            return [], "missing_table"
+        raise RuntimeError(f"{path.name}.{table} 读取失败：{e}") from e
+    except sqlite3.Error as e:
+        raise RuntimeError(f"{path.name}.{table} 读取失败：{e}") from e
+    return rows, ("empty" if not rows else "ok")
 
 
-def _read_json(path: Path):
+def _read_json(path: Path) -> tuple[object, str]:
+    """返回 (value, state)。文件在但 JSON 坏了 → 抛错，不当成 missing。"""
     if not path.exists():
-        return None
+        return None, "missing"
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return None
+        return json.loads(path.read_text(encoding="utf-8")), "ok"
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"{path.name} 不是合法 JSON：{e}") from e
 
 
-def collect(sources: dict[str, Path], now: float | None = None) -> dict[str, bytes]:
-    """纯读，返回 `{文件名: 字节}`；路径全部可注入，便于往返测试。"""
+def _read_text(path: Path) -> tuple[bytes, str]:
+    if not path.exists():
+        return f"# missing: {path.name}\n".encode("utf-8"), "missing"
+    try:
+        return path.read_bytes(), "ok"
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"{path.name} 读取失败：{e}") from e
+
+
+def _combine(states: list[str]) -> str:
+    """一个源由多张表组成时的总状态：failed > ok > empty > missing。"""
+    if "failed" in states:
+        return "failed"
+    if "ok" in states:
+        return "ok"
+    if "empty" in states:
+        return "empty"
+    return "missing"
+
+
+def collect(sources: dict[str, Path], now: float | None = None) -> tuple[dict[str, bytes], dict]:
+    """纯读，返回 `(parts, report)`；路径全部可注入，便于往返测试。
+
+    report: {"counts": {...}, "sources": {...}, "errors": [...]}
+    """
     stamp = datetime.fromtimestamp(now or datetime.now().timestamp()).isoformat(timespec="seconds")
     parts: dict[str, bytes] = {}
     counts: dict[str, int] = {}
+    source_state: dict[str, str] = {}
+    errors: list[str] = []
 
-    persona = _read_json(sources["persona"])
-    parts["persona.json"] = _dumps(persona if persona is not None else {"missing": True})
+    try:
+        persona, st = _read_json(sources["persona"])
+        source_state["persona"] = st
+        parts["persona.json"] = _dumps(persona if st != "missing" else {"missing": True})
+    except Exception as e:  # noqa: BLE001
+        source_state["persona"] = "failed"
+        errors.append(str(e))
+        parts["persona.json"] = _dumps({"error": str(e)})
 
     mem_lines: list[bytes] = []
+    mem_states: list[str] = []
     for table in MEMORY_TABLES:
-        rows = _read_table(sources["mem_db"], table)
+        try:
+            rows, st = _read_table(sources["mem_db"], table)
+        except Exception as e:  # noqa: BLE001
+            source_state["mem_db"] = "failed"
+            errors.append(str(e))
+            rows, st = [], "failed"
+        mem_states.append(st)
         counts[table] = len(rows)
         for r in rows:
             mem_lines.append(_line({"_table": table, **r}))
+    if source_state.get("mem_db") != "failed":
+        source_state["mem_db"] = _combine(mem_states)
     parts["memory.jsonl"] = b"".join(mem_lines)
 
-    profile = _read_json(sources["profile"])
-    parts["profile.json"] = _dumps(profile if profile is not None else {"missing": True})
+    try:
+        profile, st = _read_json(sources["profile"])
+        source_state["profile"] = st
+        parts["profile.json"] = _dumps(profile if st != "missing" else {"missing": True})
+    except Exception as e:  # noqa: BLE001
+        source_state["profile"] = "failed"
+        errors.append(str(e))
+        parts["profile.json"] = _dumps({"error": str(e)})
 
     for key, name in (("relations", "relations.md"), ("corrections", "corrections.md")):
-        p = sources[key]
-        parts[name] = (p.read_bytes() if p.exists()
-                       else f"# missing: {p.name}\n".encode("utf-8"))
+        try:
+            blob, st = _read_text(sources[key])
+            source_state[key] = st
+        except Exception as e:  # noqa: BLE001
+            source_state[key] = "failed"
+            errors.append(str(e))
+            blob = f"# error: {sources[key].name}\n".encode("utf-8")
+        parts[name] = blob
 
-    follows = _read_table(sources["chat_db"], "followups")
+    try:
+        follows, st = _read_table(sources["chat_db"], "followups")
+        source_state["chat_db"] = st
+    except Exception as e:  # noqa: BLE001
+        follows, st = [], "failed"
+        source_state["chat_db"] = "failed"
+        errors.append(str(e))
     counts["followups"] = len(follows)
     parts["followups.json"] = _dumps(follows)
 
@@ -156,13 +232,15 @@ def collect(sources: dict[str, Path], now: float | None = None) -> dict[str, byt
         "format_version": FORMAT_VERSION,
         "exported_at": stamp,
         "counts": counts,
+        "sources": source_state,
+        "errors": errors,
         "parts": {
             name: {"sha256": hashlib.sha256(blob).hexdigest(), "bytes": len(blob)}
             for name, blob in sorted(parts.items())
         },
     }
     parts["manifest.json"] = _dumps(manifest)
-    return parts
+    return parts, {"counts": counts, "sources": source_state, "errors": errors}
 
 
 def verify(directory: Path) -> tuple[bool, list[str]]:
@@ -177,7 +255,18 @@ def verify(directory: Path) -> tuple[bool, list[str]]:
         return False, [f"manifest.json 不可解析：{e}"]
     if manifest.get("format_version") != FORMAT_VERSION:
         errors.append(f"format_version 不匹配：{manifest.get('format_version')}")
-    for name, meta in (manifest.get("parts") or {}).items():
+    # 导出时源读失败 → 这份快照不可信，不管文件本身多完整。
+    src_errors = manifest.get("errors") or []
+    if src_errors:
+        errors.append("导出时源读取失败：" + "；".join(map(str, src_errors))[:300])
+    for key, st in (manifest.get("sources") or {}).items():
+        if st == "failed":
+            errors.append(f"源 {key} 读取失败")
+    parts_meta = manifest.get("parts") or {}
+    for name in REQUIRED_PARTS:
+        if name not in parts_meta:
+            errors.append(f"清单缺分片：{name}")
+    for name, meta in parts_meta.items():
         p = directory / name
         if not p.exists():
             errors.append(f"缺文件：{name}")
@@ -203,6 +292,21 @@ def verify(directory: Path) -> tuple[bool, list[str]]:
                     errors.append(f"{name}:{i} 缺 _table")
                 elif row["_table"] == "documents" and not row.get("doc_id"):
                     errors.append(f"{name}:{i} documents 行缺 doc_id")
+    # 条目数要和实际内容对得上：空快照即使清单自洽，也不能冒充「有数据」。
+    counts = manifest.get("counts") or {}
+    if "memory.jsonl" in parts_meta and "documents" in counts and "memory_atoms" in counts:
+        n_lines = len((directory / "memory.jsonl").read_text(
+            encoding="utf-8").splitlines())
+        want = int(counts.get("documents") or 0) + int(counts.get("memory_atoms") or 0)
+        if n_lines != want:
+            errors.append(f"memory.jsonl 行数 {n_lines} != 清单计数 {want}")
+    if "followups.json" in parts_meta and "followups" in counts:
+        try:
+            got = json.loads((directory / "followups.json").read_text(encoding="utf-8"))
+            if not isinstance(got, list) or len(got) != int(counts.get("followups") or 0):
+                errors.append("followups.json 条数与清单计数不符")
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"followups.json 不可解析：{e}")
     return (not errors), errors
 
 
@@ -222,18 +326,19 @@ def main() -> int:
               else f"=== 校验失败：{len(errors)} 项 ===")
         return 0 if ok else 1
 
-    parts = collect(default_sources())
+    parts, report = collect(default_sources())
     target = args.out / ("subject-" + datetime.now().strftime("%Y%m%d-%H%M%S"))
     target.mkdir(parents=True, exist_ok=True)
     for name, blob in parts.items():
         (target / name).write_bytes(blob)
     ok, errors = verify(target)
-    if not ok:
-        for e in errors:
-            print("FAIL " + e)
+    for e in errors:
+        print("FAIL " + e)
+    if not ok or report["errors"]:
+        print("=== 导出失败：源有读取错误，快照不可当作有效备份 ===")
         return 1
-    counts = json.loads(parts["manifest.json"])["counts"]
-    print(f"ok: {target} | {len(parts)} files | counts={counts}")
+    print(f"ok: {target} | {len(parts)} files | counts={report['counts']} "
+          f"| sources={report['sources']}")
     return 0
 
 

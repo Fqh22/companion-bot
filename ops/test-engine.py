@@ -17,7 +17,8 @@ class FakeCore:
         self.calls = []
 
     async def reply(self, session, text, images=None, on_sentence=None,
-                    store_text=None, caps=None, delivery_policy=None):
+                    store_text=None, caps=None, delivery_policy=None,
+                    defer_history=False):
         self.calls.append((session, text, images, store_text, caps, delivery_policy))
         if on_sentence:
             await on_sentence("第一句")
