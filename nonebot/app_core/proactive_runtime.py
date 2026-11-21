@@ -102,10 +102,16 @@ class ProactiveRuntime:
             return ""
 
     def last_user_ts(self) -> float:
+        """主人最近一条消息的时间；没有可信主人会话时返回 0。
+
+        不能回退成「所有用户的最新消息」：那会把陌生人当活跃信号，
+        让频控和回应率被无关会话带偏。
+        """
         s = self._session()
-        if s:
-            return self._one("SELECT MAX(ts) FROM messages WHERE role='user' AND session=?", (s,))
-        return self._one("SELECT MAX(ts) FROM messages WHERE role='user'")
+        if not s:
+            return 0.0
+        return self._one(
+            "SELECT MAX(ts) FROM messages WHERE role='user' AND session=?", (s,))
 
     def recent_topics(self, days: float = TOPIC_COOLDOWN_DAYS) -> set[str]:
         try:
@@ -128,18 +134,15 @@ class ProactiveRuntime:
                 c.close()
                 return None
             s = self._session()
-            if s:
-                replied = c.execute(
-                    "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
-                    " SELECT 1 FROM messages m WHERE m.role='user' AND m.session=?"
-                    " AND m.ts > p.ts AND m.ts < p.ts + ?)",
-                    (since, s, REPLY_WINDOW)).fetchone()
-            else:
-                replied = c.execute(
-                    "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
-                    " SELECT 1 FROM messages m WHERE m.role='user'"
-                    " AND m.ts > p.ts AND m.ts < p.ts + ?)",
-                    (since, REPLY_WINDOW)).fetchone()
+            if not s:
+                # 没有可信主人会话：不统计「所有用户」，直接判样本不足。
+                c.close()
+                return None
+            replied = c.execute(
+                "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
+                " SELECT 1 FROM messages m WHERE m.role='user' AND m.session=?"
+                " AND m.ts > p.ts AND m.ts < p.ts + ?)",
+                (since, s, REPLY_WINDOW)).fetchone()
             c.close()
             return float(replied[0] or 0) / sent
         except Exception:  # noqa: BLE001
@@ -193,6 +196,12 @@ class ProactiveRuntime:
         """
         from app_core import followup as fu_mod
 
+        session = self._session()
+        if not session:
+            # 没有可信主人会话：无法判断"他回没回"，也不能拿所有用户的消息
+            # 顶替。保留未结算状态，等身份配好后再算。
+            log.info("[proactive] 没有可信主人会话，跳过未回应结算")
+            return
         try:
             fu_mod.init()
         except Exception as e:  # noqa: BLE001
@@ -212,7 +221,14 @@ class ProactiveRuntime:
             for pid, key, sent in rows:
                 sent = float(sent)
                 try:
-                    if self.last_user_ts() >= sent:     # 他回过了
+                    # 与 reply_rate 同一口径：只看「发送后 REPLY_WINDOW 内」
+                    # 的用户消息。停机后补结算时，窗口外的一句回复不能
+                    # 把多条旧追问一起免掉。
+                    replied = c.execute(
+                        "SELECT 1 FROM messages WHERE role='user' AND session=?"
+                        " AND ts>? AND ts<? LIMIT 1",
+                        (session, sent, sent + REPLY_WINDOW)).fetchone()
+                    if replied:
                         with c:
                             c.execute("UPDATE proactive_log SET settled_ts=? "
                                       "WHERE id=? AND settled_ts=0", (now, pid))
@@ -240,6 +256,11 @@ class ProactiveRuntime:
 
     async def tick(self) -> None:
         self.init()
+        if not self._session():
+            # 连主人都没有可信会话时，不评估、不统计、不发；否则会把
+            # 「所有用户的消息」当成他的活跃信号。
+            log.info("[proactive] 没有可信主人会话，跳过本轮")
+            return
         try:
             self._settle_ignored()
         except Exception as e:  # noqa: BLE001

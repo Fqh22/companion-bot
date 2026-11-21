@@ -169,7 +169,7 @@ case "$bk" in
 esac
 
 # 可执行位：cron 与 systemd 直接执行 ops/*.sh，丢 x 位就整条链路静默停摆。
-noexec=$(find /opt/nonebot/ops -maxdepth 1 -name '*.sh' ! -perm -u+x -printf '%f ' 2>/dev/null)
+noexec=$(find -L /opt/nonebot/ops -maxdepth 1 -name '*.sh' ! -perm -u+x -printf '%f ' 2>/dev/null)
 [ -n "${noexec:-}" ] && probs+=("运维脚本丢失可执行位：$noexec")
 
 # 本地拉取：家里机器不是常开，靠登录时拉。sync-from-cloud.ps1 拉成功后会在

@@ -167,6 +167,48 @@ def dedupe_checks() -> None:
     check("有界去重：空 ID 不参与去重", seen.add(""))
 
 
+def outbound_checks() -> None:
+    from app_core import outbound
+
+    class _Audio:
+        def unlink(self, missing_ok: bool = False) -> None:
+            return None
+
+    def run_case(voice_ok: bool, text_ok: bool, mode: str = "voice"):
+        recorded: list[tuple[str, str]] = []
+        texts: list[str] = []
+
+        async def synth(seg):
+            return _Audio()
+
+        async def send_voice(path):
+            return voice_ok
+
+        async def send_text(text):
+            texts.append(text)
+            return text_ok
+
+        async def record(text, kind):
+            recorded.append((text, kind))
+
+        ok = asyncio.run(outbound.deliver_voice_reply(
+            buffered=["你好。", "再见。"], synth=synth, send_voice=send_voice,
+            send_text=send_text, record=record, mode=mode))
+        return ok, recorded, texts
+
+    ok, rec, texts = run_case(False, False)
+    check("语音/文字都失败 → 不写历史", not ok and rec == [], str(rec))
+    ok, rec, texts = run_case(True, False)
+    check("语音成功 → 历史写实际正文",
+          ok and rec == [("你好。再见。", "voice")] and texts == [], str(rec))
+    ok, rec, texts = run_case(False, True)
+    check("语音失败、文字兜底成功 → 历史写实际正文",
+          ok and rec == [("你好。再见。", "voice")] and len(texts) == 2, str(rec))
+    ok, rec, texts = run_case(True, True, mode="voice_then_text")
+    check("voice_then_text 不重复写历史",
+          ok and len(rec) == 1, f"rec={rec} texts={texts}")
+
+
 def channel_checks() -> None:
     seen: list[str] = []
 
@@ -239,6 +281,7 @@ def main() -> None:
     voice_checks()
     audit_checks()
     dedupe_checks()
+    outbound_checks()
     channel_checks()
     wiring_checks()
     if FAILS:

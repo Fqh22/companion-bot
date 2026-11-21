@@ -222,6 +222,22 @@ async def main() -> None:
         InboundMessage(session="private:10", text="hi"))
     check("全部发送失败 → 一条历史都不写", core10.lines == [], str(core10.lines))
 
+    # 9b. 图片投递结果要回填：失败不能算已发
+    class NoImageChannel(FakeChannel):
+        async def send_image(self, session, path):
+            return False
+
+    out_bad = OutboundMessage(images=["bad.png"])
+    await TurnRunner(FakeEngine([], out_bad), NoImageChannel(), deadline=5).run(
+        InboundMessage(session="private:img1", text="hi"))
+    check("图片发送失败 → images_sent 为空", out_bad.images_sent == [],
+          str(out_bad.images_sent))
+    out_ok = OutboundMessage(images=["ok.png"])
+    await TurnRunner(FakeEngine([], out_ok), FakeChannel(), deadline=5).run(
+        InboundMessage(session="private:img2", text="hi"))
+    check("图片发送成功 → images_sent 记录", out_ok.images_sent == ["ok.png"],
+          str(out_ok.images_sent))
+
     # 10. 平台发送挂死 → 到时限收尾，且会话锁释放，下一轮能继续
     class HangChannel(FakeChannel):
         async def send_text(self, session, text):

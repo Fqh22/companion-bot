@@ -260,11 +260,13 @@ class TurnRunner:
                     sent += 1
                     confirmed.append(part)
             for path in out.images:
-                await self._send_part(msg.session, _Part("image", path),
-                                      timeout=self._remaining(started))
+                if await self._send_part(msg.session, _Part("image", path),
+                                         timeout=self._remaining(started)):
+                    out.images_sent.append(path)
             for path in out.audio:
-                await self._send_part(msg.session, _Part("voice", path),
-                                      timeout=self._remaining(started))
+                if await self._send_part(msg.session, _Part("voice", path),
+                                         timeout=self._remaining(started)):
+                    out.audio_sent.append(path)
             return out
         finally:
             watch.cancel()

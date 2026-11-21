@@ -56,6 +56,10 @@ class OutboundMessage:
     chunks: list[str] = field(default_factory=list)
     images: list[str] = field(default_factory=list)
     audio: list[str] = field(default_factory=list)
+    # 实际投递成功的图片/语音：runner 逐项发送后回填。插件不能只看 images
+    # 非空就记「发了一张图」——发送失败时那是假的。
+    images_sent: list[str] = field(default_factory=list)
+    audio_sent: list[str] = field(default_factory=list)
 
     @property
     def parts(self) -> list:

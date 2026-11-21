@@ -259,16 +259,24 @@ def load_error() -> str:
 
 
 def owner_session() -> str:
-    """主人私聊的 session key；admin 未配置时返回空串。
+    """主人私聊的 session key；没有任何可信身份时返回空串。
 
     为什么集中在这里：日记 / 原文归档 / 周报指标 / 主动消息都要判断
     「这条消息是不是他的」。这个判断只能有一个来源——各模块自己 parse
     admin.user_id，迟早有一处漏掉，表现是陌生人的话混进他的日记。
+
+    解析顺序：admin.user_id（QQ / 共用会话）→ feishu.owner_open_id
+    （只配飞书时用平台会话）。两条都没配才返回空。
     """
-    admin = str((load().get("admin") or {}).get("user_id") or "").strip()
-    if not admin or admin == "0":
-        return ""
-    return f"private:{admin}"
+    cfg = load()
+    admin = str((cfg.get("admin") or {}).get("user_id") or "").strip()
+    if admin and admin != "0":
+        return f"private:{admin}"
+    fe = cfg.get("feishu") or {}
+    owner = str(fe.get("owner_open_id") or "").strip()
+    if fe.get("enabled") and owner:
+        return f"feishu:{owner}"
+    return ""
 
 
 def stale() -> bool:

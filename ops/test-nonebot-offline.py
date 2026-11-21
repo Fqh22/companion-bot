@@ -853,6 +853,10 @@ async def main() -> None:
           core.is_owner("feishu:ou_test"))
     check("主人判定：其他飞书会话不是 owner",
           not core.is_owner("feishu:ou_other"))
+    core.platform_owner_session = "feishu:ou_test"
+    check("private_session 仅平台主人时返回平台会话",
+          core.private_session() == "feishu:ou_test", core.private_session())
+    core.platform_owner_session = ""
     core.platform_owner_sessions = set()
     core.admin_uid = "111"
 
@@ -1871,6 +1875,14 @@ async def main() -> None:
           not any("admin.user_id" in m for m in core.config_issues()),
           str(core.config_issues())[:60])
     core.platform_owner_sessions = set()
+    _saved_cache = config_mod._cache
+    config_mod._cache = {**config_mod.load(),
+                         "admin": {"user_id": "0", "identities": []},
+                         "feishu": {"enabled": True, "owner_open_id": "ou_cfg"}}
+    check("config.owner_session 支持仅飞书主人",
+          config_mod.owner_session() == "feishu:ou_cfg",
+          config_mod.owner_session())
+    config_mod._cache = _saved_cache
     core.admin_uid = real_uid or "10001"
     check("admin 配了就不报警", not core.config_issues(), str(core.config_issues()))
 
@@ -2666,8 +2678,11 @@ async def main() -> None:
     from app_core.proactive_runtime import ProactiveRuntime
 
     class _PCore:
+        def __init__(self, session: str = "private:proactive-test") -> None:
+            self._session = session
+
         def private_session(self) -> str:
-            return "private:proactive-test"
+            return self._session
 
     followup_mod.add("测试主动追问结算", "memory", "doc-pro")
     _fid_p = _fid_of("测试主动追问结算")
@@ -2697,6 +2712,79 @@ async def main() -> None:
                           (_fid_p,)).fetchone()
     _pc.close()
     check("重启后同一次发送不重计", _row_i2[0] == 2, str(_row_i2))
+
+    # 结算与回应率同一口径：只看发送后 REPLY_WINDOW 内的回复
+    def _fu_id(text: str) -> int:
+        followup_mod.add(text, "memory", "doc-window")
+        return _fid_of(text)
+
+    def _add_send(fid: int, ts: float) -> None:
+        _c = sqlite3.connect(TMP / "chat.db")
+        with _c:
+            _c.execute(
+                "INSERT INTO proactive_log(ts,topic_key,topic,text,settled_ts,ignored) "
+                "VALUES(?,?,?,?,0,0)", (ts, f"fu:{fid}", "x", "y"))
+        _c.close()
+
+    def _add_user(ts: float, session: str = "private:proactive-test") -> None:
+        _c = sqlite3.connect(TMP / "chat.db")
+        with _c:
+            _c.execute("INSERT INTO messages(session,role,content,ts) VALUES(?,?,?,?)",
+                       (session, "user", "嗯", ts))
+        _c.close()
+
+    def _ignored(fid: int) -> int:
+        _c = sqlite3.connect(TMP / "chat.db")
+        _row = _c.execute("SELECT ignored FROM followups WHERE id=?", (fid,)).fetchone()
+        _c.close()
+        return int(_row[0] if _row else 0)
+
+    _now = time.time()
+    # 每个用例独立会话：共享会话会让上一条用例的回复落进下一条的窗口。
+    _fid_in = _fu_id("买牛奶的窗口内回复")
+    _add_send(_fid_in, _now - 3 * 3600)
+    _add_user(_now - 2 * 3600, "private:pr-in")
+    _pr3 = ProactiveRuntime(_PCore("private:pr-in"), send=lambda t: True,
+                            db_path=TMP / "chat.db")
+    _pr3.init()
+    _pr3._settle_ignored()
+    check("窗口内回复 → 不算没理", _ignored(_fid_in) == 0, str(_ignored(_fid_in)))
+
+    _fid_out = _fu_id("体检预约的窗口外回复")
+    _add_send(_fid_out, _now - 3 * 3600)
+    _add_user(_now - 60, "private:pr-out")   # 发送后约 3 小时，超出 2 小时窗口
+    _pr_out = ProactiveRuntime(_PCore("private:pr-out"), send=lambda t: True,
+                               db_path=TMP / "chat.db")
+    _pr_out.init()
+    _pr_out._settle_ignored()
+    check("窗口外回复 → 算没理", _ignored(_fid_out) == 1, str(_ignored(_fid_out)))
+
+    # 停机跨多个窗口：恢复后只有窗口外的一句回复，不能把两条旧追问一起免掉
+    _fid_down = _fu_id("交房租的停机跨窗口")
+    _add_send(_fid_down, _now - 6 * 3600)
+    _add_send(_fid_down, _now - 5 * 3600)
+    _add_user(_now - 120, "private:pr-down")
+    _pr_down = ProactiveRuntime(_PCore("private:pr-down"), send=lambda t: True,
+                                db_path=TMP / "chat.db")
+    _pr_down.init()
+    _pr_down._settle_ignored()
+    check("停机跨窗口：两条旧发送都记没理",
+          _ignored(_fid_down) == 2, str(_ignored(_fid_down)))
+
+    # 没有可信主人会话：不结算、不把陌生用户消息当回应/活跃
+    class _NoOwnerCore:
+        def private_session(self) -> str:
+            return ""
+
+    _fid_none = _fu_id("修打印机的无主会话")
+    _add_send(_fid_none, _now - 3 * 3600)
+    _pr4 = ProactiveRuntime(_NoOwnerCore(), send=lambda t: True, db_path=TMP / "chat.db")
+    _pr4.init()
+    _pr4._settle_ignored()
+    check("没有主人会话 → 不结算", _ignored(_fid_none) == 0, str(_ignored(_fid_none)))
+    check("没有主人会话 → 不拿所有用户当活跃",
+          _pr4.last_user_ts() == 0.0 and _pr4.reply_rate() is None,
+          f"{_pr4.last_user_ts()}/{_pr4.reply_rate()}")
 
     _cold = prompt_fresh.style_block("嗯", [], {}, [], burst=3,
                                      recent_user_lens=[1, 1, 2])

@@ -55,7 +55,9 @@ tar -C /opt/nonebot/data -cf - \
     --exclude='files' . | tar -C "$STAGE/nonebot-data" -xf - || die "tar nonebot-data"
 
 # 4) 配置与代码（不含 venv）
-tar -C /opt/nonebot -cf - \
+# -h：release 布局下 app_core/plugins/bot.py 是指向 current/... 的符号链接，
+# 不解引用会把「链接本身」打进备份，恢复出来是断链。
+tar -C /opt/nonebot -h -cf - \
     --exclude='venv' --exclude='__pycache__' --exclude='data' --exclude='ops' \
     bot.py .env config.yaml app_core plugins 2>/dev/null \
     | tar -C "$STAGE/code" -xf - || log "warn: code tar"

@@ -111,9 +111,16 @@ async def draw_later(*, ask: str, generate, cleanup, send_image: Sender,
 async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: Sender,
                               send_text: TextSender, record: Recorder | None = None,
                               mode: str = "voice", tag: str = "") -> bool:
-    """voice / voice_then_text 形态：先语音，按 mode 决定要不要再补文字。"""
+    """voice / voice_then_text 形态：先语音，按 mode 决定要不要再补文字。
+
+    这些文本在通道层只是**缓冲**（没有投递），所以历史必须等这里真正发出
+    语音或文字兜底后再写；两边都失败就一个字都不写。写的是实际说出口的
+    正文，不是「我用语音说了一遍」这种旁注。
+    """
     say = "".join(buffered).strip()
-    ok = False
+    if not say:
+        return False
+    voice_sent = False
     try:
         for seg in pacing.split_for_voice(say):
             audio = await synth(seg)
@@ -121,7 +128,7 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
                 continue
             try:
                 if await send_voice(str(audio)):
-                    ok = True
+                    voice_sent = True
             finally:
                 try:
                     audio.unlink(missing_ok=True)  # type: ignore[attr-defined]
@@ -129,13 +136,18 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
                     pass
     except Exception as e:  # noqa: BLE001
         log.warning("%s 语音发送失败，退回文字：%s", tag, e)
-    if ok:
-        await _safe_record(record, "（这句话我也用语音说了一遍）", "voice")
-    if not ok or mode == "voice_then_text":
+    text_sent = False
+    if not voice_sent or mode == "voice_then_text":
         for seg in buffered:
             try:
-                await send_text(seg)
+                if await send_text(seg):
+                    text_sent = True
             except Exception:  # noqa: BLE001
                 pass
-    log.info("%s voice_reply mode=%s ok=%s", tag, mode, ok)
+    ok = voice_sent or text_sent
+    if ok:
+        await _safe_record(record, say, "voice")
+    else:
+        log.warning("%s 语音与文字兜底都没发出去，不写历史", tag)
+    log.info("%s voice_reply mode=%s voice=%s text=%s", tag, mode, voice_sent, text_sent)
     return ok

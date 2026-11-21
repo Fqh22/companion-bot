@@ -119,8 +119,16 @@ class HistoryMixin:
         return self._is_owner(session)
 
     def private_session(self) -> str:
+        """主人会话的唯一解析入口（与 config.owner_session 口径一致）。
+
+        QQ / admin.identities 优先；只配飞书主人时退回平台会话
+        feishu:<open_id>。都没有时返回空串，调用方必须把它当成「没有可信
+        主人会话」而不是「查所有用户」。
+        """
         uid = self.admin_uid or (self.admin_ids[0] if self.admin_ids else "")
-        return f"private:{uid}" if uid else ""
+        if uid:
+            return f"private:{uid}"
+        return getattr(self, "platform_owner_session", "") or ""
 
     async def record_assistant(self, session: str, text: str, kind: str = "push") -> None:
         """把机器人**主动发出**的消息也写进历史。

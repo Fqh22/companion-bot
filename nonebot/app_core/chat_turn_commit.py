@@ -289,5 +289,7 @@ class CommitMixin:
                     self, turn.user_text, _prev, turn.rid, turn.session))
         except Exception:  # noqa: BLE001
             pass
-        if self.admin_uid and turn.session == f"private:{self.admin_uid}":
+        # 用统一的主人会话解析：只配飞书主人时也要触发总结，不能只看 QQ 号。
+        _owner_session = self.private_session()
+        if _owner_session and turn.session == _owner_session:
             self._schedule_summary(turn.session)

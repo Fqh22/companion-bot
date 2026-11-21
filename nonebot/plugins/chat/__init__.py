@@ -233,9 +233,10 @@ class QQChannel:
 
     async def send_text(self, session: str, text: str) -> bool:
         if self.defer_text:
+            # 只是「先收进缓冲」，还没投递。返回 False，调用方就不会把它
+            # 记成已发出；真正的历史由语音/文字兜底发送成功后写。
             self.buffered.append(text)
-            self.sent.append(text)
-            return True
+            return False
         # 只有第一段带引用：后面几段接在它自己那条后面才对
         reply_id = self.reply_to if (QUOTE_REPLY and not self.sent) else None
         ok = await _send_text(text, reply_id=reply_id)
@@ -309,8 +310,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
-        if getattr(out, "images", None):
-            # 工具发出去的表情包/图片也记一笔（正文里不一定提到）
+        if getattr(out, "images_sent", None):
+            # 只看**实际发成功**的图；发送失败时不能写「另外发了一张图」。
             try:
                 await core.record_assistant(
                     sid, "（另外发了一张图）", kind="image")

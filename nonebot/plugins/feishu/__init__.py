@@ -107,7 +107,11 @@ async def _send_proactive(text: str) -> bool:
     """
     if not _client or not OWNER or not (text or "").strip():
         return False
-    chat_id = _chat_of.get(f"feishu:{OWNER}") or _chat_of.get(OWNER)
+    # 与入站共用同一个会话解析：QQ+飞书共用 private:<QQ> 时，主动消息必须
+    # 写进那条会话，否则用户紧接着回复，模型读的历史里没有上一句。
+    session = config.owner_session() or f"feishu:{OWNER}"
+    chat_id = (_chat_of.get(session) or _chat_of.get(f"feishu:{OWNER}")
+               or _chat_of.get(OWNER))
     if not chat_id:
         logger.warning("[feishu] 还没有会话映射，主动消息跳过（需主人先发一条消息）")
         return False
@@ -115,7 +119,7 @@ async def _send_proactive(text: str) -> bool:
         _send_message, chat_id, "text", {"text": text})
     if ok:
         try:
-            await core.record_assistant(f"feishu:{OWNER}", text, "proactive")
+            await core.record_assistant(session, text, "proactive")
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[feishu] 主动消息写历史失败：{e}")
     return bool(ok)
@@ -295,9 +299,9 @@ class FeishuChannel:
         if not text:
             return False
         if self.defer_text:
+            # 缓冲 ≠ 已投递：返回 False，历史等语音/文字兜底真正发成功再写。
             self.buffered.append(text)
-            self.sent_text.append(text)
-            return True
+            return False
         ok = await asyncio.to_thread(
             _send_message, self.chat_id, "text", {"text": text[:MAX_CHARS]})
         if ok:
@@ -450,8 +454,11 @@ async def _handle(data) -> None:
 
         _read_aloud = _read_aloud_requested(text)
         _model_text = (_READ_ALOUD_DIRECTIVE + text) if _read_aloud else text
+        # 主人消息的会话由 config 统一解析；映射同时记平台键，主动消息
+        # 在共享会话和平台会话两种布局下都能找到 chat_id。
         session = config.owner_session() or f"feishu:{open_id}"
         _chat_of[session] = str(msg.chat_id)
+        _chat_of[f"feishu:{open_id}"] = str(msg.chat_id)
         # 主动消息要靠这份映射；落盘，重启后仍然找得到
         _save_chat_map()
         want_voice = voice or any(k in text for k in
@@ -483,7 +490,7 @@ async def _handle(data) -> None:
             # 超时时 out 未赋值，下面第 469 行原本还会读 getattr(out, "images")，
             # 会二次抛 UnboundLocalError；发图/语音/画图也不该在超时后继续。
             return
-        if getattr(out, "images", None):
+        if getattr(out, "images_sent", None):
             try:
                 await core.record_assistant(
                     session, "（另外发了一张图）", kind="image")
