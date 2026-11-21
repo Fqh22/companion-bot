@@ -1,54 +1,75 @@
 #!/usr/bin/env bash
-# release-switch.sh —— 版本发布目录的原子切换。
+# release-switch.sh —— 整目录原子切换发布版本。
 #
 # 布局：
-#   /opt/nonebot-releases/<release>/   每个版本完整代码（含 ops）
-#   /opt/nonebot/current -> ../nonebot-releases/<release>
-#   /opt/nonebot/app_core -> current/app_core  （其余顶层代码同）
-#   /opt/nonebot/.deployed_sha -> current/.deployed_sha
-#   /opt/nonebot/{data,venv,config.yaml,.env}  仍是真实文件，不随版本走
-#   /opt/nonebot-ops-state/            ops 日志 / state / ops.env 共享目录
+#   /opt/nonebot                     当前跑的那份完整发布（代码 + ops）
+#   /opt/nonebot-releases/<id>/       历史版本，可随时切回
+#   /opt/nonebot-shared/              data / venv / config.yaml / .env（不随版本走）
+#   /opt/nonebot-ops-state/           ops 日志 / state / ops.env（不随版本走）
 #
-# 这样切换 = 替换一个符号链接（rename，原子），不会出现半个版本；
-# 回滚 = 把 current 指回旧 release，新版本独有的文件天然不会被带回来。
+# /opt/nonebot 是真实目录，插件路径仍在它下面（NoneBot 用 resolve()
+# 算模块名，符号链接目录会算错）。切换用 renameat2(RENAME_EXCHANGE)
+# 一次交换两个目录；服务在交换前停、交换后启，不会出现新旧混合。
+# 每个版本在 releases/ 留一份硬链接快照，回滚后仍保留回滚目标。
 #
 # 用法（root）：
-#   release-switch.sh prepare <release-dir>   # 建 runtime 链接，供预检使用
-#   release-switch.sh activate <release-id>   # 首次会迁移旧目录，然后原子切换 + 重启
-#   release-switch.sh rollback <release-id>   # 切回旧 release + 重启
+#   release-switch.sh prepare <release-dir>
+#   release-switch.sh activate <release-dir> <release-id>
+#   release-switch.sh rollback <release-id>
 #   release-switch.sh status
 set -euo pipefail
 
 ROOT="${QQBOT_RELEASE_ROOT:-/opt}"
 NB="$ROOT/nonebot"
 RELEASES="$ROOT/nonebot-releases"
+SHARED="$ROOT/nonebot-shared"
 STATE="$ROOT/nonebot-ops-state"
 SYSTEMCTL="${QQBOT_SYSTEMCTL:-systemctl}"
 TS="$(date +%Y%m%d-%H%M%S)"
-ENTRIES="app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha"
-MIGRATING=0
-BAK=""
 
 die() { echo "release-switch: $*" >&2; exit 1; }
+trap '"$SYSTEMCTL" start nonebot 2>/dev/null || true' ERR
 
-runtime_globs() {
-  printf "%s\n" "$NB"/ops/*.log "$NB"/ops/*.state "$NB"/ops/ops.env "$NB"/ops/.local-pull-ts
+exchange() {
+  python3 - "$1" "$2" <<'PY'
+import ctypes, os, sys
+a, b = sys.argv[1].encode(), sys.argv[2].encode()
+libc = ctypes.CDLL(None, use_errno=True)
+try:
+    r = libc.renameat2(-100, a, -100, b, 2)
+except AttributeError:
+    r = libc.syscall(316, -100, a, -100, b, 2)
+if r != 0:
+    raise SystemExit('renameat2: ' + os.strerror(ctypes.get_errno()))
+PY
 }
 
-# 把旧目录里的 runtime 文件复制到共享 state（幂等）。
-seed_state() {
-  [ -d "$NB/ops" ] && [ ! -L "$NB/ops" ] || return 0
-  mkdir -p "$STATE"
-  for f in "$NB"/ops/*.log "$NB"/ops/*.state "$NB"/ops/ops.env "$NB"/ops/.local-pull-ts; do
-    [ -f "$f" ] || continue
-    b="$(basename "$f")"
-    [ -e "$STATE/$b" ] || cp -a "$f" "$STATE/$b"
+link_shared() {
+  local rel="$1" n
+  for n in data venv config.yaml .env; do
+    if [ -e "$SHARED/$n" ]; then
+      ln -sfn "$SHARED/$n" "$rel/$n"
+    elif [ -e "$NB/$n" ]; then
+      ln -sfn "$NB/$n" "$rel/$n"
+    fi
   done
+  return 0
 }
 
-# 把一个 release 的 ops runtime 文件指向共享 state。
+seed_state() {
+  local f b
+  mkdir -p "$STATE"
+  if [ -d "$NB/ops" ] && [ ! -L "$NB/ops" ]; then
+    for f in "$NB"/ops/*.log "$NB"/ops/*.state "$NB"/ops/ops.env "$NB"/ops/.local-pull-ts; do
+      [ -f "$f" ] || continue
+      b="$(basename "$f")"
+      [ -e "$STATE/$b" ] || cp -a "$f" "$STATE/$b"
+    done
+  fi
+}
+
 link_runtime() {
-  rel="$1"
+  local rel="$1" f n
   [ -d "$rel/ops" ] || return 0
   mkdir -p "$STATE"
   for f in "$STATE"/*.log "$STATE"/*.state; do
@@ -61,93 +82,107 @@ link_runtime() {
   return 0
 }
 
-restore_legacy() {
-  [ -n "$BAK" ] && [ -d "$BAK" ] || return 0
-  echo "release-switch: 迁移失败，恢复旧目录 $BAK" >&2
-  for e in $ENTRIES; do rm -f "$NB/$e"; done
-  for e in $ENTRIES; do [ -e "$BAK/$e" ] && mv "$BAK/$e" "$NB/$e"; done
-  "$SYSTEMCTL" start nonebot 2>/dev/null || true
-}
-trap 'if [ "$MIGRATING" = 1 ]; then restore_legacy; fi' ERR
-
 prepare() {
-  rel="$1"
+  local rel="$1"
   [ -d "$rel" ] || die "release 不存在：$rel"
-  seed_state
+  link_shared "$rel"
   link_runtime "$rel"
-  ln -sfn "$NB/venv" "$rel/venv"   # 只给 verify --code 借解释器
 }
 
-# 第一次从「散装目录」迁到 release 布局。会短暂停服务。
+archive_live() {
+  local aid="$1" dst="$RELEASES/$1"
+  if [ -e "$dst" ]; then return 0; fi
+  cp -al "$NB" "$dst"
+}
+
+swap_in() {
+  local can="$1" swap="$RELEASES/.swap-$TS-$$"
+  link_shared "$can"
+  link_runtime "$can"
+  cp -al "$can" "$swap"
+  exchange "$NB" "$swap"
+  rm -rf "$swap"
+}
+
 migrate() {
-  id="$1"; rel="$RELEASES/$id"
-  [ -d "$rel" ] || die "release 不存在：$rel"
-  seed_state
-  old_sha="$(cat "$NB/.deployed_sha" 2>/dev/null | tr -d "[:space:]" || true)"
-  leg="$RELEASES/legacy-${old_sha:-unknown}"
-  mkdir -p "$leg"
-  for e in $ENTRIES; do [ -e "$NB/$e" ] && cp -a "$NB/$e" "$leg/$e"; done
-  for f in "$leg"/ops/*.log "$leg"/ops/*.state "$leg"/ops/ops.env "$leg"/ops/.local-pull-ts; do
-    [ -f "$f" ] || continue
-    b="$(basename "$f")"
-    [ -e "$STATE/$b" ] || mv "$f" "$STATE/$b"
-  done
-  rm -f "$leg"/ops/*.log "$leg"/ops/*.state "$leg"/ops/ops.env "$leg"/ops/.local-pull-ts 2>/dev/null || true
-  link_runtime "$leg"
-  ln -sfn "$NB/venv" "$leg/venv"
-  printf "%s\n" "$old_sha" > "$leg/.deployed_sha"
-  echo "release-switch: 首次迁移，旧版本保留为 $leg"
-  MIGRATING=1
+  local can="$1" id="$2" old_id leg
+  old_id="legacy-$(cat "$NB/.deployed_sha" 2>/dev/null | tr -d "[:space:]" || echo unknown)"
+  echo "release-switch: 首次迁移，旧版本保留为 $RELEASES/$old_id"
   "$SYSTEMCTL" stop nonebot 2>/dev/null || true
-  BAK="$NB/legacy-$TS"
-  mkdir -p "$BAK"
-  for e in $ENTRIES; do [ -e "$NB/$e" ] && mv "$NB/$e" "$BAK/$e"; done
-  for e in $ENTRIES; do ln -sfn "current/$e" "$NB/$e"; done
-  ln -sfn "../nonebot-releases/$id" "$NB/.current.tmp"
-  mv -T "$NB/.current.tmp" "$NB/current"
-  "$SYSTEMCTL" start nonebot
-  MIGRATING=0
+  mkdir -p "$SHARED" "$RELEASES" "$STATE"
+  for n in data venv config.yaml .env; do
+    if [ -e "$NB/$n" ] && [ ! -L "$NB/$n" ]; then mv "$NB/$n" "$SHARED/$n"; fi
+  done
+  seed_state
+  printf "%s\n" "$old_id" > "$NB/.release_id"
+  link_shared "$NB"
+  link_runtime "$NB"
+  archive_live "$old_id"
+  printf "%s\n" "$id" > "$can/.release_id"
+  swap_in "$can"
+  if ! "$SYSTEMCTL" start nonebot; then
+    echo "release-switch: 迁移后启动失败，切回旧版本" >&2
+    swap_in "$RELEASES/$old_id"
+    "$SYSTEMCTL" start nonebot 2>/dev/null || true
+    die "迁移后服务启动失败"
+  fi
   sleep 3
-  "$SYSTEMCTL" is-active nonebot >/dev/null || die "迁移后服务未 active"
+  if ! "$SYSTEMCTL" is-active nonebot >/dev/null; then
+    swap_in "$RELEASES/$old_id"
+    "$SYSTEMCTL" start nonebot 2>/dev/null || true
+    die "迁移后服务未 active"
+  fi
 }
 
 activate() {
-  id="$1"; rel="$RELEASES/$id"
-  [ -d "$rel" ] || die "release 不存在：$rel"
-  if [ ! -L "$NB/current" ]; then
-    migrate "$id"
+  local can="$1" id="$2" old_id
+  [ -d "$can" ] || die "release 不存在：$can"
+  if [ ! -d "$SHARED" ] || { [ -e "$NB/data" ] && [ ! -L "$NB/data" ]; }; then
+    migrate "$can" "$id"
     return 0
   fi
-  link_runtime "$rel"
-  ln -sfn "../nonebot-releases/$id" "$NB/.current.tmp"
-  mv -T "$NB/.current.tmp" "$NB/current"
-  "$SYSTEMCTL" restart nonebot
+  old_id="$(cat "$NB/.release_id" 2>/dev/null || echo old-$TS)"
+  printf "%s\n" "$id" > "$can/.release_id"
+  "$SYSTEMCTL" stop nonebot 2>/dev/null || true
+  archive_live "$old_id"
+  swap_in "$can"
+  if ! "$SYSTEMCTL" start nonebot; then
+    swap_in "$RELEASES/$old_id"
+    "$SYSTEMCTL" start nonebot 2>/dev/null || true
+    die "新版本启动失败，已切回 $old_id"
+  fi
   sleep 3
-  "$SYSTEMCTL" is-active nonebot >/dev/null || die "切换后服务未 active（可 rollback）"
+  if ! "$SYSTEMCTL" is-active nonebot >/dev/null; then
+    swap_in "$RELEASES/$old_id"
+    "$SYSTEMCTL" start nonebot 2>/dev/null || true
+    die "新版本未 active，已切回 $old_id"
+  fi
+  echo "release-switch: 已切换到 $id（旧版本 $old_id 保留）"
 }
 
 rollback() {
-  id="$1"
-  [ -d "$RELEASES/$id" ] || die "回滚目标不存在：$RELEASES/$id"
-  [ -L "$NB/current" ] || die "当前还是散装布局，不能 rollback"
-  ln -sfn "../nonebot-releases/$id" "$NB/.current.tmp"
-  mv -T "$NB/.current.tmp" "$NB/current"
-  "$SYSTEMCTL" restart nonebot
+  local id="$1" tgt="$RELEASES/$1" cur
+  [ -d "$tgt" ] || die "回滚目标不存在：$tgt"
+  cur="$(cat "$NB/.release_id" 2>/dev/null || echo current-$TS)"
+  "$SYSTEMCTL" stop nonebot 2>/dev/null || true
+  archive_live "$cur"
+  swap_in "$tgt"
+  if ! "$SYSTEMCTL" start nonebot; then die "回滚后服务启动失败，旧当前版本在 $RELEASES/$cur"; fi
   sleep 3
-  "$SYSTEMCTL" is-active nonebot >/dev/null || die "回滚后服务未 active"
-  echo "release-switch: 已回滚到 $id"
+  if ! "$SYSTEMCTL" is-active nonebot >/dev/null; then die "回滚后服务未 active，旧当前版本在 $RELEASES/$cur"; fi
+  echo "release-switch: 已回滚到 $id（之前版本 $cur 保留）"
 }
 
 cmd="${1:-}"
 case "$cmd" in
   prepare) prepare "${2:?release-dir}" ;;
-  activate) activate "${2:?release-id}" ;;
+  activate) activate "${2:?release-dir}" "${3:?release-id}" ;;
   rollback) rollback "${2:?release-id}" ;;
   status)
-    echo "current=$(readlink "$NB/current" 2>/dev/null || echo none)"
+    echo "release=$(cat "$NB/.release_id" 2>/dev/null || echo unknown)"
     echo "deployed=$(cat "$NB/.deployed_sha" 2>/dev/null || echo none)"
     echo "releases:"; ls -1 "$RELEASES" 2>/dev/null | tail -10 || true
     ;;
-  -h|--help) sed -n "2,20p" "$0" | sed "s/^# \{0,1\}//" ;;
+  -h|--help) sed -n "2,18p" "$0" | sed "s/^# \{0,1\}//" ;;
   *) die "未知命令：$cmd" ;;
 esac

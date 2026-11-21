@@ -49,22 +49,19 @@ function Invoke-Remote([string]$Cmd) {
 $dirty = (git status --porcelain)
 if ($dirty) { Write-Host "WARN 工作区有未提交改动，部署的是 HEAD（$Sha），不是当前工作区文件" -ForegroundColor Yellow }
 
-$migrated = (@(& ssh @SshOpts $SshHost "if [ -L /opt/nonebot/current ]; then echo yes; fi")[0] -eq "yes")
-if ($migrated) {
-    $Prev = (Invoke-Remote "basename `$(readlink /opt/nonebot/current)").Trim()
-    $PrevRel = $Prev
+$nowRel = @(& ssh @SshOpts $SshHost "cat /opt/nonebot/.release_id 2>/dev/null")[0]
+if ($nowRel) { $nowRel = $nowRel.Trim() }
+if ($nowRel) {
+    $PrevRel = $nowRel
 } else {
-    $Prev = (Invoke-Remote "cat /opt/nonebot/.deployed_sha 2>/dev/null").Trim()
+    $Prev = @(& ssh @SshOpts $SshHost "cat /opt/nonebot/.deployed_sha 2>/dev/null")[0]
+    if ($Prev) { $Prev = $Prev.Trim() }
     if ($Prev) { $PrevRel = "legacy-$Prev" } else { $PrevRel = "legacy-unknown" }
 }
 $Rollback = "ssh $SshHost 'sudo -n bash /opt/nonebot/ops/release-switch.sh rollback $PrevRel'"
 
 Write-Host "== 1/7 云端旧版本快照（回滚点）"
-if ($migrated) {
-    Invoke-Remote "sudo -n mkdir -p /opt/backup; sudo -n tar czf /opt/backup/code-$Ts.tgz -C /opt/nonebot-releases $Prev; sudo -n ls -l /opt/backup/code-$Ts.tgz"
-} else {
-    Invoke-Remote "sudo -n mkdir -p /opt/backup; sudo -n tar czf /opt/backup/code-$Ts.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .deployed_sha; sudo -n ls -l /opt/backup/code-$Ts.tgz"
-}
+Invoke-Remote "sudo -n mkdir -p /opt/backup; sudo -n tar czf /opt/backup/code-$Ts.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha .release_id; sudo -n ls -l /opt/backup/code-$Ts.tgz"
 
 Write-Host "== 2/7 构建 release：$RelDir"
 Invoke-Remote "sudo -n rm -rf $RelDir; sudo -n mkdir -p $RelDir/ops"
@@ -80,6 +77,7 @@ if ($LASTEXITCODE -ne 0) { throw "scp nonebot.tar 失败" }
 if ($LASTEXITCODE -ne 0) { throw "scp ops.tar 失败" }
 Invoke-Remote "sudo -n tar -xf /tmp/nonebot-$Ts.tar -C $RelDir; sudo -n tar -xf /tmp/ops-$Ts.tar -C $RelDir/ops; sudo -n chmod +x $RelDir/ops/*.sh; sudo -n chown -R ubuntu:ubuntu $RelDir; sudo -n bash $RelDir/ops/release-switch.sh prepare $RelDir"
 Invoke-Remote "echo $Sha | sudo -n tee $RelDir/.deployed_sha > /dev/null"
+Invoke-Remote "echo $RelId | sudo -n tee $RelDir/.release_id > /dev/null"
 Invoke-Remote "rm -f /tmp/nonebot-$Ts.tar /tmp/ops-$Ts.tar"
 
 if (-not $SkipVerify) {
@@ -103,7 +101,7 @@ if ($NoRestart) {
 }
 
 Write-Host "== 4/7 原子切换 current → $RelId"
-Invoke-Remote "sudo -n bash $RelDir/ops/release-switch.sh activate $RelId"
+Invoke-Remote "sudo -n bash $RelDir/ops/release-switch.sh activate $RelDir $RelId"
 Invoke-Remote "echo deployed=`$(cat /opt/nonebot/.deployed_sha); systemctl is-active nonebot"
 
 Write-Host "== 5/7 重启后全量验证（五件套）"

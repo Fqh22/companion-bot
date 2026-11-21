@@ -43,23 +43,15 @@ REL_DIR="/opt/nonebot-releases/$REL_ID"
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "WARN 工作区有未提交改动，部署的是 HEAD（$SHA），不是当前工作区文件" >&2
 fi
-MIGRATED=0
-if "${SSH[@]}" "test -L /opt/nonebot/current" 2>/dev/null; then MIGRATED=1; fi
-if [ "$MIGRATED" = 1 ]; then
-  PREV="$("${SSH[@]}" "basename \$(readlink /opt/nonebot/current)" | tr -d "[:space:]")"
-  PREV_REL="$PREV"
-else
+PREV_REL="$("${SSH[@]}" "cat /opt/nonebot/.release_id 2>/dev/null" | tr -d "[:space:]" || true)"
+if [ -z "$PREV_REL" ]; then
   PREV="$("${SSH[@]}" "cat /opt/nonebot/.deployed_sha 2>/dev/null" | tr -d "[:space:]" || true)"
   PREV_REL="legacy-${PREV:-unknown}"
 fi
 ROLLBACK="ssh $HOST 'sudo -n bash /opt/nonebot/ops/release-switch.sh rollback $PREV_REL'"
 
 echo "== 1/7 云端旧版本快照（回滚点）"
-if [ "$MIGRATED" = 1 ]; then
-  "${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot-releases $PREV && sudo -n ls -l /opt/backup/code-$TS.tgz"
-else
-  "${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .deployed_sha && sudo -n ls -l /opt/backup/code-$TS.tgz"
-fi
+"${SSH[@]}" "sudo -n mkdir -p /opt/backup && sudo -n tar czf /opt/backup/code-$TS.tgz -C /opt/nonebot --ignore-failed-read app_core plugins adapters companion_core personas ops bot.py config.example.yaml requirements.txt README.md .env.example .deployed_sha .release_id && sudo -n ls -l /opt/backup/code-$TS.tgz"
 
 echo "== 2/7 构建 release：$REL_DIR"
 "${SSH[@]}" "sudo -n rm -rf '$REL_DIR' && sudo -n mkdir -p '$REL_DIR/ops'"
@@ -67,6 +59,7 @@ git archive HEAD:nonebot | "${SSH[@]}" "sudo -n tar -x -C '$REL_DIR'"
 git archive HEAD:ops | "${SSH[@]}" "sudo -n tar -x -C '$REL_DIR/ops'"
 "${SSH[@]}" "sudo -n chmod +x '$REL_DIR/ops/'*.sh && sudo -n chown -R ubuntu:ubuntu '$REL_DIR' && sudo -n bash '$REL_DIR/ops/release-switch.sh' prepare '$REL_DIR'"
 "${SSH[@]}" "echo '$SHA' | sudo -n tee '$REL_DIR/.deployed_sha' >/dev/null"
+"${SSH[@]}" "echo '$REL_ID' | sudo -n tee '$REL_DIR/.release_id' >/dev/null"
 
 if [ "$PRE_VERIFY" = 1 ]; then
   echo "== 3/7 release 内验证（--pre，不碰生产库、不发消息）"
@@ -86,7 +79,7 @@ if [ "$RESTART" = 0 ]; then
 fi
 
 echo "== 4/7 原子切换 current → $REL_ID"
-"${SSH[@]}" "sudo -n bash '$REL_DIR/ops/release-switch.sh' activate '$REL_ID'"
+"${SSH[@]}" "sudo -n bash '$REL_DIR/ops/release-switch.sh' activate '$REL_DIR' '$REL_ID'"
 "${SSH[@]}" 'echo deployed=$(cat /opt/nonebot/.deployed_sha); systemctl is-active nonebot'
 
 if [ "$POST_VERIFY" = 1 ]; then
