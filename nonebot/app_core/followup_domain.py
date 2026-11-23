@@ -68,6 +68,107 @@ DROP_SIGNALS = ("忘了", "忘记", "不记得", "算了", "不弄了", "不想�
                 "先放着", "再说吧", "不用了", "不搞了")
 NEGATIONS = ("没", "未", "别", "尚未", "不")
 AFFIRM = ("对", "是", "嗯", "没错", "是的", "对啊", "对的", "确实", "办完了", "是的呀")
+# 整句否定。必须先于「是」判断：「不是」里含「是」，不能当成肯定。
+NEGATE_EXACT = ("不是", "不对", "没有", "不行", "不能", "不可以", "没办法", "否", "不是这个", "不是这件")
+
+
+def strip_punct(text: str) -> str:
+    return (text or "").strip().strip("。！？!?~.…，,、 ")
+
+
+def is_negate(text: str) -> bool:
+    """整句或句首是否在否定。先看这个，再看肯定词。"""
+    t = strip_punct(text)
+    if not t:
+        return False
+    if t in NEGATE_EXACT or t.startswith(("不是", "不对", "不行", "不能", "不可以", "没办法")):
+        return True
+    return t in ("没", "不", "否")
+
+
+def is_affirm(text: str) -> bool:
+    """只认整句肯定。子串匹配会把「不是」当成「是」。"""
+    t = strip_punct(text)
+    if not t or len(t) > 8 or is_negate(t):
+        return False
+    return t in ("对", "是", "是的", "嗯", "嗯嗯", "没错", "对啊", "对的",
+                 "确实", "好", "好的", "行", "可以")
+
+
+def looks_like_question(text: str) -> bool:
+    t = text or ""
+    return any(x in t for x in ("？", "?", "吗", "能不能", "可不可以", "是不是", "有没有", "要不要"))
+
+
+def links_question(item_text: str, asked: str) -> bool:
+    """发出去的这句话是不是在问这条跟进。陈述句提到话题不算问过。"""
+    if not looks_like_question(asked):
+        return False
+    return (_overlap(item_text, asked) >= 0.45
+            or _overlap(asked, item_text) >= 0.45)
+
+
+def responds_to(item_text: str, question: str, user_text: str) -> bool:
+    """他这句是不是在接刚才那条提问。短答、带标点、同义算；换题不算。"""
+    t = strip_punct(user_text)
+    if not t:
+        return False
+    if is_affirm(t) or is_negate(t):
+        return True
+    # 短答对着刚问的那条。再长就得和提问或事项有字面重合，避免把换题当成回答。
+    if len(t) <= 8 and not looks_like_question(t):
+        return True
+    if (_overlap(item_text, t) >= TOUCH_OVERLAP
+            or _overlap(question or "", t) >= TOUCH_OVERLAP):
+        return True
+    return False
+
+
+_ABS_DATE = re.compile(r"(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})")
+_MD_DATE = re.compile(r"(?<!\d)(\d{1,2})月(\d{1,2})[日号]")
+_PLAN_WORD = ("签约", "面试", "报到", "入职", "开庭", "航班", "复查", "体检")
+
+
+def event_epoch(text: str, now: float | None = None) -> float | None:
+    """正文里的绝对日期。没有就返回 None。月日不带年份时用 now 的年份。"""
+    import datetime as _dt
+
+    t = text or ""
+    m = _ABS_DATE.search(t)
+    if m:
+        try:
+            d = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return _dt.datetime(d.year, d.month, d.day).timestamp()
+        except ValueError:
+            return None
+    m = _MD_DATE.search(t)
+    if not m:
+        return None
+    base = _dt.datetime.fromtimestamp(now if now is not None else __import__("time").time())
+    try:
+        d = _dt.date(base.year, int(m.group(1)), int(m.group(2)))
+    except ValueError:
+        return None
+    return _dt.datetime(d.year, d.month, d.day).timestamp()
+
+
+def expired_one_off(text: str, now: float | None = None) -> bool:
+    """已经过去的一次性计划。补录不能靠入库时间把它变成新话头。"""
+    import time as _time
+
+    t = text or ""
+    if not any(w in t for w in _PLAN_WORD) and not _ONE_OFF.search(t):
+        return False
+    when = event_epoch(t, now)
+    if when is None:
+        return False
+    clock = now if now is not None else _time.time()
+    return when < clock - 86400
+
+
+def fresh_basis(created: float, source_ts: float) -> float:
+    """新鲜度看他说这件事的时间，不看补录入库的时间。"""
+    return float(source_ts or 0) or float(created or 0)
 
 
 def askable(text: str) -> bool:

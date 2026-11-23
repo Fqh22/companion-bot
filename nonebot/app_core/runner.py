@@ -216,6 +216,9 @@ class TurnRunner:
         try:
             # shield：超时取消路径上也要把已发出的内容写完，否则下一轮失忆。
             await asyncio.shield(remember(msg.session, "assistant", text))
+            note = getattr(core, "note_followup_asked", None)
+            if note is not None:
+                note(text)
         except Exception as e:  # noqa: BLE001
             log.warning("[runner] 写回已发送回复失败：%s", e)
 

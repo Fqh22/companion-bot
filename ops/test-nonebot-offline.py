@@ -1207,6 +1207,52 @@ async def main() -> None:
           not any("搬家" in x["text"] for x in followup_mod.due_for_asking(1000)),
           str([x["text"] for x in followup_mod.due_for_asking(1000)][:3]))
 
+    # 普通回复问过、用户短答「不能」：主动选题必须跳过，不能再登记成首问。
+    followup_mod.add("短租能不能先签一个月", "memory", "doc-rent")
+    _rent = [x for x in followup_mod.due_for_asking(1000) if "短租" in x["text"]]
+    check("短租一开始在候选", bool(_rent))
+    followup_mod.note_asked("能不能先签一个月？")
+    _hit = followup_mod.attribute_reply(
+        "不能", last_assistant="能不能先签一个月？")
+    check("短答「不能」归到刚问的短租",
+          bool(_hit) and "短租" in (_hit or {}).get("text", ""), str(_hit))
+    if _hit:
+        followup_mod.mark_answered([_hit["id"]])
+    check("答过的短租不再进主动候选",
+          not any("短租" in x["text"] for x in followup_mod.due_for_asking(1000)))
+    _swap = followup_mod.attribute_reply(
+        "图片肯定是夸大了，不过户型差不多", last_assistant="能不能先签一个月？")
+    check("直接换题不算在接短租", not _swap, str(_swap))
+
+    # 「不是」不能因为含「是」关掉待确认，也不能一次关两条。
+    followup_mod.add("合同条款还没定", "memory", "doc-c1")
+    followup_mod.add("入住日期还没定", "memory", "doc-c2")
+    _cids = []
+    _dbc = sqlite3.connect(TMP / "chat.db")
+    for _name in ("合同条款还没定", "入住日期还没定"):
+        _row = _dbc.execute("SELECT id FROM followups WHERE text=?", (_name,)).fetchone()
+        _cids.append(int(_row[0]))
+        _dbc.execute(
+            "UPDATE followups SET status='confirming', status_ts=? WHERE id=?",
+            (time.time(), _row[0]))
+    _dbc.commit()
+    _dbc.close()
+    check("「不是」不关闭待确认", followup_mod.confirm_pending("不是") == 0)
+    check("「不是这个」不关闭待确认", followup_mod.confirm_pending("不是这个") == 0)
+    check("「嗯」只关最近一条", followup_mod.confirm_pending("嗯") == 1)
+    _dbc = sqlite3.connect(TMP / "chat.db")
+    _left = _dbc.execute(
+        "SELECT COUNT(*) FROM followups WHERE id IN (?,?) AND status='confirming'",
+        tuple(_cids)).fetchone()[0]
+    _dbc.close()
+    check("两条待确认不会被一句肯定一起关掉", _left == 1, str(_left))
+
+    # 22 天前的签约计划，补录不能靠入库时间变成新话头。
+    followup_mod.add("2026-11-01签约", "memory", "doc-sign",
+                     source_ts=time.time() - 22 * 86400)
+    check("过期签约不进主动候选",
+          not any("签约" in x["text"] for x in followup_mod.due_for_asking(1000)))
+
     # 问了两次没人理 → postponed，不再主动问
     followup_mod.add("体检预约", "memory", "doc-checkup")
     _id = [x["id"] for x in followup_mod.due_for_asking(1000) if "体检" in x["text"]][0]

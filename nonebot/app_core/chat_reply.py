@@ -276,6 +276,7 @@ class ReplyMixin:
         """
         # 用户消息要到生成结束后才落库。发布脚本若只看聊天库，会把这一轮当成已结束。
         inflight.mark(session)
+        inflight.note_inbound(session)
         try:
             turn = await self._turn_prepare(session, user_text, images, store_text)
             await self._turn_compose(turn)
@@ -287,10 +288,12 @@ class ReplyMixin:
                 return plan_delivery(text, policy, caps)
 
             if on_sentence and turn.streamed:
-                # 流式已经发出去的不再返回，只把没说完的尾巴交回去。
+                # 流式已经发出去的不再返回。失败段单独留着补发，不把全文再交回去。
                 # 工具轮可能第一轮没成句、第二轮正文是非流式：这时 sent_parts 和
                 # buffer 都是空的，正文在 turn.text 里，别把它吞了。
-                tail = _plan(turn.buffer) if turn.buffer.strip() else []
+                tail = list(getattr(turn, "failed_parts", None) or [])
+                if turn.buffer.strip():
+                    tail.extend(_plan(turn.buffer))
                 if not tail and not turn.sent_parts and (turn.text or "").strip():
                     tail = _plan(turn.text)
                 return tail, turn.ai_images

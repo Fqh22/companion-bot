@@ -238,6 +238,32 @@ def outbound_checks() -> None:
           not ok and spoken == "甲" * 300 and "乙" not in spoken and len(texts) == 1,
           f"ok={ok} rec={spoken[-20:]!r} texts={len(texts)}")
 
+    # 恰好 2400 字（8×300）可以只发语音；多一个字必须有文字出口，不能静默丢尾。
+    exact = "甲" * 2400
+    over = exact + "乙乙"
+    texts2: list[str] = []
+
+    async def synth_ok(seg):
+        return _Audio()
+
+    async def voice_ok(path):
+        return True
+
+    async def text_catch(text):
+        texts2.append(text)
+        return True
+
+    ok_exact = asyncio.run(outbound.deliver_voice_reply(
+        buffered=[exact], synth=synth_ok, send_voice=voice_ok,
+        send_text=text_catch, record=record_partial, mode="voice"))
+    check("语音刚好到上限不额外补文字", ok_exact and texts2 == [], str(texts2)[:40])
+    ok_over = asyncio.run(outbound.deliver_voice_reply(
+        buffered=[over], synth=synth_ok, send_voice=voice_ok,
+        send_text=text_catch, record=record_partial, mode="voice"))
+    check("语音超出上限的尾巴有文字出口",
+          ok_over and any("乙" in t for t in texts2),
+          str(texts2))
+
 
 def buffered_send_checks() -> None:
     """语音缓冲返回真值，引擎不要把同一句再发一遍；历史也不在这里写。"""

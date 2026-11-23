@@ -10,7 +10,8 @@ from app_core import textsim
 from app_core.followup_domain import (  # noqa: F401
     ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
     IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
-    NEAR_DUP, STATUSES, _overlap, askable, resolve_from,
+    NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis,
+    is_affirm, links_question, resolve_from, responds_to,
 )
 
 log = logging.getLogger("qqbot.followup")
@@ -49,6 +50,8 @@ def init() -> None:
             # 这件事是「什么时候说的」：created_ts 是入库时间，延迟总结时两者
             # 能差几天，主动消息里的「约 N 天前他说过」要用 source_ts。
             "ALTER TABLE followups ADD COLUMN source_ts REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN asked_msg_id INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN asked_text TEXT NOT NULL DEFAULT ''",
         ):
             try:
                 c.execute(ddl)
@@ -111,12 +114,18 @@ def add_many(items: list[str], source: str = "memory", ref_id: str = "",
             n += 1
     return n
 
+def _mentionable(text: str, created: float, source_ts: float, now: float) -> bool:
+    """主动选题和普通聊天注入共用：过期的一次性计划、补录的旧事都不算还能问。"""
+    if expired_one_off(text, now):
+        return False
+    return fresh_basis(created, source_ts) > now - ASK_MAX_AGE_DAYS * 86400
+
+
 def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list[dict]:
     """还没关闭、且距上次追问够久的事项。优先「从没问过」的。"""
     init()
     now = time.time()
     cutoff = now - cooldown_days * 86400
-    fresh = now - ASK_MAX_AGE_DAYS * 86400
     c = _conn()
     # 多取一些再按语义过滤：过滤在 Python 侧，SQL 先按时间/次数/冷却筛。
     # 排序改成「没问过的优先，新的优先」——原来的 created_ts ASC 会先翻最老的账。
@@ -126,27 +135,38 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
         "FROM followups "
         "WHERE done=0 AND status NOT IN ('confirming','postponed') "
         "AND (last_asked_ts=0 OR last_asked_ts < ?) "
-        "AND created_ts > ? AND ask_count < ? "
+        "AND ask_count < ? "
         "AND (answered_ts=0 OR last_asked_ts > answered_ts OR answered_ts < ?) "
         "ORDER BY ask_count ASC, created_ts DESC LIMIT ?",
-        (cutoff, fresh, ASK_MAX_TIMES, answer_cutoff,
-         max(limit * 3, limit))).fetchall()
+        (cutoff, ASK_MAX_TIMES, answer_cutoff,
+         max(limit * 6, limit))).fetchall()
     c.close()
-    out = [{"id": r[0], "text": r[1], "source": r[2],
-            "created": r[3], "asks": r[4], "status": r[5],
-            "source_ts": float(r[6] or 0)}
-           for r in rows if askable(r[1])]
+    out = []
+    for r in rows:
+        if not askable(r[1]):
+            continue
+        src = float(r[6] or 0)
+        if not _mentionable(r[1], float(r[3] or 0), src, now):
+            continue
+        out.append({"id": r[0], "text": r[1], "source": r[2],
+                    "created": r[3], "asks": r[4], "status": r[5],
+                    "source_ts": src})
     return out[:limit]
 
-def mark_asked(ids: list[int]) -> None:
+def mark_asked(ids: list[int], msg_id: int = 0, asked_text: str = "") -> None:
     if not ids:
         return
     init()
+    now = time.time()
     c = _conn()
     with c:
         c.executemany(
             "UPDATE followups SET last_asked_ts=?, ask_count=ask_count+1 WHERE id=?",
-            [(time.time(), i) for i in ids])
+            [(now, i) for i in ids])
+        if msg_id or asked_text:
+            c.executemany(
+                "UPDATE followups SET asked_msg_id=?, asked_text=? WHERE id=?",
+                [(int(msg_id or 0), (asked_text or "")[:MAX_TEXT], i) for i in ids])
     c.close()
 
 def mark_answered(ids: list[int]) -> None:
@@ -287,27 +307,28 @@ def apply(res: dict) -> int:
     return n
 
 def confirm_pending(text: str, window_hours: float = 24) -> int:
-    """上一轮问了「办完了吗」，这一轮用户说了「对/是/嗯」就关闭。
+    """上一轮问了「办完了吗」，这一轮整句是「对/是/嗯」才关掉**这一条**。
 
-    只在有 doing 状态、且刚被问过的行上生效，避免把随便一句「是的」当成确认。
+    「不是」里含「是」，不能当成肯定。两条同时待确认时，一句「嗯」只关最近那条。
     """
-    t = (text or "").strip()
-    if len(t) > 12 or not any(w in t for w in AFFIRM):
+    if not is_affirm(text):
         return 0
     init()
     cutoff = time.time() - window_hours * 3600
     c = _conn()
-    rows = c.execute(
-        "SELECT id FROM followups WHERE status='confirming' AND done=0 AND status_ts>=?",
-        (cutoff,)).fetchall()
-    if rows:
+    row = c.execute(
+        "SELECT id FROM followups WHERE status='confirming' AND done=0 AND status_ts>=? "
+        "ORDER BY status_ts DESC LIMIT 1",
+        (cutoff,)).fetchone()
+    if row:
+        now = time.time()
         with c:
-            c.executemany(
+            c.execute(
                 "UPDATE followups SET status='done', done=1, status_ts=?, answered_ts=? "
                 "WHERE id=?",
-                [(time.time(), time.time(), r[0]) for r in rows])
+                (now, now, row[0]))
     c.close()
-    return len(rows)
+    return 1 if row else 0
 
 def describe_statuses() -> dict:
     init()
@@ -367,22 +388,50 @@ def expire(max_age_days: float = MAX_AGE_DAYS, max_asks: int = MAX_ASKS,
             "cancelled": n_old + n_ask + n_over}
 
 def pending(limit: int = 10) -> list[dict]:
-    """最近、还值得提的未关闭事项（给聊天 prompt 用）。
-
-    以前只要 done=0 就塞进 prompt，机器人会在正常聊天里突然提
-    10 天前的旧账。这里和主动询问用同一道「新鲜 + 像他的待办」判据。
-    """
+    """还值得主动提起的未关闭事项。已回应、已搁置、过期计划不在这里。"""
     init()
-    fresh = time.time() - ASK_MAX_AGE_DAYS * 86400
+    now = time.time()
     c = _conn()
     rows = c.execute(
-        "SELECT id, text, source, ask_count, status FROM followups "
-        "WHERE done=0 AND created_ts > ? ORDER BY created_ts DESC LIMIT ?",
-        (fresh, max(limit * 3, limit))).fetchall()
+        "SELECT id, text, source, ask_count, status, created_ts, source_ts, "
+        "answered_ts FROM followups "
+        "WHERE done=0 AND status NOT IN ('postponed','confirming') "
+        "ORDER BY created_ts DESC LIMIT ?",
+        (max(limit * 6, limit),)).fetchall()
     c.close()
-    out = [{"id": r[0], "text": r[1], "source": r[2], "asks": r[3], "status": r[4]}
-           for r in rows if askable(r[1])]
+    out = []
+    for r in rows:
+        if not askable(r[1]):
+            continue
+        if float(r[7] or 0) > 0:
+            continue
+        if not _mentionable(r[1], float(r[5] or 0), float(r[6] or 0), now):
+            continue
+        out.append({"id": r[0], "text": r[1], "source": r[2], "asks": r[3],
+                    "status": r[4]})
     return out[:limit]
+
+
+def for_prompt(user_text: str, limit: int = 3) -> list[str]:
+    """普通回复注入：能问的只在聊到相关词时给；已回应/已搁置的带上状态，不当成没问过。"""
+    t = user_text or ""
+    lines = [x["text"][:40] for x in pending(limit * 2)
+             if _overlap(x.get("text") or "", t) >= 0.2]
+    init()
+    c = _conn()
+    rows = c.execute(
+        "SELECT text, status, answered_ts FROM followups "
+        "WHERE done=0 AND (status='postponed' OR answered_ts>0) "
+        "ORDER BY answered_ts DESC, status_ts DESC LIMIT 20").fetchall()
+    c.close()
+    for text, status, answered in rows:
+        if _overlap(text or "", t) < 0.2:
+            continue
+        label = "已搁置" if status == "postponed" else "已回应"
+        lines.append(f"{(text or '')[:40]}（{label}，别当没问过）")
+        if len(lines) >= limit:
+            break
+    return lines[:limit]
 
 def id_for_text(text: str) -> int | None:
     """按文本找最新一条（记忆契约创建后要返回 ref）。
@@ -407,6 +456,90 @@ def stats() -> dict:
     open_ = c.execute("SELECT COUNT(*) FROM followups WHERE done=0").fetchone()[0]
     c.close()
     return {"total": total, "open": open_, "done": total - open_}
+
+
+def note_asked(text: str, msg_id: int = 0) -> list[int]:
+    """普通回复或主动消息里问到的跟进，记成已问。同一句两分钟内不重复计数。"""
+    asked = (text or "").strip()
+    if not asked:
+        return []
+    init()
+    now = time.time()
+    c = _conn()
+    rows = c.execute(
+        "SELECT id, text, last_asked_ts, asked_text FROM followups "
+        "WHERE done=0 AND status NOT IN ('done','cancelled')").fetchall()
+    c.close()
+    ids = []
+    for fid, item, last, prev in rows:
+        if not links_question(item or "", asked):
+            continue
+        if (float(last or 0) and now - float(last) < 120
+                and (prev or "") == asked[:MAX_TEXT]):
+            continue
+        ids.append(int(fid))
+    mark_asked(ids, msg_id=msg_id, asked_text=asked)
+    return ids
+
+
+def last_sent_assistant(session: str) -> str:
+    """紧邻的上一条实际发出的助手消息。跟进表和聊天库是同一个 chat.db。"""
+    if not session:
+        return ""
+    init()
+    c = _conn()
+    try:
+        row = c.execute(
+            "SELECT content FROM messages WHERE session=? AND role='assistant' "
+            "ORDER BY id DESC LIMIT 1", (session,)).fetchone()
+    except Exception:  # noqa: BLE001
+        row = None
+    finally:
+        c.close()
+    return (row[0] if row else "") or ""
+
+
+def attribute_reply(user_text: str, session: str = "",
+                    reply_msg_id: int = 0,
+                    last_assistant: str | None = None) -> dict | None:
+    """这句是在接哪条提问。先引用消息 id，再看紧邻的上一条实际发送。"""
+    t = (user_text or "").strip()
+    if len(t) < 1:
+        return None
+    init()
+    c = _conn()
+    item = None
+    if reply_msg_id:
+        row = c.execute(
+            "SELECT id, text, asked_text FROM followups "
+            "WHERE done=0 AND asked_msg_id=? ORDER BY last_asked_ts DESC LIMIT 1",
+            (int(reply_msg_id),)).fetchone()
+        if row:
+            item = {"id": row[0], "text": row[1], "asked_text": row[2] or ""}
+    if item is None:
+        asked = last_assistant if last_assistant is not None else last_sent_assistant(session)
+        if asked:
+            rows = c.execute(
+                "SELECT id, text, asked_text, last_asked_ts FROM followups "
+                "WHERE done=0 AND last_asked_ts>0 "
+                "ORDER BY last_asked_ts DESC LIMIT 8").fetchall()
+            for fid, text, q, _ts in rows:
+                if links_question(text or "", asked) or (q and asked[:80] in q or q[:80] in asked):
+                    item = {"id": fid, "text": text, "asked_text": q or asked}
+                    break
+    c.close()
+    if not item:
+        return None
+    if not responds_to(item["text"], item.get("asked_text") or "", t):
+        return None
+    return item
+
+
+def still_due(fid: int) -> bool:
+    """生成期间事项可能已被回答。发送前再查一次。"""
+    if not fid:
+        return False
+    return any(int(x["id"]) == int(fid) for x in due_for_asking(50))
 
 
 def resolve(text: str) -> dict:

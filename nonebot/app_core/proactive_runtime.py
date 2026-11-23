@@ -101,6 +101,16 @@ class ProactiveRuntime:
         except Exception:  # noqa: BLE001
             return ""
 
+    def _inbound_since(self, ts: float) -> bool:
+        """生成期间有没有新的入站。消息可能还没落库，看入站标记。"""
+        try:
+            from app_core import inflight
+            if inflight.inbound_after(self._session(), ts):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return self.last_user_ts() > ts + 0.05
+
     def last_user_ts(self) -> float:
         """主人最近一条消息的时间；没有可信主人会话时返回 0。
 
@@ -224,10 +234,32 @@ class ProactiveRuntime:
                     # 与 reply_rate 同一口径：只看「发送后 REPLY_WINDOW 内」
                     # 的用户消息。停机后补结算时，窗口外的一句回复不能
                     # 把多条旧追问一起免掉。
-                    replied = c.execute(
-                        "SELECT 1 FROM messages WHERE role='user' AND session=?"
-                        " AND ts>? AND ts<? LIMIT 1",
-                        (session, sent, sent + REPLY_WINDOW)).fetchone()
+                    replied = False
+                    if str(key).startswith("fu:"):
+                        try:
+                            fid = int(str(key)[3:])
+                        except ValueError:
+                            fid = 0
+                        row = c.execute(
+                            "SELECT text, asked_text, answered_ts FROM followups WHERE id=?",
+                            (fid,)).fetchone() if fid else None
+                        if row and float(row[2] or 0) > sent:
+                            replied = True
+                        elif row:
+                            msgs = c.execute(
+                                "SELECT content FROM messages WHERE role='user' AND session=?"
+                                " AND ts>? AND ts<?",
+                                (session, sent, sent + REPLY_WINDOW)).fetchall()
+                            from app_core.followup_domain import responds_to
+                            replied = any(responds_to(row[0] or "", row[1] or "", m[0] or "")
+                                          for m in msgs)
+                            if replied:
+                                followup.mark_answered([fid])
+                    else:
+                        replied = c.execute(
+                            "SELECT 1 FROM messages WHERE role='user' AND session=?"
+                            " AND ts>? AND ts<? LIMIT 1",
+                            (session, sent, sent + REPLY_WINDOW)).fetchone()
                     if replied:
                         with c:
                             c.execute("UPDATE proactive_log SET settled_ts=? "
@@ -297,7 +329,11 @@ class ProactiveRuntime:
 
         if _wc:
             key, topic, why2 = _wc
+            compose_at = time.time()
             text = await self.compose(topic, why2, mood.describe(m) if m else "")
+            if self._inbound_since(compose_at):
+                log.info("[proactive] 生成期间他发了新消息，取消天气提醒")
+                return
             if text and len(text) >= 6 and await self.send(text):
                 self.log_send(key, topic, text)
                 perception.mark_alert(now)
@@ -314,10 +350,21 @@ class ProactiveRuntime:
             return
         key, topic, why = picked
         hint = mood.describe(m) if m else ""
+        compose_at = time.time()
         text = await self.compose(topic, why, hint)
         if not text or len(text) < 6:
             log.warning("[proactive] 生成的句子太短，跳过（不消费话题）：%s", topic[:30])
             return
+        if self._inbound_since(compose_at):
+            log.info("[proactive] 生成期间他发了新消息，取消这次发送")
+            return
+        if key.startswith("fu:"):
+            try:
+                if not followup.still_due(int(key[3:])):
+                    log.info("[proactive] 事项已不再可问，取消发送：%s", key)
+                    return
+            except Exception as e:  # noqa: BLE001
+                log.debug("发送前复查跟进失败：%s", e)
         if not await self.send(text):
             log.error("[proactive] 发送失败（不记「问过了」）：%s", text[:40])
             return

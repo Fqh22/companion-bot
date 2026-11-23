@@ -73,13 +73,59 @@ def clear(session: str) -> None:
 
 
 def _alive(pid: int) -> bool:
+    """进程还在不在。Windows 上 os.kill(pid, 0) 会 TerminateProcess，不能用来探活。"""
     if pid <= 0:
         return False
+    if os.name == "nt":
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        STILL_ACTIVE = 259
+        kernel = ctypes.windll.kernel32
+        handle = kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return False
+        try:
+            code = ctypes.c_ulong()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)):
+                return False
+            return int(code.value) == STILL_ACTIVE
+        finally:
+            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except OSError:
         return False
     return True
+
+
+def _inbound_path() -> Path:
+    return paths.DATA / "inbound.json"
+
+
+def note_inbound(session: str) -> None:
+    """入站一到就记活跃。用户消息要等生成结束才落库，主动发送不能只看聊天库。"""
+    sid = str(session or "")
+    if not sid:
+        return
+    try:
+        p = _inbound_path()
+        with _LOCK:
+            data = _read(p)
+            data[sid] = time.time()
+            _write(p, data)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def inbound_after(session: str, ts: float) -> bool:
+    sid = str(session or "")
+    if not sid:
+        return False
+    try:
+        rec = _read(_inbound_path()).get(sid)
+        return float(rec or 0) > float(ts)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def busy(session: str | None = None, max_age: float = MAX_AGE) -> bool:

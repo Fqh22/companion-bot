@@ -22,11 +22,13 @@ from app_core.followup_domain import (  # noqa: F401
     AFFIRM, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS, DONE_SIGNALS,
     DROP_SIGNALS, KEEP_MAX_OPEN, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT, NEAR_DUP,
     NEGATIONS, PARTIAL_SIGNALS, POSTPONE_SIGNALS, STATUSES,
-    _overlap, _signal_hit, askable, resolve_from,
+    _overlap, _signal_hit, askable, is_affirm, is_negate, links_question,
+    resolve_from, responds_to,
 )
 from app_core.followup_store import (  # noqa: F401
     DB, _candidates, _conn, add, add_many, apply, cancel_ref, confirm_pending,
-    describe_statuses, due_for_asking, expire, init, last_asked, mark_answered,
-    mark_asked, mark_done, mark_ignored, pending, resolve, set_status, stats,
+    attribute_reply, describe_statuses, due_for_asking, expire, for_prompt,
+    init, last_asked, last_sent_assistant, mark_answered, mark_asked, mark_done,
+    mark_ignored, note_asked, pending, resolve, set_status, stats, still_due,
     texts_for,
 )

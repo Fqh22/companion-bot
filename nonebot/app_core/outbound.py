@@ -123,6 +123,16 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
     segments = list(pacing.split_for_voice(say))
     voiced: list[str] = []
     failed: list[str] = []
+    # 分段有上限。超出的尾巴不能静默丢掉，也不能因为前面发成功就报整段成功。
+    cursor = 0
+    for seg in segments:
+        i = say.find(seg, cursor)
+        if i < 0:
+            break
+        cursor = i + len(seg)
+    remainder = say[cursor:].strip()
+    if remainder:
+        failed.append(remainder)
     try:
         for seg in segments:
             audio = await synth(seg)

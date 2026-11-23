@@ -477,7 +477,16 @@ async def _handle(data) -> None:
             out = await runner.run(inbound)
         except asyncio.TimeoutError:
             logger.error(f"[feishu] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） {session}")
-            if ch.sent_text:
+            if not ch.sent_text:
+                _miss = "这次想太久了，先没说出来。"
+                sent_ok = await asyncio.to_thread(
+                    _send_message, msg.chat_id, "text", {"text": _miss})
+                if sent_ok:
+                    try:
+                        await core.record_assistant(session, _miss, kind="text")
+                    except Exception:  # noqa: BLE001
+                        pass
+            elif ch.sent_text:
                 _tail = "这次想太久了，先说到这。"
                 # 先发再记：发送失败时不能把这句写进历史。已发出的正文由
                 # runner 在超时路径上按确认结果写回，这里只补收尾。

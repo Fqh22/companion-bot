@@ -32,12 +32,15 @@ class CommitMixin:
         """1/4 落库：本轮 user 消息（shield 住取消）、统计行、图注写回。"""
         # 本轮 user 消息在这里才落库：prepare 只取证，写库统一在 POST_WRITE。
         # shield：45 秒硬线取消时也要把这条消息写完，否则历史和图注都会缺。
-        try:
-            turn.user_msg_id = await asyncio.shield(
-                self.remember_safe(turn.session, "user", turn.stored)) or 0
-        except Exception as e:  # noqa: BLE001
-            log.debug("写本轮用户消息失败：%s", e)
-            turn.user_msg_id = 0
+        if turn.user_msg_id:
+            pass
+        else:
+            try:
+                turn.user_msg_id = await asyncio.shield(
+                    self.remember_safe(turn.session, "user", turn.stored)) or 0
+            except Exception as e:  # noqa: BLE001
+                log.debug("写本轮用户消息失败：%s", e)
+                turn.user_msg_id = 0
         if not turn.user_msg_id:
             turn.degraded += 1
         # 图注写回：本轮唯一的「渲染时生成、写库时落盘」的块。
@@ -274,6 +277,11 @@ class CommitMixin:
             pass
         elif not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
+        else:
+            self.note_followup_asked(sent_text, turn.user_msg_id)
+        if defer_history and turn.sent_parts:
+            # 只记通道已经收下的段。runner 还会再记一次，note_asked 自己去重。
+            self.note_followup_asked("".join(turn.sent_parts))
         # 当场纠正：命中信号 + 上一轮有回复，后台判断（不阻塞本轮）。
         # 判断「是不是纠正、纠正什么、事实还是行为」需要一次小模型调用，
         # 放同步会吃掉 45 秒预算——照图注模式异步跑。

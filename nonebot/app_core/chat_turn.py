@@ -137,12 +137,18 @@ class ChatTurnMixin(CommitMixin):
         recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
-        # 本轮 user 消息**不在这里写**：写库统一在 POST_WRITE（R4）。
-        # gap 用「上一条用户消息的时间」冻结成 gap_basis——它不依赖本轮 id，
-        # 也就不受并发、主动消息、定时写入的影响。
+        # gap 用「上一条用户消息的时间」冻结。历史读完后再落本轮，避免 prompt 里出现两遍。
         turn.gap_basis = await self.last_user_ts(session)
         turn.gap = (max(0.0, (time.time() - turn.gap_basis) / 3600.0)
                     if turn.gap_basis else 0.0)
+        # 历史已经读完，这时落库不会把本轮重复塞进 prompt。
+        # 生成超时如果发生在提交之前，下一轮仍能读到这句。
+        if turn.stored and not turn.user_msg_id:
+            try:
+                turn.user_msg_id = await asyncio.shield(
+                    self.remember_safe(turn.session, "user", turn.stored)) or 0
+            except Exception as e:  # noqa: BLE001
+                log.debug("提前写入用户消息失败：%s", e)
 
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
@@ -228,6 +234,13 @@ class ChatTurnMixin(CommitMixin):
         try:
             followup.confirm_pending(user_text)
             res = followup.resolve(user_text)
+            # 普通回复里问过的事，和主动消息共用提问记录。短答按紧邻的上一条发送归因。
+            hit = followup.attribute_reply(user_text, session=turn.session)
+            if hit and hit["id"] not in (res.get("touched") or []) \
+                    and hit["id"] not in (res.get("done") or []) \
+                    and hit["id"] not in (res.get("drop") or []) \
+                    and hit["id"] not in (res.get("status") or {}):
+                res.setdefault("touched", []).append(hit["id"])
             if (res.get("done") or res.get("confirm")
                     or res.get("status") or res.get("drop")):
                 followup.apply(res)
@@ -556,9 +569,7 @@ class ChatTurnMixin(CommitMixin):
         # 关键：**只注入本轮聊到相关词的**——否则它会在无关话题里翻旧账，
         # 把用户随口一提的事当成议程（2026-11-11 反馈：base_url 那句被反复追问）。
         try:
-            _open = ([x["text"][:40] for x in followup.pending(3)
-                      if _topic_overlap(x.get("text") or "", user_text)]
-                     if turn.owner else [])
+            _open = followup.for_prompt(user_text, 3) if turn.owner else []
             turn.open_items = "\n".join(f"- {x}" for x in _open)
         except Exception:  # noqa: BLE001
             turn.open_items = ""
@@ -641,6 +652,8 @@ class ChatTurnMixin(CommitMixin):
                     if turn.held:
                         if await on_sentence(turn.held):
                             turn.sent_parts.append(turn.held)
+                        else:
+                            turn.failed_parts.append(turn.held)
                         turn.held = ""
                     # 规则模式才扣结尾建议；model 模式让模型自己决定
                     if not _model_first and not prompt_mod.wants_advice(turn.user_text) \
@@ -649,6 +662,8 @@ class ChatTurnMixin(CommitMixin):
                     else:
                         if await on_sentence(part):
                             turn.sent_parts.append(part)
+                        else:
+                            turn.failed_parts.append(part)
 
         turn.img_budget = max(self.max_tokens, _chat().REPLY_MAX_TOKENS)
         turn.think = self._thinking_for(turn.user_text, turn.images)

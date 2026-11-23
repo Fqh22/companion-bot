@@ -150,6 +150,14 @@ class HistoryMixin:
             return f"private:{uid}"
         return getattr(self, "platform_owner_session", "") or ""
 
+    def note_followup_asked(self, text: str, msg_id: int = 0) -> None:
+        """实际发出的助手文本如果在问某条跟进，和主动消息共用提问记录。"""
+        try:
+            from app_core import followup
+            followup.note_asked(text, msg_id=msg_id)
+        except Exception:  # noqa: BLE001
+            return
+
     async def record_assistant(self, session: str, text: str, kind: str = "push") -> None:
         """把机器人**主动发出**的消息也写进历史。
 
