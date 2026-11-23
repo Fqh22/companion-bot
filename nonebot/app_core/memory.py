@@ -99,6 +99,9 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         self._ctime = None
 
     def init(self) -> None:
+        # 全新环境按 README 启动时，qqbot-data 可能还不存在。sqlite 不会建父目录，
+        # 这里不建的话第一条记忆就 OperationalError: unable to open database file。
+        DB.parent.mkdir(parents=True, exist_ok=True)
         c = self._conn()
         # 全新机器上这个库是空的：先把完整表结构建出来。
         # 云端一直是老库（AstrBot 时代建好的），所以之前只补了 memory_vectors 等三张表，
@@ -149,6 +152,7 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
             pass
 
     def _conn(self) -> sqlite3.Connection:
+        DB.parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(DB, timeout=15)
         c.execute("PRAGMA journal_mode=WAL")
         return c

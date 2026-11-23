@@ -171,6 +171,7 @@ from app_core import (  # noqa: E402
     proactive_runtime as proactive_runtime_mod,
     memory_port as memory_port_mod,
     audit as audit_mod, proactive_channels as proactive_channels_mod,
+    inflight as inflight_mod,
     affect_port as affect_port_mod,
     fact_check as fact_check_mod,
     self_check as self_check_mod,
@@ -183,6 +184,7 @@ from app_core import (  # noqa: E402
 
 check("默认根已指向临时目录（不写 %s）" % DEFAULT_ROOT,
       str(paths_mod.ROOT) == str(TMP / "root"), str(paths_mod.ROOT))
+check("在途标记：没有轮次时不忙", not inflight_mod.busy("private:nobody"))
 
 # 批次 2 新增模块：覆盖率体检要真的碰到它们，不只是 import
 _g_need, _g_why = recall_gate_mod.decide("还记得上次那件事吗")

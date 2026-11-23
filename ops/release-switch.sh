@@ -85,24 +85,53 @@ link_runtime() {
 # 停服务前等一等正在生成的那一轮：用户刚发消息、助手还没回时，
 # 直接 stop 会把已经生成好的回复截掉（2026-11-22 01:38 实际发生过）。
 wait_idle() {
-  local max="${1:-60}" waited=0 state db="$NB/data/chat.db"
-  [ -f "$db" ] || return 0
+  local max="${1:-60}" waited=0 state db="$NB/data/chat.db" inflight="$NB/data/inflight.json"
   while [ "$waited" -lt "$max" ]; do
-    state="$(python3 - "$db" <<'PY'
-import sqlite3, sys, time
+    state="$(python3 - "$db" "$inflight" <<'PY'
+import json, os, sqlite3, sys, time
+db, inflight = sys.argv[1], sys.argv[2]
+now = time.time()
+busy = False
+# 用户消息要到生成结束后才落库。在途文件才是这一轮是否还在跑的真实状态。
 try:
-    c = sqlite3.connect("file:" + sys.argv[1] + "?mode=ro", uri=True)
-    row = c.execute(
-        "SELECT "
-        " (SELECT MAX(ts) FROM messages WHERE role='user' AND session NOT LIKE 'group:%'),"
-        " (SELECT MAX(ts) FROM messages WHERE role='assistant' AND session NOT LIKE 'group:%')"
-    ).fetchone()
-    c.close()
-    u, a = float(row[0] or 0), float(row[1] or 0)
-    # 只拦「刚刚发的、还在生成」的那轮；几十分钟前的未回消息不该拖住部署。
-    print("busy" if u > a and time.time() - u < 120 else "idle")
+    if os.path.isfile(inflight):
+        data = json.load(open(inflight, encoding="utf-8"))
+        if isinstance(data, dict):
+            for sid, rec in data.items():
+                if str(sid).startswith("group:"):
+                    continue
+                if not isinstance(rec, dict):
+                    continue
+                age = now - float(rec.get("ts") or 0)
+                pid = int(rec.get("pid") or 0)
+                alive = False
+                if pid > 0:
+                    try:
+                        os.kill(pid, 0)
+                        alive = True
+                    except OSError:
+                        alive = False
+                if alive and 0 <= age < 180:
+                    busy = True
+                    break
 except Exception:
-    print("idle")
+    pass
+if not busy and os.path.isfile(db):
+    try:
+        c = sqlite3.connect("file:" + db + "?mode=ro", uri=True)
+        row = c.execute(
+            "SELECT "
+            " (SELECT MAX(ts) FROM messages WHERE role='user' AND session NOT LIKE 'group:%'),"
+            " (SELECT MAX(ts) FROM messages WHERE role='assistant' AND session NOT LIKE 'group:%')"
+        ).fetchone()
+        c.close()
+        u, a = float(row[0] or 0), float(row[1] or 0)
+        # 只拦「刚刚发的、还在生成」的那轮；几十分钟前的未回消息不该拖住部署。
+        if u > a and now - u < 120:
+            busy = True
+    except Exception:
+        pass
+print("busy" if busy else "idle")
 PY
 )"
     [ "$state" = "idle" ] && return 0

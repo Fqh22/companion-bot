@@ -120,34 +120,68 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
     say = "".join(buffered).strip()
     if not say:
         return False
-    voice_sent = False
+    segments = list(pacing.split_for_voice(say))
+    voiced: list[str] = []
+    failed: list[str] = []
     try:
-        for seg in pacing.split_for_voice(say):
+        for seg in segments:
             audio = await synth(seg)
-            if not audio:
-                continue
-            try:
-                if await send_voice(str(audio)):
-                    voice_sent = True
-            finally:
+            sent = False
+            if audio:
                 try:
-                    audio.unlink(missing_ok=True)  # type: ignore[attr-defined]
-                except Exception:  # noqa: BLE001
-                    pass
+                    sent = bool(await send_voice(str(audio)))
+                finally:
+                    try:
+                        audio.unlink(missing_ok=True)  # type: ignore[attr-defined]
+                    except Exception:  # noqa: BLE001
+                        pass
+            if sent:
+                voiced.append(seg)
+            else:
+                failed.append(seg)
     except Exception as e:  # noqa: BLE001
         log.warning("%s 语音发送失败，退回文字：%s", tag, e)
-    text_sent = False
-    if not voice_sent or mode == "voice_then_text":
-        for seg in buffered:
+        seen = len(voiced) + len(failed)
+        failed.extend(segments[seen:])
+
+    text_ok: list[str] = []
+    text_bad: list[str] = []
+
+    async def _send_text_parts(parts: list[str]) -> None:
+        for seg in parts:
             try:
                 if await send_text(seg):
-                    text_sent = True
+                    text_ok.append(seg)
+                else:
+                    text_bad.append(seg)
             except Exception:  # noqa: BLE001
-                pass
-    ok = voice_sent or text_sent
-    if ok:
-        await _safe_record(record, say, "voice")
+                text_bad.append(seg)
+
+    # 有一段语音成功就不再把全文重发一遍：失败段单独补文字。
+    # 历史只记实际送达的内容，没送到的结尾不能让下一轮以为用户听到了。
+    if mode == "voice_then_text":
+        await _send_text_parts(list(buffered))
+        if text_ok and not text_bad:
+            spoken = "".join(text_ok).strip()
+            ok = True
+        else:
+            spoken = "".join(text_ok).strip() or "".join(voiced)
+            ok = bool(spoken) and not text_bad and not failed
+    elif not voiced:
+        await _send_text_parts(list(buffered))
+        spoken = "".join(text_ok).strip()
+        ok = bool(spoken) and not text_bad
+    elif failed:
+        await _send_text_parts(list(failed))
+        spoken = "".join(voiced + text_ok)
+        ok = bool(spoken) and not text_bad
+    else:
+        spoken = "".join(voiced)
+        ok = bool(spoken)
+    if spoken:
+        await _safe_record(record, spoken, "voice")
     else:
         log.warning("%s 语音与文字兜底都没发出去，不写历史", tag)
-    log.info("%s voice_reply mode=%s voice=%s text=%s", tag, mode, voice_sent, text_sent)
+    log.info("%s voice_reply mode=%s voice=%s text=%s ok=%s",
+             tag, mode, len(voiced), len(text_ok), ok)
     return ok

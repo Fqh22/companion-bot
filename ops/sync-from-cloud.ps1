@@ -1,12 +1,13 @@
-﻿# sync-from-cloud.ps1 —— 把云端的每日备份拉到本地。
+# sync-from-cloud.ps1 —— 把云端的每日备份拉到本地。
 #
 # 为什么是「拉」不是「推」：家里没有公网 IP，云端推不过来；本地也不保证 24 小时开机。
 # 所以改成「开机/手动时补拉」：云端留 7 天，本地留 30 天。
 #
 # 配置（不入库）：备份/sync-config.json
 #   { "host": "root@server", "key": "C:/path/key.pem",
-#     "local_dir": "C:/.../备份/云端", "keep_days": 30 }
+#     "local_dir": "C:/Users/you/Backups/companion-bot", "keep_days": 30 }
 # 模板见 ops/sync-config.example.json
+# local_dir 必须在共享工作区（Documents/ai）和本仓库之外。备份包含 keys.json。
 #
 # 用法：powershell -File ops/sync-from-cloud.ps1
 # 自启：Startup 里的 companion-backup.vbs（隐藏窗口）
@@ -44,6 +45,28 @@ if (-not $Key -or -not $SshHost -or -not $LocalDir) {
     exit 2
 }
 
+function Test-BackupDirAllowed([string]$Path) {
+    # 备份包含 keys.json。拉进共享工作区或仓库会把凭证副本放进共享目录。
+    $full = [System.IO.Path]::GetFullPath($Path)
+    $shared = [System.IO.Path]::GetFullPath((Join-Path $env:USERPROFILE "Documents\ai"))
+    $bans = @($Root, $shared)
+    foreach ($ban in $bans) {
+        if (-not $ban) { continue }
+        $base = $ban.TrimEnd('\')
+        $prefix = $base + '\'
+        if ($full.Equals($base, [StringComparison]::OrdinalIgnoreCase) -or
+            $full.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+            return $false
+        }
+    }
+    return $true
+}
+
+if (-not (Test-BackupDirAllowed $LocalDir)) {
+    Write-Log "拒绝拉取：local_dir 在共享工作区或仓库内（$LocalDir）。备份含 keys.json，必须放到工作区外的受限目录。"
+    exit 2
+}
+
 New-Item -ItemType Directory -Force -Path $LocalDir | Out-Null
 
 $remote = & ssh -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SshHost `
@@ -59,19 +82,29 @@ foreach ($f in @($remote)) {
     if (-not $f) { continue }
     $name = Split-Path $f -Leaf
     $dst = Join-Path $LocalDir $name
-    if (Test-Path $dst) { continue }
+    if (Test-Path $dst) {
+        & tar -tzf $dst > $null 2>&1
+        if ($LASTEXITCODE -eq 0) { continue }
+        # 上次 scp 中断留下的半包不能因为同名就永远跳过。
+        Write-Log "已有文件校验失败，重新拉取：$name"
+        Remove-Item $dst -Force -ErrorAction SilentlyContinue
+    }
 
-    & scp -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SshHost}:${f}" $dst 2>$null
+    $part = Join-Path $LocalDir (".partial-" + $name)
+    if (Test-Path $part) { Remove-Item $part -Force -ErrorAction SilentlyContinue }
+    & scp -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 "${SshHost}:${f}" $part 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Log "scp 失败：$name"
+        Remove-Item $part -Force -ErrorAction SilentlyContinue
         continue
     }
-    & tar -tzf $dst > $null 2>&1
+    & tar -tzf $part > $null 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Log "校验失败，删除半个文件：$name"
-        Remove-Item $dst -Force -ErrorAction SilentlyContinue
+        Remove-Item $part -Force -ErrorAction SilentlyContinue
         continue
     }
+    Move-Item -Force $part $dst
     $size = [math]::Round((Get-Item $dst).Length / 1MB, 1)
     Write-Log "已拉取 $name（${size}MB）"
     $pulled++
@@ -83,10 +116,28 @@ Get-ChildItem $LocalDir -Filter "cloud-*.tgz" |
 
 # 在云端写「本地最近一次拉取成功」的时间戳：云端 healthcheck 用它判断异地副本
 # 是否连续多天没人拉（本地不是常开，不能只看 offsite.state）。
-$epoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-& ssh -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SshHost `
-    "echo $epoch > /opt/nonebot/ops/.local-pull-ts" 2>$null
-if ($LASTEXITCODE -ne 0) { Write-Log "写本地拉取时间戳失败（不影响本次备份）" }
+# 最新一份没完整落地就不要更新：否则半包会被当成异地副本正常。
+$newest = $null
+foreach ($f in @($remote)) {
+    $f = "$f".Trim()
+    if ($f) { $newest = $f; break }
+}
+$stampOk = $false
+if ($newest) {
+    $newestLocal = Join-Path $LocalDir (Split-Path $newest -Leaf)
+    if (Test-Path $newestLocal) {
+        & tar -tzf $newestLocal > $null 2>&1
+        if ($LASTEXITCODE -eq 0) { $stampOk = $true }
+    }
+}
+if ($stampOk) {
+    $epoch = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    & ssh -i $Key -o StrictHostKeyChecking=no -o ConnectTimeout=10 $SshHost `
+        "echo $epoch > /opt/nonebot/ops/.local-pull-ts" 2>$null
+    if ($LASTEXITCODE -ne 0) { Write-Log "写本地拉取时间戳失败（不影响本次备份）" }
+} else {
+    Write-Log "最新备份未完整落地，不更新拉取时间戳"
+}
 
 $total = (Get-ChildItem $LocalDir -Filter "cloud-*.tgz" | Measure-Object).Count
 Write-Log "=== pull done：新增 $pulled，本地共 $total 份 ==="

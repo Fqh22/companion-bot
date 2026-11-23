@@ -1900,6 +1900,18 @@ async def main() -> None:
     check("config 解析失败进自检",
           any("config.yaml" in m for m in core.config_issues()),
           str(core.config_issues())[:80])
+    from app_core import audit as _audit_bad
+    _raised = False
+    try:
+        _audit_bad.requires_approval("note_write")
+    except _audit_bad.ApprovalPolicyError:
+        _raised = True
+    check("配置损坏时审批策略不算关闭", _raised)
+    # 前面的超时用例把 tools.execute 换成了慢桩；这里要测真入口。
+    _blocked = await REAL_TOOLS_EXECUTE(
+        core, "note_write", {"title": "x", "content": "y"})
+    check("配置损坏时写操作不执行",
+          "没有执行" in (_blocked or ""), str(_blocked)[:80])
     _cfg.CONFIG_PATH = _real_path
     _cfg.load(force=True)
     check("配置恢复后错误清空", not _cfg.load_error(), _cfg.load_error()[:60])
@@ -3715,7 +3727,9 @@ async def main() -> None:
     two_search = {"content": "", "tool_calls": [
         {"id": "a", "function": {"name": "web_search", "arguments": '{"query":"x"}'}},
         {"id": "b", "function": {"name": "web_search", "arguments": '{"query":"y"}'}}]}
-    fake_par = _NS(TOOLS=[], execute=timed_exec, READ_ONLY_TOOLS={"web_search"})
+    fake_par = _NS(
+        TOOLS=[{"type": "function", "function": {"name": "web_search"}}],
+        execute=timed_exec, READ_ONLY_TOOLS={"web_search"})
     t0 = time.perf_counter()
     await chat_mod.tool_loop.run(
         chat_mod, [], complete=make_complete([two_search]),
@@ -3727,7 +3741,9 @@ async def main() -> None:
     two_write = {"content": "", "tool_calls": [
         {"id": "a", "function": {"name": "note_write", "arguments": '{"title":"a"}'}},
         {"id": "b", "function": {"name": "note_write", "arguments": '{"title":"b"}'}}]}
-    fake_seq = _NS(TOOLS=[], execute=timed_exec, READ_ONLY_TOOLS={"web_search"})
+    fake_seq = _NS(
+        TOOLS=[{"type": "function", "function": {"name": "note_write"}}],
+        execute=timed_exec, READ_ONLY_TOOLS={"web_search"})
     t0 = time.perf_counter()
     await chat_mod.tool_loop.run(
         chat_mod, [], complete=make_complete([two_write]),
@@ -3746,12 +3762,55 @@ async def main() -> None:
         ran["n"] += 1
         return "ok"
 
-    fake_dup = _NS(TOOLS=[], execute=count_exec, READ_ONLY_TOOLS={"web_search"})
+    fake_dup = _NS(
+        TOOLS=[{"type": "function", "function": {"name": "web_search"}}],
+        execute=count_exec, READ_ONLY_TOOLS={"web_search"})
     await chat_mod.tool_loop.run(
         chat_mod, [], complete=make_complete([dup]), stream=make_complete([dup]),
         tools_mod=fake_dup, tools_banned=set(), max_rounds=2,
         tool_timeout=5, total_timeout=5, stats={})
     check("同轮重复调用只跑一次", ran["n"] == 1, str(ran))
+
+    # 清单外的已注册工具不能因为模型点了名就执行。
+    banned_calls: dict[str, int] = {}
+
+    async def count_banned(core, name, args, images=None):
+        banned_calls[name] = banned_calls.get(name, 0) + 1
+        return "secret"
+
+    sneak = {"content": "", "tool_calls": [
+        {"id": "a", "function": {"name": "memory_read", "arguments": "{}"}},
+        {"id": "b", "function": {"name": "web_search", "arguments": '{"query":"ok"}'}},
+    ]}
+    fake_ban = _NS(
+        TOOLS=[{"type": "function", "function": {"name": "web_search"}}],
+        execute=count_banned, READ_ONLY_TOOLS={"web_search", "memory_read"})
+    await chat_mod.tool_loop.run(
+        chat_mod, [], complete=make_complete([sneak]), stream=make_complete([sneak]),
+        tools_mod=fake_ban, tools_banned={"memory_read"}, max_rounds=2,
+        tool_timeout=5, total_timeout=5, stats={})
+    check("清单外工具处理函数调用次数为零",
+          banned_calls.get("memory_read", 0) == 0
+          and banned_calls.get("web_search", 0) == 1,
+          str(banned_calls))
+
+    # 记忆库初始化要自己建父目录：空数据根按 README 启动会打不开库。
+    from app_core import memory as _mem_mod
+    _missing_db = TMP / "fresh-root" / "qqbot-data" / "livingmemory.db"
+    _old_db = _mem_mod.DB
+    _mem_mod.DB = _missing_db
+    try:
+        _mem_mod.Memory().init()
+        check("记忆库初始化创建父目录",
+              _missing_db.is_file() and _missing_db.parent.is_dir())
+    finally:
+        _mem_mod.DB = _old_db
+
+    from app_core import inflight as _inflight
+    _inflight.mark("private:111")
+    check("在途轮次被记下来", _inflight.busy("private:111"))
+    _inflight.clear("private:111")
+    check("轮次结束后在途标记清除", not _inflight.busy("private:111"))
 
     # 还原测试期替换掉的真实现
     chat_mod.tools.execute = REAL_TOOLS_EXECUTE

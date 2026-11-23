@@ -14,7 +14,7 @@ import time
 
 import aiosqlite
 
-from app_core import config, shadow, tool_loop, tools
+from app_core import config, inflight, shadow, tool_loop, tools
 from app_core.delivery import Capability, DeliveryPolicy, plan_delivery
 from app_core import prompt as prompt_mod
 from app_core.chat_turn_base import _chat
@@ -51,8 +51,9 @@ class ReplyMixin:
         err = config.load_error()
         if err:
             issues.append(
-                f"config.yaml 解析失败（{err}）：所有配置已回落默认值——"
-                "admin.user_id、模型、阈值全变了。修好后 systemctl restart nonebot")
+                f"config.yaml 解析失败（{err}）：所有配置已回落默认值，"
+                "受控写操作已暂停（不能把读失败当成审批关闭）。"
+                "修好后 systemctl restart nonebot")
         _ch = _chat()
         if _ch._PERSONA_ERROR:
             issues.append(
@@ -273,24 +274,29 @@ class ReplyMixin:
         流水线四段：prepare 取上下文 → compose 拼 prompt → generate 调模型 →
         commit 收尾。拆分不改行为，只是把原来一个 356 行的局部作用域切开。
         """
-        turn = await self._turn_prepare(session, user_text, images, store_text)
-        await self._turn_compose(turn)
-        await self._turn_generate(turn, on_sentence)
-        await self._turn_commit(turn, on_sentence, defer_history=defer_history)
+        # 用户消息要到生成结束后才落库。发布脚本若只看聊天库，会把这一轮当成已结束。
+        inflight.mark(session)
+        try:
+            turn = await self._turn_prepare(session, user_text, images, store_text)
+            await self._turn_compose(turn)
+            await self._turn_generate(turn, on_sentence)
+            await self._turn_commit(turn, on_sentence, defer_history=defer_history)
 
-        def _plan(text: str) -> list[str]:
-            policy = delivery_policy or DeliveryPolicy(max_chars=turn.seg_max)
-            return plan_delivery(text, policy, caps)
+            def _plan(text: str) -> list[str]:
+                policy = delivery_policy or DeliveryPolicy(max_chars=turn.seg_max)
+                return plan_delivery(text, policy, caps)
 
-        if on_sentence and turn.streamed:
-            # 流式已经发出去的不再返回，只把没说完的尾巴交回去。
-            # 工具轮可能第一轮没成句、第二轮正文是非流式：这时 sent_parts 和
-            # buffer 都是空的，正文在 turn.text 里，别把它吞了。
-            tail = _plan(turn.buffer) if turn.buffer.strip() else []
-            if not tail and not turn.sent_parts and (turn.text or "").strip():
-                tail = _plan(turn.text)
-            return tail, turn.ai_images
-        return _plan(turn.text), turn.ai_images
+            if on_sentence and turn.streamed:
+                # 流式已经发出去的不再返回，只把没说完的尾巴交回去。
+                # 工具轮可能第一轮没成句、第二轮正文是非流式：这时 sent_parts 和
+                # buffer 都是空的，正文在 turn.text 里，别把它吞了。
+                tail = _plan(turn.buffer) if turn.buffer.strip() else []
+                if not tail and not turn.sent_parts and (turn.text or "").strip():
+                    tail = _plan(turn.text)
+                return tail, turn.ai_images
+            return _plan(turn.text), turn.ai_images
+        finally:
+            inflight.clear(session)
 
     def seg_max(self, m: dict) -> int:
         """情绪决定一条消息多长：累了碎一点，有精神可以连成句。

@@ -120,16 +120,28 @@ def verify_chain(rows: list[dict]) -> tuple[bool, list[str]]:
     return (not errors), errors
 
 
+class ApprovalPolicyError(RuntimeError):
+    """审批策略读不到。不能当成「已关闭」，否则写操作会绕过授权门。"""
+
+
 def requires_approval(name: str, cfg: dict | None = None) -> bool:
-    """默认 False：不改现有行为。开启后只有写类工具需要授权。"""
+    """默认 False：不改现有行为。开启后只有写类工具需要授权。
+
+    「明确关闭」和「读不到策略」不是一回事。配置损坏或读取抛错时抛
+    ApprovalPolicyError，调用方必须暂停受控写操作，不能按关闭处理。
+    调用方自己传入 cfg 时，以这份为准（测试和重放）。
+    """
     if name not in SIDE_EFFECT_TOOLS:
         return False
     if cfg is None:
+        from app_core import config
         try:
-            from app_core import config
             cfg = config.load()
-        except Exception:  # noqa: BLE001
-            return False
+        except Exception as e:  # noqa: BLE001
+            raise ApprovalPolicyError(f"无法读取审批策略：{e}") from e
+        err = config.load_error()
+        if err:
+            raise ApprovalPolicyError(f"审批策略无法读取（配置损坏）：{err}")
     return bool((cfg.get("tools") or {}).get("require_approval", False))
 
 

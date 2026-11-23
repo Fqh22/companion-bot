@@ -9,6 +9,19 @@ from dataclasses import dataclass
 
 from app_core.prompt import split_reply
 
+# 通道收下了文本，但还没投递给用户（语音先缓冲，等合成后再发）。
+# 真值：调用方不要再发一遍。不是 True：历史要等真正送达再写。
+BUFFERED = "buffered"
+
+
+def is_buffered(result) -> bool:
+    return result == BUFFERED
+
+
+def is_delivered(result) -> bool:
+    """真正交给平台了。缓冲不算。"""
+    return result is True
+
 
 @dataclass(frozen=True)
 class Capability:

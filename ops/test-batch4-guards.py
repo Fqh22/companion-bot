@@ -208,6 +208,75 @@ def outbound_checks() -> None:
     check("voice_then_text 不重复写历史",
           ok and len(rec) == 1, f"rec={rec} texts={texts}")
 
+    # 前一段合成成功、后一段失败：不能把没送到的结尾写进历史，也不能整段算成功。
+    long = ("甲" * 300) + ("乙" * 10)
+    recorded: list[tuple[str, str]] = []
+    texts: list[str] = []
+    voices: list[str] = []
+
+    async def synth_partial(seg):
+        if seg.startswith("乙"):
+            return None
+        return _Audio()
+
+    async def send_voice_ok(path):
+        voices.append(path)
+        return True
+
+    async def send_text_fail(text):
+        texts.append(text)
+        return False
+
+    async def record_partial(text, kind):
+        recorded.append((text, kind))
+
+    ok = asyncio.run(outbound.deliver_voice_reply(
+        buffered=[long], synth=synth_partial, send_voice=send_voice_ok,
+        send_text=send_text_fail, record=record_partial, mode="voice"))
+    spoken = recorded[0][0] if recorded else ""
+    check("多段语音失败段不进历史",
+          not ok and spoken == "甲" * 300 and "乙" not in spoken and len(texts) == 1,
+          f"ok={ok} rec={spoken[-20:]!r} texts={len(texts)}")
+
+
+def buffered_send_checks() -> None:
+    """语音缓冲返回真值，引擎不要把同一句再发一遍；历史也不在这里写。"""
+    from app_core.delivery import BUFFERED
+    from app_core.engine import InboundMessage, OutboundMessage
+    from app_core.runner import TurnRunner
+
+    class _Ch:
+        forms = {"text"}
+
+        def __init__(self) -> None:
+            self.buffered: list[str] = []
+            self.calls = 0
+
+        async def send_part(self, session, part):
+            self.calls += 1
+            self.buffered.append(part.content)
+            return BUFFERED
+
+        async def typing(self, session, on):
+            return None
+
+    class _Eng:
+        core = None
+
+        async def handle(self, msg, on_sentence=None, **kw):
+            accepted = False
+            if on_sentence:
+                accepted = bool(await on_sentence("hello."))
+            # 缓冲被当成失败时，引擎会把同一句再交回来。
+            return OutboundMessage(chunks=[] if accepted else ["hello."])
+
+    ch = _Ch()
+    out = asyncio.run(TurnRunner(_Eng(), ch, deadline=5, stall_seconds=5).run(
+        InboundMessage(session="private:1", text="hi")))
+    check("已缓冲不算失败，补发尾巴不再进缓冲",
+          ch.buffered == ["hello."] and ch.calls == 1, str(ch.buffered))
+    check("已缓冲不写历史", out is not None and ch.calls == 1)
+
 
 def channel_checks() -> None:
     seen: list[str] = []
@@ -274,7 +343,17 @@ def wiring_checks() -> None:
           and '("approve",' in hp and '("audit",' in hp)
     check("新 app_core 模块已进 smoke-all 覆盖",
           "audit as audit_mod" in smoke
-          and "proactive_channels as proactive_channels_mod" in smoke)
+          and "proactive_channels as proactive_channels_mod" in smoke
+          and "inflight as inflight_mod" in smoke)
+    check("语音缓冲不是发送失败",
+          "return BUFFERED" in qq and "return BUFFERED" in fs)
+    sync_ex = (ROOT / "ops" / "sync-config.example.json").read_text(encoding="utf-8")
+    sync_ps = (ROOT / "ops" / "sync-from-cloud.ps1").read_text(encoding="utf-8")
+    check("同步模板不把含密钥备份拉进共享工作区",
+          "Documents/ai" not in sync_ex and "备份/云端" not in sync_ex
+          and "Test-BackupDirAllowed" in sync_ps and ".partial-" in sync_ps)
+    release = (ROOT / "ops" / "release-switch.sh").read_text(encoding="utf-8")
+    check("发布脚本读取在途轮次", "inflight.json" in release)
 
 
 def main() -> None:
@@ -282,6 +361,7 @@ def main() -> None:
     audit_checks()
     dedupe_checks()
     outbound_checks()
+    buffered_send_checks()
     channel_checks()
     wiring_checks()
     if FAILS:

@@ -23,8 +23,10 @@
 | `ops/ops.env`（云端，600） | 备份推送命令、告警 webhook | 否 |
 
 - **部署不传密钥**：`ops/deploy.sh` 只上传 `git archive` 里的代码与脚本，不碰上述文件。
-- **备份包含密钥**：每日备份包里有 `keys.json`。本地 `备份/云端/`、异地存储都按密件保管，
-  建议加密或限制访问；备份泄露后应轮换所有 key。
+- **备份包含密钥**：每日备份包里有 `keys.json`。本地副本必须放在共享工作区
+  （`Documents/ai`）和本仓库之外的受限目录，不要拉进仓库里的 `备份/云端/`。
+  `ops/sync-from-cloud.ps1` 会拒绝目标落在共享工作区或仓库内。异地存储同样按密件保管；
+  备份泄露后应轮换所有 key。
 - 自动检查：`ops/scan-secrets.py` 扫 API key / 私钥 / Bearer token / 公网 IP，
   CI 每次推送执行；可装 `ops/git-hooks/pre-commit` 在提交前拦一次：
 

@@ -57,10 +57,18 @@ tar -C /opt/nonebot/data -cf - \
 # 4) 配置与代码（不含 venv）
 # -h：release 布局下 app_core/plugins/bot.py 是指向 current/... 的符号链接，
 # 不解引用会把「链接本身」打进备份，恢复出来是断链。
+# 清单与 ops/deploy.sh 的代码快照对齐。以前只打 app_core/plugins，漏了 adapters/：
+# QQ 和飞书插件都 from adapters 导入，恢复后通道起不来，演练只抽查两个文件时仍通过。
+for rel in app_core plugins adapters bot.py; do
+    [ -e "/opt/nonebot/$rel" ] || die "代码包缺: $rel"
+done
 tar -C /opt/nonebot -h -cf - \
     --exclude='venv' --exclude='__pycache__' --exclude='data' --exclude='ops' \
-    bot.py .env config.yaml app_core plugins 2>/dev/null \
-    | tar -C "$STAGE/code" -xf - || log "warn: code tar"
+    --ignore-failed-read \
+    bot.py .env config.yaml config.example.yaml requirements.txt README.md \
+    .env.example .deployed_sha \
+    app_core plugins adapters companion_core personas \
+    | tar -C "$STAGE/code" -xf - || die "tar code"
 cp /etc/systemd/system/nonebot.service "$STAGE/nonebot.service" 2>/dev/null || true
 # ops 下的入口脚本与运维 python 都进备份：云端有些 .py 只在机器上（export-*/probe-*），
 # 不备份的话重装/恢复演练会丢。日志、state、ops.env（含 webhook 等配置）明确不备。

@@ -66,14 +66,22 @@ def _db_bytes(tables: dict[str, int]) -> bytes:
 
 
 def _bundle(path: Path, *, with_memory: bool, messages: int,
-            manifest: bool, manifest_messages: int | None = None) -> Path:
+            manifest: bool, manifest_messages: int | None = None,
+            with_adapters: bool = True) -> Path:
     files: dict[str, bytes] = {}
     files["sqlite/nonebot/data/chat.db"] = _db_bytes({"messages": messages})
     if with_memory:
         files["sqlite/qqbot-data/livingmemory.db"] = _db_bytes(
             {"documents": 1, "memory_atoms": 0})
     files["code/app_core/chat.py"] = b"# chat\n"
-    files["code/plugins/chat/__init__.py"] = b"# plugin\n"
+    files["code/plugins/chat/__init__.py"] = b"from adapters.qq import to_inbound\n"
+    files["code/plugins/feishu/__init__.py"] = (
+        b"from adapters.feishu import parse_content, to_inbound\n")
+    if with_adapters:
+        files["code/adapters/qq.py"] = b"def to_inbound(**kw):\n    return kw\n"
+        files["code/adapters/feishu.py"] = (
+            b"def to_inbound(**kw):\n    return kw\n"
+            b"def parse_content(raw):\n    return {}\n")
     if manifest:
         dbs = {"sqlite/nonebot/data/chat.db": {
             "tables": {"messages": messages if manifest_messages is None
@@ -140,6 +148,12 @@ def main() -> int:
                           manifest=False)
         check("旧备份（无清单）+ 空表 → 失败", rc != 0 and not st["ok"],
               str(st.get("errors"))[:120])
+
+        rc, st = run_case(mod, td, "no-adapters", with_memory=True, messages=3,
+                          manifest=True, with_adapters=False)
+        check("缺 adapters → 失败",
+              rc != 0 and not st["ok"] and any("adapters" in e for e in st["errors"]),
+              str(st.get("errors"))[:160])
 
         # 压缩包被截断：连解压都不该通过
         tgz = _bundle(td / "tampered.tgz", with_memory=True, messages=3, manifest=True)

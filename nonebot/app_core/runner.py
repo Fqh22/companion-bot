@@ -4,7 +4,9 @@
 写在 plugins/chat 里，换通道就得重写 300 行。这里把它抽出来，通道只实现
 Channel 的三个原语：
 
-    send_text(session, text) -> bool     发一条文字，返回是否成功
+    send_text(session, text) -> bool | "buffered"
+        True 已送达；"buffered" 已收下但还没投递（语音缓冲，不要再发、先别写历史）；
+        False 发送失败。
     send_image(session, path) -> bool    发一张图
     typing(session, on) -> None          显示/关闭「正在输入」（不支持就空实现）
 
@@ -30,7 +32,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app_core import mood, pacing
-from app_core.delivery import Capability, DeliveryPolicy
+from app_core.delivery import BUFFERED, Capability, DeliveryPolicy, is_buffered
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.message import Part as _Part
 
@@ -47,7 +49,7 @@ class Channel(Protocol):
 
     forms: set[str]
 
-    async def send_part(self, session: str, part) -> bool: ...
+    async def send_part(self, session: str, part) -> bool | str: ...
 
     async def typing(self, session: str, on: bool) -> None: ...
 
@@ -94,18 +96,22 @@ class TurnRunner:
         if part.form in forms:
             try:
                 if timeout is None:
-                    ok = bool(await self.channel.send_part(session, part))
+                    result = await self.channel.send_part(session, part)
                 else:
                     if timeout <= 0:
                         return False
-                    ok = bool(await asyncio.wait_for(
-                        self.channel.send_part(session, part), timeout=timeout))
+                    result = await asyncio.wait_for(
+                        self.channel.send_part(session, part), timeout=timeout)
             except asyncio.TimeoutError:
                 log.warning("[runner] 发送 %s 超时（>%.1fs）", part.form, timeout or 0)
-                ok = False
+                result = False
             except Exception as e:  # noqa: BLE001
                 log.warning("[runner] 发送 %s 失败：%s", part.form, e)
-                ok = False
+                result = False
+            # 已缓冲 ≠ 已送达，也不能当成失败再发一遍。
+            if is_buffered(result):
+                return BUFFERED
+            ok = bool(result)
             if not ok and part.form == "voice":
                 # 声明支持 != 发得出去：合成/上传失败时也要有文字兜底
                 return await self._send_part(
@@ -141,7 +147,7 @@ class TurnRunner:
             raise
 
     async def _pace_and_send(self, session: str, text: str, sent: int,
-                             started: float) -> bool:
+                             started: float) -> bool | str:
         """发出这一条之前等「打字」时间；预算见底就跳过等待。"""
         left = self.deadline - (time.monotonic() - started)
         if left <= 0:
@@ -233,7 +239,11 @@ class TurnRunner:
             """
             nonlocal sent
             state["last_progress"] = time.monotonic()
-            if await self._pace_and_send(msg.session, part, sent, started):
+            status = await self._pace_and_send(msg.session, part, sent, started)
+            if is_buffered(status):
+                # 通道已收下，等语音路径真正送达后再写历史。返回真值，引擎不要补发。
+                return BUFFERED
+            if status:
                 sent += 1
                 state["sent"] = sent
                 confirmed.append(part)
@@ -256,7 +266,10 @@ class TurnRunner:
                     raise asyncio.TimeoutError() from None
                 raise
             for part in out.chunks:
-                if await self._pace_and_send(msg.session, part, sent, started):
+                status = await self._pace_and_send(msg.session, part, sent, started)
+                if is_buffered(status):
+                    continue
+                if status:
                     sent += 1
                     confirmed.append(part)
             for path in out.images:

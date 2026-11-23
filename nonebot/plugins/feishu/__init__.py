@@ -33,7 +33,7 @@ from lark_oapi.api.im.v1 import (
 from nonebot import get_driver, logger
 
 from app_core import asr, config, paths, tts
-from app_core.delivery import Capability
+from app_core.delivery import BUFFERED, Capability
 from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
@@ -299,9 +299,10 @@ class FeishuChannel:
         if not text:
             return False
         if self.defer_text:
-            # 缓冲 ≠ 已投递：返回 False，历史等语音/文字兜底真正发成功再写。
+            # 已缓冲 ≠ 已送达，也 ≠ 发送失败。返回 BUFFERED：不要再补发，
+            # 历史等语音/文字兜底真正成功后再写。
             self.buffered.append(text)
-            return False
+            return BUFFERED
         ok = await asyncio.to_thread(
             _send_message, self.chat_id, "text", {"text": text[:MAX_CHARS]})
         if ok:

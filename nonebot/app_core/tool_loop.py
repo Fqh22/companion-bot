@@ -80,6 +80,13 @@ async def run(core, msgs: list[dict], *,
     images = images if images is not None else []
     tools_arg = [t for t in tools_mod.TOOLS
                  if (t.get("function") or {}).get("name") not in tools_banned]
+    # 发给模型的名单不是执行许可。模型可以回一个清单外、但进程里已注册的工具
+    # （外人轮次把 note_list / memory_read 禁掉之后仍可能被点名）。进队列前再核一次。
+    allowed = {
+        ((t.get("function") or {}).get("name") or "")
+        for t in tools_arg
+    }
+    allowed.discard("")
     work = [dict(m) for m in msgs]
     first = True
     done: dict[str, str] = {}
@@ -130,6 +137,9 @@ async def run(core, msgs: list[dict], *,
             elif name in PER_TURN_CAP and st.get("per_tool", {}).get(name, 0) >= PER_TURN_CAP[name]:
                 results[i] = "这一轮已经发过表情包了，不要再发"
                 log.info("工具 %s 达到每轮上限，已跳过", name)
+            elif name not in allowed:
+                results[i] = f"工具 {name} 本轮不在允许名单里，没有执行"
+                log.warning("拒绝清单外工具：%s", name)
             else:
                 seen.add(key)
                 pending.append((i, name, args, key))

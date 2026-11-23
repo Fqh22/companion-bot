@@ -25,6 +25,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -41,9 +42,77 @@ REQUIRED_DBS = {
     "sqlite/qqbot-data/livingmemory.db": ("documents", "memory_atoms"),
     "sqlite/nonebot/data/chat.db": ("messages",),
 }
-# 代码文件抽检：备份里必须有，否则恢复出来起不来
-CODE_FILES = ["code/app_core/chat.py", "code/plugins/chat/__init__.py"]
+# 代码文件：与发布清单对齐。缺 adapters 时 QQ/飞书插件导入即失败，
+# 只抽查 chat.py 会让「能解压、通道起不来」的备份通过演练。
+CODE_FILES = [
+    "code/app_core/chat.py",
+    "code/plugins/chat/__init__.py",
+    "code/plugins/feishu/__init__.py",
+    "code/adapters/qq.py",
+    "code/adapters/feishu.py",
+]
 MANIFEST_FORMAT = 2
+# 不执行插件本体：plugins/chat 导入时会创建 ChatCore、连库。
+# 子进程只 import 解出的 adapters，并用 AST 核对插件的适配器导入能在这份代码上解析。
+_PLUGIN_LOAD = r'''
+import ast, importlib, sys
+from pathlib import Path
+code = Path(sys.argv[1])
+sys.path.insert(0, str(code))
+errors = []
+plugins = ("plugins/chat/__init__.py", "plugins/feishu/__init__.py")
+needed = {}
+for rel in plugins:
+    path = code / rel
+    if not path.is_file():
+        errors.append("缺插件 " + rel)
+        continue
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError as e:
+        errors.append("%s 无法编译：%s" % (rel, e))
+        continue
+    found = False
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("adapters"):
+            found = True
+            names = needed.setdefault(node.module, set())
+            for alias in node.names:
+                if alias.name != "*":
+                    names.add(alias.name)
+    if not found:
+        errors.append(rel + " 没有引用 adapters")
+for modname, symbols in sorted(needed.items()):
+    try:
+        mod = importlib.import_module(modname)
+    except Exception as e:
+        errors.append("离线加载 %s 失败：%s: %s" % (modname, type(e).__name__, e))
+        continue
+    for sym in sorted(symbols):
+        if not hasattr(mod, sym):
+            errors.append("%s 没有 %s" % (modname, sym))
+if errors:
+    print("\n".join(errors))
+    sys.exit(1)
+print("ok")
+'''
+
+
+def load_restored_plugins(code: Path) -> list[str]:
+    """从解出的代码目录离线加载通道插件所依赖的适配器。返回错误列表。"""
+    if not code.is_dir():
+        return ["缺代码目录 code/"]
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", _PLUGIN_LOAD, str(code)],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception as e:  # noqa: BLE001
+        return [f"插件离线加载失败：{type(e).__name__}: {e}"]
+    if proc.returncode == 0:
+        return []
+    text = (proc.stdout or proc.stderr or "插件离线加载失败").strip()
+    return [line for line in text.splitlines() if line.strip()] or ["插件离线加载失败"]
 
 
 def log(msg: str) -> None:
@@ -192,6 +261,7 @@ def main() -> int:
         for rel in CODE_FILES:
             if not (tmp / rel).exists():
                 result["errors"].append(f"缺代码文件 {rel}")
+        result["errors"].extend(load_restored_plugins(tmp / "code"))
         result["ok"] = not result["errors"]
     except Exception as e:  # noqa: BLE001
         result["errors"].append(f"{type(e).__name__}: {e}")

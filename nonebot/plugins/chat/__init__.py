@@ -40,7 +40,7 @@ from nonebot.adapters.onebot.v11 import (
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
 from app_core.chat import ChatCore
-from app_core.delivery import Capability
+from app_core.delivery import BUFFERED, Capability
 from app_core.engine import Engine
 from app_core.runner import TurnRunner
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
@@ -233,10 +233,10 @@ class QQChannel:
 
     async def send_text(self, session: str, text: str) -> bool:
         if self.defer_text:
-            # 只是「先收进缓冲」，还没投递。返回 False，调用方就不会把它
-            # 记成已发出；真正的历史由语音/文字兜底发送成功后写。
+            # 已缓冲 ≠ 已送达，也 ≠ 发送失败。返回 BUFFERED：引擎不要再补发
+            # 一遍，历史仍等语音/文字兜底真正成功后再写。
             self.buffered.append(text)
-            return False
+            return BUFFERED
         # 只有第一段带引用：后面几段接在它自己那条后面才对
         reply_id = self.reply_to if (QUOTE_REPLY and not self.sent) else None
         ok = await _send_text(text, reply_id=reply_id)
