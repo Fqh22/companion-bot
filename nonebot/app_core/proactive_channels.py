@@ -10,9 +10,20 @@
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Awaitable, Callable
 
-Sender = Callable[[str], Awaitable[bool]]
+@dataclass(frozen=True)
+class Receipt:
+    platform: str
+    message_id: str
+
+    @property
+    def reference(self) -> str:
+        return f"{self.platform}:{self.message_id}" if self.message_id else ""
+
+
+Sender = Callable[[str], Awaitable[bool | Receipt]]
 _SENDERS: dict[str, Sender] = {}
 
 
@@ -28,12 +39,12 @@ def available() -> list[str]:
     return sorted(_SENDERS)
 
 
-async def send(text: str, channel: str) -> bool:
+async def send(text: str, channel: str) -> bool | Receipt:
     """发到指定通道；没注册 / 抛异常都返回 False，由调用方决定回退。"""
     fn = _SENDERS.get(str(channel or "").strip().lower())
     if fn is None:
         return False
     try:
-        return bool(await fn(text))
+        return await fn(text)
     except Exception:  # noqa: BLE001
         return False

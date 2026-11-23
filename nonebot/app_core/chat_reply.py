@@ -282,7 +282,7 @@ class ReplyMixin:
         try:
             turn = await self._turn_prepare(
                 session, user_text, images, store_text,
-                quote_text=quote_text)
+                quote_text=quote_text, reply_to=reply_to)
             await self._turn_compose(turn)
             await self._turn_generate(turn, on_sentence)
             await self._turn_commit(turn, on_sentence, defer_history=defer_history)

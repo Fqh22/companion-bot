@@ -225,7 +225,7 @@ CORE_API = {
     "introspect.mem_status_text", "introspect.profile_text",
     "tools.execute",
     "scheduler.Scheduler",
-    "proactive_channels.register", "proactive_channels.send",
+    "proactive_channels.register", "proactive_channels.send", "proactive_channels.Receipt",
     "proactive_runtime.ProactiveRuntime",
     "relational.is_quiet_hour", "relational.describe",
 }

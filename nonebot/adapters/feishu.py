@@ -20,7 +20,8 @@ def to_inbound(*, open_id: str, chat_id: str, text: str,
                event_id: str | None = None,
                voice: bool = False,
                session: str | None = None,
-               store_text: str | None = None) -> InboundMessage:
+               store_text: str | None = None,
+               reply_to: str | None = None) -> InboundMessage:
     """飞书私聊事件 → 内核入站消息。
 
     session 由调用方决定：主人走 config.owner_session()（和 QQ 共用一份记忆），
@@ -34,7 +35,7 @@ def to_inbound(*, open_id: str, chat_id: str, text: str,
         session=session, text=text or "", images=list(images or []),
         platform="feishu", external_user_id=uid,
         external_chat_id=cid or None, event_id=event_id, voice=voice,
-        store_text=store_text)
+        store_text=store_text, reply_to=reply_to)
 
 
 def _post_text(obj: dict) -> tuple[str, list[str]]:

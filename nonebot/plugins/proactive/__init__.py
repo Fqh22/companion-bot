@@ -22,7 +22,7 @@ def _admin_id() -> int:
         return 0
 
 
-async def _send(text: str) -> bool:
+async def _send(text: str):
     # 默认仍是 QQ；改成 feishu 时优先走飞书注册通道，发不出去自动回退 QQ，
     # 不双发也不静默丢消息（#14）。
     try:
@@ -32,20 +32,22 @@ async def _send(text: str) -> bool:
     except Exception:  # noqa: BLE001
         channel = "qq"
     if channel != "qq":
-        if await core.proactive_channels.send(text, channel):
+        receipt = await core.proactive_channels.send(text, channel)
+        if receipt:
             logger.info("[proactive] 已由 %s 发送: %r", channel, text[:60])
-            return True
+            return receipt
         logger.warning("[proactive] 通道 %s 不可用，回退 QQ", channel)
     uid = _admin_id()
     if not uid:
         return False
     for bot in get_bots().values():
         try:
-            await bot.call_api("send_private_msg", user_id=uid, message=text)
+            response = await bot.call_api("send_private_msg", user_id=uid, message=text)
             # 自己说过的话也要进历史，否则下一轮它完全不知道
             await core.record_assistant(f"private:{uid}", text, "proactive")
             logger.info("[proactive] 已发送: %r", text[:60])
-            return True
+            mid = response.get("message_id") if isinstance(response, dict) else None
+            return core.proactive_channels.Receipt("qq", str(mid or ""))
         except Exception as e:  # noqa: BLE001
             logger.warning("[proactive] 发送到 bot %s 失败：%s",
                            getattr(bot, "self_id", "?"), e)

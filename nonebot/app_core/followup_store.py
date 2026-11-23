@@ -11,7 +11,7 @@ from app_core.followup_domain import (  # noqa: F401
     ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
     IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
     NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis,
-    is_affirm, links_question, resolve_from, responds_to, shared_span,
+    is_affirm, links_question, resolve_from, responds_to, shared_span, is_negate, strip_punct,
 )
 
 log = logging.getLogger("qqbot.followup")
@@ -136,7 +136,7 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
         "WHERE done=0 AND status NOT IN ('confirming','postponed') "
         "AND (last_asked_ts=0 OR last_asked_ts < ?) "
         "AND ask_count < ? "
-        "AND (answered_ts=0 OR last_asked_ts > answered_ts OR answered_ts < ?) "
+        "AND (answered_ts=0 OR answered_ts < ?) "
         "ORDER BY ask_count ASC, created_ts DESC LIMIT ?",
         (cutoff, ASK_MAX_TIMES, answer_cutoff,
          max(limit * 6, limit))).fetchall()
@@ -207,7 +207,7 @@ def mark_ignored(ids: list[int], conn: sqlite3.Connection | None = None) -> None
                           [(i,) for i in ids])
             c.executemany(
                 "UPDATE followups SET status='postponed', status_ts=? "
-                "WHERE id=? AND ignored>=?",
+                "WHERE id=? AND done=0 AND ignored>=?",
                 [(time.time(), i, IGNORE_LIMIT) for i in ids])
     finally:
         if conn is None:
@@ -513,41 +513,146 @@ def last_sent_assistant(session: str) -> str:
     return (row[0] if row else "") or ""
 
 
+def _reply_context(c, session: str, user_msg_id: int):
+    if not session:
+        return None
+    if user_msg_id:
+        cutoff = user_msg_id
+    else:
+        cutoff = 2**63 - 1
+    return c.execute(
+        "SELECT id, content, ts, role FROM messages WHERE session=? AND id<? "
+        "ORDER BY id DESC LIMIT 1", (session, cutoff)).fetchone()
+
+
 def attribute_reply(user_text: str, session: str = "",
                     reply_msg_id: int = 0,
-                    last_assistant: str | None = None) -> dict | None:
-    """这句是在接哪条提问。先引用消息 id，再看紧邻的上一条实际发送。"""
-    t = (user_text or "").strip()
-    if len(t) < 1:
-        return None
+                    last_assistant: str | None = None,
+                    user_msg_id: int = 0, platform_ref: str | None = None) -> dict | None:
+    """先找唯一的提问对象，再判用户是否在回答。"""
     init()
     c = _conn()
-    item = None
-    if reply_msg_id:
-        row = c.execute(
-            "SELECT id, text, asked_text FROM followups "
-            "WHERE done=0 AND asked_msg_id=? ORDER BY last_asked_ts DESC LIMIT 1",
-            (int(reply_msg_id),)).fetchone()
-        if row:
-            item = {"id": row[0], "text": row[1], "asked_text": row[2] or ""}
-    if item is None:
-        asked = last_assistant if last_assistant is not None else last_sent_assistant(session)
-        if asked:
-            rows = c.execute(
-                "SELECT id, text, asked_text, last_asked_ts FROM followups "
-                "WHERE done=0 AND last_asked_ts>0 "
-                "ORDER BY last_asked_ts DESC LIMIT 8").fetchall()
-            for fid, text, q, _ts in rows:
-                blob = f"{text or ''} {q or ''}"
-                if links_question(text or "", asked) or shared_span(blob, asked):
-                    item = {"id": fid, "text": text, "asked_text": q or asked}
-                    break
-    c.close()
-    if not item:
-        return None
-    if not responds_to(item["text"], item.get("asked_text") or "", t):
-        return None
-    return item
+    try:
+        if platform_ref and _has_proactive_receipts(c):
+            sent = c.execute(
+                "SELECT p.id, p.text, f.id, f.text, f.status, f.done FROM proactive_log p "
+                "JOIN followups f ON p.topic_key='fu:' || f.id "
+                "WHERE p.session=? AND p.platform_ref=?",
+                (session, platform_ref)).fetchall()
+            if sent:
+                if len(sent) != 1:
+                    return None
+                pid, question, fid, text, status, done = sent[0]
+                if done or not responds_to(text, question, user_text):
+                    return None
+                return {"id": fid, "text": text, "asked_text": question, "status": status,
+                        "assistant_msg_id": 0, "proactive_id": pid}
+        if platform_ref and last_assistant is None:
+            return None
+        adjacent = _reply_context(c, session, user_msg_id) if last_assistant is None else None
+        if adjacent and (adjacent[3] != "assistant" or time.time() - adjacent[2] > 7200):
+            adjacent = None
+        asked = last_assistant if last_assistant is not None else (adjacent[1] if adjacent else "")
+        rows = c.execute(
+            "SELECT id, text, asked_text, status, asked_msg_id FROM followups "
+            "WHERE done=0 AND last_asked_ts>0").fetchall()
+        exact = [r for r in rows if (reply_msg_id and r[4] == reply_msg_id)
+                 or (asked and r[2] == asked[:MAX_TEXT])]
+        matches = exact or [r for r in rows if links_question(r[1], asked)]
+        if len(matches) != 1:
+            return None
+        fid, text, recorded, status, _ = matches[0]
+        question = asked or recorded
+        if not responds_to(text, question, user_text):
+            return None
+        return {"id": fid, "text": text, "asked_text": question, "status": status,
+                "assistant_msg_id": adjacent[0] if adjacent else 0}
+    finally:
+        c.close()
+
+
+def answer_turn(text: str, session: str, user_msg_id: int = 0,
+                quote_text: str | None = None, reply_to: str | None = None) -> dict:
+    """一个用户回合只更新一个事项。引用失败时保留原状态。"""
+    text = text.strip().removeprefix("[语音]").strip()
+    hit = attribute_reply(text, session=session, last_assistant=quote_text,
+                          user_msg_id=user_msg_id, platform_ref=reply_to)
+    if hit:
+        fid = hit["id"]
+        normalized = strip_punct(text)
+        if (hit["status"] == "confirming" and normalized in
+                ("对", "是", "是的", "没错", "对的", "确实")):
+            res = {"done": [fid]}
+        elif is_negate(normalized):
+            res = {"touched": [fid]}
+        else:
+            res = resolve_from(normalized, [], last_asked=hit, attributed=True)
+    elif quote_text or reply_to:
+        return {}
+    else:
+        candidates = _candidates(text)
+        if (len(candidates) != 1 or not shared_span(candidates[0][1], text, 3)
+                or not responds_to(candidates[0][1], "", text)):
+            return {}
+        fid = candidates[0][0]
+        res = resolve_from(text, candidates)
+
+    status = (res.get("status") or {}).get(fid)
+    for key, state in (("done", "done"), ("drop", "cancelled")):
+        if fid in (res.get(key) or []):
+            status = state
+    if fid in (res.get("confirm") or []):
+        # 用户已经给过答复，状态不确定时保留原状。
+        res["confirm"] = []
+    if not status:
+        res["touched"] = [fid]
+
+    c = _conn()
+    try:
+        with c:
+            now = time.time()
+            if user_msg_id:
+                row = c.execute(
+                    "SELECT ts FROM messages WHERE id=? AND session=? AND role='user'",
+                    (user_msg_id, session)).fetchone()
+                if row:
+                    now = float(row[0])
+            c.execute(
+                "UPDATE followups SET answered_ts=MAX(answered_ts, ?) WHERE id=? AND done=0",
+                (now, fid))
+            if status:
+                c.execute(
+                    "UPDATE followups SET status=?, status_ts=?, done=? WHERE id=? AND done=0",
+                    (status, now, int(status in CLOSED), fid))
+            if hit:
+                _link_proactive_answer(c, fid, session, hit, now)
+    finally:
+        c.close()
+    return res
+
+
+def _has_proactive_receipts(c) -> bool:
+    return any(row[1] == "platform_ref" for row in c.execute("PRAGMA table_info(proactive_log)"))
+
+
+def _link_proactive_answer(c, fid: int, session: str, hit: dict, answered_at: float) -> None:
+    if not _has_proactive_receipts(c):
+        return
+    if hit.get("proactive_id"):
+        c.execute("UPDATE proactive_log SET answered_ts=? WHERE id=? AND answered_ts=0",
+                  (answered_at, hit["proactive_id"]))
+        return
+    query = ("SELECT id FROM proactive_log WHERE topic_key=? AND session=? "
+             "AND ts<=? AND ts>=? AND text=?")
+    params = [f"fu:{fid}", session, answered_at, answered_at - 7 * 86400,
+              hit["asked_text"]]
+    if hit["assistant_msg_id"]:
+        query += " AND assistant_msg_id=?"
+        params.append(hit["assistant_msg_id"])
+    rows = c.execute(query + " LIMIT 2", params).fetchall()
+    if len(rows) == 1:
+        c.execute("UPDATE proactive_log SET answered_ts=? WHERE id=? AND answered_ts=0",
+                  (answered_at, rows[0][0]))
 
 
 def still_due(fid: int) -> bool:

@@ -100,7 +100,7 @@ def _save_chat_map() -> None:
         logger.debug(f"[feishu] 会话映射保存失败：{e}")
 
 
-async def _send_proactive(text: str) -> bool:
+async def _send_proactive(text: str):
     """主动给主人发一条飞书消息（#14）。没有会话映射就不硬猜 chat_id。
 
     成功要写回历史——和 QQ 的 `_send` 一样，否则下一轮它不知道自己主动说过话。
@@ -122,7 +122,7 @@ async def _send_proactive(text: str) -> bool:
             await core.record_assistant(session, text, "proactive")
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[feishu] 主动消息写历史失败：{e}")
-    return bool(ok)
+    return core.proactive_channels.Receipt("feishu", ok if isinstance(ok, str) else "") if ok else False
 
 
 def _creds() -> tuple[str, str]:
@@ -138,7 +138,7 @@ def _new_client(app_id: str, app_secret: str) -> lark.Client:
     return lark.Client.builder().app_id(app_id).app_secret(app_secret).build()
 
 
-def _send_message(chat_id: str, msg_type: str, content: dict) -> bool:
+def _send_message(chat_id: str, msg_type: str, content: dict) -> bool | str:
     body = (CreateMessageRequestBody.builder()
             .receive_id(chat_id)
             .msg_type(msg_type)
@@ -153,7 +153,7 @@ def _send_message(chat_id: str, msg_type: str, content: dict) -> bool:
         logger.warning(f"[feishu] 发送失败 type={msg_type} code={getattr(resp, 'code', '?')} "
                        f"msg={getattr(resp, 'msg', '?')}")
         return False
-    return True
+    return str(getattr(getattr(resp, "data", None), "message_id", "") or "") or True
 
 
 def _upload_image(path: Path) -> str:
@@ -479,7 +479,8 @@ async def _handle(data) -> None:
                            defer_text=want_voice and VOICE_REPLY_MODE != "text_then_voice")
         inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id),
                              text=_model_text, images=images, event_id=mid,
-                             voice=voice, session=session, store_text=text)
+                             voice=voice, session=session, store_text=text,
+                             reply_to=getattr(msg, "parent_id", None))
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
                             stall_seconds=getattr(core, "reply_stall_seconds", 30))
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"

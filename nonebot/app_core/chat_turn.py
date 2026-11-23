@@ -102,7 +102,7 @@ class ChatTurnMixin(CommitMixin):
 
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None,
-                            quote_text: str | None = None) -> Turn:
+                            quote_text: str | None = None, reply_to: str | None = None) -> Turn:
         """取证：历史、记忆、知识、画像、情绪。"""
         turn = Turn(session=session, user_text=user_text, images=list(images or []),
                     store_text=store_text, owner=self._is_owner(session),
@@ -122,7 +122,6 @@ class ChatTurnMixin(CommitMixin):
         else:
             turn.stored = user_text
 
-        self._prepare_followup(turn, user_text)
         # 取数：默认串行；chat.prepare_parallel 打开时并发（S2）。
         await self._prepare_fetches(turn, user_text)
 
@@ -149,6 +148,7 @@ class ChatTurnMixin(CommitMixin):
             turn.user_msg_id = await asyncio.shield(
                 self.persist_inbound(turn.session, turn.stored)) or 0
 
+        self._prepare_followup(turn, store_text or user_text, reply_to=reply_to)
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
 
@@ -219,7 +219,7 @@ class ChatTurnMixin(CommitMixin):
             log.debug("分析类预搜索失败：%s", e)
             return ""
 
-    def _prepare_followup(self, turn: Turn, user_text: str) -> None:
+    def _prepare_followup(self, turn: Turn, user_text: str, reply_to: str | None = None) -> None:
         """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
 
         上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
@@ -233,41 +233,21 @@ class ChatTurnMixin(CommitMixin):
             return
         quoted = (turn.quote_text or "").strip() or None
         try:
-            followup.confirm_pending(text, session=turn.session, last_assistant=quoted)
-            res = followup.resolve(text)
-            # 引用优先用被引用的原文；否则看紧邻的上一条实际发送。
-            hit = followup.attribute_reply(
-                text, session=turn.session, last_assistant=quoted)
-            if hit and hit["id"] not in (res.get("touched") or []) \
-                    and hit["id"] not in (res.get("done") or []) \
-                    and hit["id"] not in (res.get("drop") or []) \
-                    and hit["id"] not in (res.get("status") or {}):
-                res.setdefault("touched", []).append(hit["id"])
-            if (res.get("done") or res.get("confirm")
-                    or res.get("status") or res.get("drop")):
-                followup.apply(res)
-                log.info("[chat] followup %s", res)
+            res = followup.answer_turn(text, turn.session, turn.user_msg_id,
+                                       quote_text=quoted, reply_to=reply_to)
             if res.get("done"):
                 turn.prefetch.setdefault("followup", []).append(
                     (0, "他刚说这件事办完了，你已经记成完成——"
                     "这轮别再问进展，也别再说「记得跟我说」。"))
-            if res.get("confirm"):
-                names = followup.texts_for(res["confirm"])
-                if names:
-                    turn.prefetch.setdefault("followup", []).append(
-                        (1, "他像是在说「%s」已经办完了，但你没把握："
-                        "在回复里顺口确认一句，别直接当成已完成。" % names[0]))
-            if res.get("touched"):
-                # 他回应了这件事（不一定是办完）：记一笔，压住 14 天内的追问
-                followup.mark_answered(res["touched"])
+            if res.get("touched") or res.get("status"):
                 turn.prefetch.setdefault("followup", []).append(
                     (0, "他刚回应了这件事（不一定是办完了）——别再问进展，也别催。"))
             if res.get("drop"):
                 turn.prefetch.setdefault("followup", []).append(
                     (2, "他刚把之前提的那件事放掉了（忘了/算了/不弄了）——"
                     "这轮别提它，也别追问进展。"))
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("跟进回应入账失败：%s", e)
 
     async def _prepare_vectors(self, turn: Turn, user_text: str) -> None:
         """算本轮向量并观察情绪。

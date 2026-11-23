@@ -146,10 +146,13 @@ def responds_to(item_text: str, question: str, user_text: str) -> bool:
     t = strip_punct(user_text)
     if not t or is_ack(t):
         return False
-    if is_affirm(t) or is_negate(t):
-        return True
-    # 短的、但有内容的回答（「上完班再去」）。纯附和已在上面排除。
-    if len(t) <= 8 and not looks_like_question(t):
+    if t.startswith(("换个话题", "聊点别的", "搜下", "搜一下", "搜一搜", "搜索一下", "查一下", "帮我查")):
+        return False
+    if is_affirm(t) or is_negate(t) or _bare_reply(t):
+        return looks_like_question(question)
+    # 省略主语的时间、进度答复需要有可识别的动作。
+    if len(t) <= 16 and looks_like_question(question) and re.fullmatch(
+            r"(?:上完班|下班|晚点|明天|今晚|一会儿|等下|周末)(?:了)?再(?:去|看|签|问|做|弄|说|处理)", t):
         return True
     if shared_span(item_text, t) or shared_span(question or "", t):
         return True
@@ -240,14 +243,16 @@ def _signal_hit(text: str, signals: tuple[str, ...]) -> bool:
 
 
 def resolve_from(text: str, cands: list[tuple[int, str]],
-                 last_asked: dict | None = None) -> dict:
+                 last_asked: dict | None = None, *, attributed: bool = False) -> dict:
     """纯解析：候选/最近问过由调用方查好传进来。"""
     t = (text or "").strip()
     out: dict = {"done": [], "confirm": [], "status": {}, "drop": []}
     if len(t) < 2:
         return out
-    forced = False
-    forced_id: int | None = None
+    forced = attributed and last_asked is not None
+    forced_id = last_asked["id"] if forced else None
+    if forced:
+        cands = [(forced_id, last_asked["text"])]
     if not cands:
         la = last_asked
         if la:

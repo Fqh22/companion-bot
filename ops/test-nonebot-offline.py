@@ -2817,7 +2817,14 @@ async def main() -> None:
     # 每个用例独立会话：共享会话会让上一条用例的回复落进下一条的窗口。
     _fid_in = _fu_id("买牛奶的窗口内回复")
     _add_send(_fid_in, _now - 3 * 3600)
-    _add_user(_now - 2 * 3600, "private:pr-in")
+    with sqlite3.connect(TMP / "chat.db") as _c:
+        _c.execute("UPDATE proactive_log SET text=? WHERE topic_key=?",
+                   ("买牛奶了吗？", f"fu:{_fid_in}"))
+        _c.executemany(
+            "INSERT INTO messages(session,role,content,ts) VALUES(?,?,?,?)",
+            [("private:pr-in", "assistant", "买牛奶了吗？", _now - 3 * 3600),
+             ("private:pr-in", "user", "还没", _now - 2 * 3600)])
+    _c.close()
     _pr3 = ProactiveRuntime(_PCore("private:pr-in"), send=lambda t: True,
                             db_path=TMP / "chat.db")
     _pr3.init()
@@ -2844,6 +2851,35 @@ async def main() -> None:
     _pr_down._settle_ignored()
     check("停机跨窗口：两条旧发送都记没理",
           _ignored(_fid_down) == 2, str(_ignored(_fid_down)))
+
+    _exact_fid = _fu_id("领取新租房合同")
+    _exact_q = "新的租房合同领到了吗？"
+    _exact_session = "private:pr-exact"
+    _exact = ProactiveRuntime(_PCore(_exact_session), send=lambda t: True,
+                              db_path=TMP / "chat.db")
+    _exact.init()
+    with sqlite3.connect(TMP / "chat.db") as _c:
+        _c.executemany(
+            "INSERT INTO proactive_log(ts,topic_key,topic,text,session,platform_ref) VALUES(?,?,?,?,?,?)",
+            [(_now - 4 * 3600, f"fu:{_exact_fid}", "合同", _exact_q, _exact_session, "qq:old"),
+             (_now - 3 * 3600, f"fu:{_exact_fid}", "合同", _exact_q, _exact_session, "qq:new"),
+             (_now - 3 * 3600, f"fu:{_exact_fid}", "合同", _exact_q, _exact_session, "feishu:new")])
+        _reply_id = _c.execute(
+            "INSERT INTO messages(session,role,content,ts) VALUES(?,?,?,?)",
+            (_exact_session, "user", "还没。", _now - 130 * 60)).lastrowid
+    _c.close()
+    followup_mod.answer_turn("还没。", _exact_session, _reply_id, reply_to="qq:new")
+    _exact._settle_ignored()
+    _exact._settle_ignored()
+    with sqlite3.connect(TMP / "chat.db") as _c:
+        _outcomes = _c.execute(
+            "SELECT platform_ref, ignored, answered_ts>0 FROM proactive_log "
+            "WHERE session=? ORDER BY id", (_exact_session,)).fetchall()
+    _c.close()
+    check("重复问题按通道和平台消息 ID 只回答该次发送",
+          _outcomes == [("qq:old", 1, 0), ("qq:new", 0, 1), ("feishu:new", 1, 0)],
+          str(_outcomes))
+    check("主动回应率与逐次结算同口径", _exact.reply_rate() == 1 / 3)
 
     # 没有可信主人会话：不结算、不把陌生用户消息当回应/活跃
     class _NoOwnerCore:
@@ -3870,6 +3906,30 @@ async def main() -> None:
     check("在途轮次被记下来", _inflight.busy("private:111"))
     _inflight.clear("private:111")
     check("轮次结束后在途标记清除", not _inflight.busy("private:111"))
+
+    _prev_followup_db = followup_store_mod.DB
+    followup_store_mod.DB = TMP / "followup-quote-test.db"
+    try:
+        _contract = "核对租房合同"
+        _migration = "迁移数据库脚本"
+        followup_mod.add(_contract)
+        followup_mod.add(_migration)
+        _contract_question = "核对租房合同了吗？"
+        followup_mod.note_asked(_contract_question)
+        followup_mod.note_asked("迁移数据库脚本写完了吗？")
+        _transition = followup_mod.answer_turn(
+            "搞定了。", "private:quote-test", quote_text=_contract_question)
+        check("引用旧问题只关闭引用事项",
+              _transition.get("done") == [followup_store_mod.id_for_text(_contract)]
+              and any(x["text"] == _migration for x in followup_mod.pending(100)),
+              str(_transition))
+        for _unrelated in ("搜下天气", "我今天有点累", "换个话题"):
+            check("短句换题不算回应 " + _unrelated,
+                  not followup_mod.responds_to(_contract, _contract_question, _unrelated))
+        check("省略主题的时间答复仍能入账",
+              followup_mod.responds_to("晚上去签租房合同", "晚上签约去吗？", "上完班再去"))
+    finally:
+        followup_store_mod.DB = _prev_followup_db
 
     # 还原测试期替换掉的真实现
     chat_mod.tools.execute = REAL_TOOLS_EXECUTE

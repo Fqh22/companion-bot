@@ -1,7 +1,7 @@
 """[orchestration] 主动消息的循环：频控、回应率、挑话题、生成、发送。
 
 以前整段在 plugins/proactive 里，换通道就没了。现在通道只提供
-`send(text) -> bool`，其余都在这里——频控落 chat.db 的 proactive_log，
+`send(text) -> bool | Receipt`，其余都在这里——频控落 chat.db 的 proactive_log，
 重启不丢，还能算「发出去之后他回没回」。
 
 判断层在 app_core/proactive.py（纯函数），这里只做「取数 + 调用 + 落库」。
@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app_core import followup, mood, paths, perception
+from app_core import followup, mood, paths, perception, proactive_channels
 from app_core import proactive as decide
 from app_core import proactive_sources as sources
 
@@ -31,7 +31,7 @@ class ProactiveRuntime:
                  db_path: Path | None = None,
                  interval: float = 1800.0, start_delay: float = 300.0) -> None:
         self.core = core
-        self.send = send              # async (text: str) -> bool
+        self.send = send              # async (text: str) -> bool | Receipt
         self.admin_id = str(admin_id or "")
         self.db = Path(db_path or paths.CHAT_DB)
         self.interval = float(interval)
@@ -62,6 +62,10 @@ class ProactiveRuntime:
             for ddl in (
                 "ALTER TABLE proactive_log ADD COLUMN settled_ts REAL NOT NULL DEFAULT 0",
                 "ALTER TABLE proactive_log ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE proactive_log ADD COLUMN session TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE proactive_log ADD COLUMN assistant_msg_id INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE proactive_log ADD COLUMN answered_ts REAL NOT NULL DEFAULT 0",
+                "ALTER TABLE proactive_log ADD COLUMN platform_ref TEXT NOT NULL DEFAULT ''",
             ):
                 try:
                     c.execute(ddl)
@@ -135,37 +139,42 @@ class ProactiveRuntime:
 
     def reply_rate(self, days: float = 7) -> float | None:
         """最近 N 天主动消息的回应率；样本不足返回 None（不据此调整上限）。"""
+        session = self._session()
+        if not session:
+            return None
+        now = time.time()
         try:
             c = self._conn()
-            since = time.time() - days * 86400
-            sent = int(c.execute("SELECT COUNT(*) FROM proactive_log WHERE ts>=?",
-                                 (since,)).fetchone()[0] or 0)
-            if sent < 3:
+            try:
+                total, replied = c.execute(
+                    "SELECT COUNT(*), SUM(answered_ts>0 AND answered_ts<=ts+?) "
+                    "FROM proactive_log WHERE session=? AND topic_key LIKE 'fu:%' "
+                    "AND ts>=? AND settled_ts>0",
+                    (REPLY_WINDOW, session, now - days * 86400)).fetchone()
+            finally:
                 c.close()
-                return None
-            s = self._session()
-            if not s:
-                # 没有可信主人会话：不统计「所有用户」，直接判样本不足。
-                c.close()
-                return None
-            replied = c.execute(
-                "SELECT COUNT(*) FROM proactive_log p WHERE p.ts>=? AND EXISTS("
-                " SELECT 1 FROM messages m WHERE m.role='user' AND m.session=?"
-                " AND m.ts > p.ts AND m.ts < p.ts + ?)",
-                (since, s, REPLY_WINDOW)).fetchone()
-            c.close()
-            return float(replied[0] or 0) / sent
+            return float(replied or 0) / total if total >= 3 else None
         except Exception:  # noqa: BLE001
             return None
 
-    def log_send(self, topic_key: str, topic: str, text: str) -> None:
+    def log_send(self, topic_key: str, topic: str, text: str,
+                 started_at: float | None = None, platform_ref: str = "") -> None:
         try:
+            session = self._session()
             c = self._conn()
-            with c:
-                c.execute(
-                    "INSERT INTO proactive_log(ts, topic_key, topic, text) VALUES (?,?,?,?)",
-                    (time.time(), topic_key, topic, text))
-            c.close()
+            try:
+                with c:
+                    message = c.execute(
+                        "SELECT id, ts FROM messages WHERE session=? AND role='assistant' "
+                        "AND content=? AND ts>=? ORDER BY id DESC LIMIT 1",
+                        (session, text, started_at)).fetchone() if started_at is not None else None
+                    c.execute(
+                        "INSERT INTO proactive_log(ts, topic_key, topic, text, session, assistant_msg_id, platform_ref) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        (message[1] if message else time.time(), topic_key, topic, text,
+                         session, message[0] if message else 0, platform_ref))
+            finally:
+                c.close()
         except Exception as e:  # noqa: BLE001
             log.warning("主动消息落库失败：%s", e)
 
@@ -226,65 +235,64 @@ class ProactiveRuntime:
             return
         try:
             rows = c.execute(
-                "SELECT id, topic_key, ts FROM proactive_log "
-                "WHERE settled_ts=0 AND ts<=? ORDER BY ts ASC", (cutoff,)).fetchall()
-            for pid, key, sent in rows:
-                sent = float(sent)
+                "SELECT id, topic_key, ts, text, session FROM proactive_log "
+                "WHERE settled_ts=0 AND ts<=? AND session IN (?, '') ORDER BY ts, id",
+                (cutoff, session)).fetchall()
+            for pid, key, sent, question, recorded_session in rows:
                 try:
-                    # 与 reply_rate 同一口径：只看「发送后 REPLY_WINDOW 内」
-                    # 的用户消息。停机后补结算时，窗口外的一句回复不能
-                    # 把多条旧追问一起免掉。
-                    replied = False
-                    if str(key).startswith("fu:"):
-                        try:
-                            fid = int(str(key)[3:])
-                        except ValueError:
-                            fid = 0
-                        row = c.execute(
-                            "SELECT text, asked_text, answered_ts FROM followups WHERE id=?",
-                            (fid,)).fetchone() if fid else None
-                        if row and float(row[2] or 0) > sent:
-                            replied = True
-                        elif row:
-                            msgs = c.execute(
-                                "SELECT content FROM messages WHERE role='user' AND session=?"
-                                " AND ts>? AND ts<?",
-                                (session, sent, sent + REPLY_WINDOW)).fetchall()
-                            from app_core.followup_domain import responds_to
-                            replied = any(responds_to(row[0] or "", row[1] or "", m[0] or "")
-                                          for m in msgs)
-                            if replied:
-                                followup.mark_answered([fid])
-                    else:
-                        replied = c.execute(
-                            "SELECT 1 FROM messages WHERE role='user' AND session=?"
-                            " AND ts>? AND ts<? LIMIT 1",
-                            (session, sent, sent + REPLY_WINDOW)).fetchone()
-                    if replied:
+                    fid = int(key[3:]) if key.startswith("fu:") and key[3:].isdigit() else None
+                    if fid is None:
                         with c:
-                            c.execute("UPDATE proactive_log SET settled_ts=? "
-                                      "WHERE id=? AND settled_ts=0", (now, pid))
+                            c.execute("UPDATE proactive_log SET settled_ts=? WHERE id=?", (now, pid))
                         continue
-                    fid = None
-                    if str(key).startswith("fu:"):
-                        try:
-                            fid = int(str(key)[3:])
-                        except ValueError:
-                            fid = None
                     with c:
+                        # 新发送只结算已经归到这一次提问的回复。
+                        # 旧数据只在聊天历史能还原紧邻问答时补记，避免随机私聊算回应。
+                        legacy_answer = 0.0
+                        if not recorded_session:
+                            legacy_answer = self._legacy_answer(c, session, question, sent, fid)
                         cur = c.execute(
-                            "UPDATE proactive_log SET settled_ts=?, ignored=1 "
-                            "WHERE id=? AND settled_ts=0", (now, pid))
-                        if cur.rowcount and fid is not None:
-                            # 同一个事务里加 "没理"：结算了却没加计数，等于白问。
+                            "UPDATE proactive_log SET settled_ts=?, "
+                            "answered_ts=MAX(answered_ts, ?), "
+                            "ignored=CASE WHEN MAX(answered_ts, ?) BETWEEN ts AND ts+? "
+                            "AND MAX(answered_ts, ?)>0 THEN 0 ELSE 1 END "
+                            "WHERE id=? AND settled_ts=0",
+                            (now, legacy_answer, legacy_answer, REPLY_WINDOW, legacy_answer, pid))
+                        if not cur.rowcount:
+                            continue
+                        ignored, answered = c.execute(
+                            "SELECT ignored, answered_ts FROM proactive_log WHERE id=?", (pid,)
+                        ).fetchone()
+                        if ignored and not answered:
                             fu_mod.mark_ignored([fid], conn=c)
-                    if cur.rowcount:
-                        log.info("[proactive] %s 发出去 %d 小时没回应，记一次「没理」",
-                                 key, REPLY_WINDOW // 3600)
+                        elif legacy_answer:
+                            c.execute(
+                                "UPDATE followups SET answered_ts=MAX(answered_ts, ?) WHERE id=?",
+                                (legacy_answer, fid))
                 except Exception as e:  # noqa: BLE001
                     log.debug("结算 %s 失败：%s", key, e)
         finally:
             c.close()
+
+    @staticmethod
+    def _legacy_answer(c: sqlite3.Connection, session: str, question: str,
+                       sent: float, fid: int) -> float:
+        from app_core.followup_domain import responds_to
+
+        asked = c.execute(
+            "SELECT id FROM messages WHERE session=? AND role='assistant' "
+            "AND content=? AND ts BETWEEN ? AND ? ORDER BY id DESC LIMIT 1",
+            (session, question, sent - 10, sent + 1)).fetchone()
+        if not asked:
+            return 0.0
+        reply = c.execute(
+            "SELECT role, content, ts FROM messages WHERE session=? AND id>? "
+            "ORDER BY id LIMIT 1", (session, asked[0])).fetchone()
+        item = c.execute("SELECT text FROM followups WHERE id=?", (fid,)).fetchone()
+        if (item and reply and reply[0] == "user" and sent <= reply[2] <= sent + REPLY_WINDOW
+                and responds_to(item[0], question, reply[1])):
+            return float(reply[2])
+        return 0.0
 
     async def tick(self) -> None:
         self.init()
@@ -365,13 +373,16 @@ class ProactiveRuntime:
                     return
             except Exception as e:  # noqa: BLE001
                 log.debug("发送前复查跟进失败：%s", e)
-        if not await self.send(text):
+        started_at = time.time()
+        receipt = await self.send(text)
+        if not receipt:
             log.error("[proactive] 发送失败（不记「问过了」）：%s", text[:40])
             return
-        self.log_send(key, topic, text)
+        ref = receipt.reference if isinstance(receipt, proactive_channels.Receipt) else ""
+        self.log_send(key, topic, text, started_at=started_at, platform_ref=ref)
         if key.startswith("fu:"):
             try:
-                followup.mark_asked([int(key[3:])])
+                followup.mark_asked([int(key[3:])], asked_text=text)
             except Exception as e:  # noqa: BLE001
                 log.warning("标记跟进已问失败：%s", e)
         log.info("[proactive] 已发送（key=%s）: %r", key, text[:60])

@@ -88,9 +88,12 @@ class Engine:
             kwargs["caps"] = caps
         if delivery_policy is not None:
             kwargs["delivery_policy"] = delivery_policy
+        if msg.reply_to:
+            kwargs["reply_to"] = f"{msg.platform}:{msg.reply_to}"
+        if msg.quote_text:
+            kwargs["quote_text"] = msg.quote_text
         replies, images = await self.core.reply(
             msg.session, msg.text, list(msg.images) or None,
             on_sentence=on_sentence, store_text=msg.store_text,
-            defer_history=defer_history, reply_to=msg.reply_to,
-            quote_text=msg.quote_text, **kwargs)
+            defer_history=defer_history, **kwargs)
         return OutboundMessage(chunks=list(replies or []), images=list(images or []))
