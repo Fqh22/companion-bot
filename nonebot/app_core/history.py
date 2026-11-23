@@ -150,6 +150,19 @@ class HistoryMixin:
             return f"private:{uid}"
         return getattr(self, "platform_owner_session", "") or ""
 
+    async def persist_inbound(self, session: str, content: str) -> int:
+        """读完历史后、生成前落用户消息。
+
+        生成超时如果发生在 POST_WRITE 之前，下一轮会读不到这句。
+        必须在 history() 之后调用，否则同一句会进 prompt 两遍。
+        """
+        if not (session and (content or "").strip()):
+            return 0
+        try:
+            return await self.remember_safe(session, "user", content) or 0
+        except Exception:  # noqa: BLE001
+            return 0
+
     def note_followup_asked(self, text: str, msg_id: int = 0) -> None:
         """实际发出的助手文本如果在问某条跟进，和主动消息共用提问记录。"""
         try:

@@ -32,7 +32,7 @@ TURN_DEPS = {
     "_affect_port", "_context_format", "_memory_port", "_run_tools",
     "_style_mode", "_thinking_for", "build_messages", "caption_images",
     "first_token_budget", "get_digest", "history", "history_max_chars",
-    "last_user_ts", "max_tokens", "memory", "persona_for",
+    "last_user_ts", "max_tokens", "memory", "persist_inbound", "persona_for",
     "recall_query_items", "reply_deadline", "seg_max",
 }
 
@@ -144,11 +144,8 @@ class ChatTurnMixin(CommitMixin):
         # 历史已经读完，这时落库不会把本轮重复塞进 prompt。
         # 生成超时如果发生在提交之前，下一轮仍能读到这句。
         if turn.stored and not turn.user_msg_id:
-            try:
-                turn.user_msg_id = await asyncio.shield(
-                    self.remember_safe(turn.session, "user", turn.stored)) or 0
-            except Exception as e:  # noqa: BLE001
-                log.debug("提前写入用户消息失败：%s", e)
+            turn.user_msg_id = await asyncio.shield(
+                self.persist_inbound(turn.session, turn.stored)) or 0
 
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
