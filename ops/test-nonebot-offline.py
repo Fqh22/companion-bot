@@ -1223,6 +1223,14 @@ async def main() -> None:
     _swap = followup_mod.attribute_reply(
         "图片肯定是夸大了，不过户型差不多", last_assistant="能不能先签一个月？")
     check("直接换题不算在接短租", not _swap, str(_swap))
+    _ack = followup_mod.attribute_reply(
+        "在的", last_assistant="能不能先签一个月？")
+    check("短附和「在的」不算回答短租", not _ack, str(_ack))
+    followup_mod.add("只能先签一个月的短租", "memory", "doc-rent2")
+    _para = followup_mod.note_asked("那八个月你能接受吗")
+    _para_txt = followup_mod.texts_for(_para)
+    check("换个说法也算问过短租",
+          any("一个月" in x for x in _para_txt), str(_para_txt))
 
     # 「不是」不能因为含「是」关掉待确认，也不能一次关两条。
     followup_mod.add("合同条款还没定", "memory", "doc-c1")
@@ -1233,13 +1241,18 @@ async def main() -> None:
         _row = _dbc.execute("SELECT id FROM followups WHERE text=?", (_name,)).fetchone()
         _cids.append(int(_row[0]))
         _dbc.execute(
-            "UPDATE followups SET status='confirming', status_ts=? WHERE id=?",
-            (time.time(), _row[0]))
+            "UPDATE followups SET status='confirming', status_ts=?, asked_text=? WHERE id=?",
+            (time.time(), "合同条款定了吗？" if "合同" in _name else "入住日期定了吗？",
+             _row[0]))
     _dbc.commit()
     _dbc.close()
     check("「不是」不关闭待确认", followup_mod.confirm_pending("不是") == 0)
     check("「不是这个」不关闭待确认", followup_mod.confirm_pending("不是这个") == 0)
-    check("「嗯」只关最近一条", followup_mod.confirm_pending("嗯") == 1)
+    check("另起话题的「好」不关闭待确认",
+          followup_mod.confirm_pending("好", last_assistant="今天天气怎么样？") == 0)
+    check("「嗯」只关对得上的那一条",
+          followup_mod.confirm_pending(
+              "嗯", last_assistant="入住日期定了吗？") == 1)
     _dbc = sqlite3.connect(TMP / "chat.db")
     _left = _dbc.execute(
         "SELECT COUNT(*) FROM followups WHERE id IN (?,?) AND status='confirming'",

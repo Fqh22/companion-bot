@@ -11,7 +11,7 @@ from app_core.followup_domain import (  # noqa: F401
     ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
     IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
     NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis,
-    is_affirm, links_question, resolve_from, responds_to,
+    is_affirm, links_question, resolve_from, responds_to, shared_span,
 )
 
 log = logging.getLogger("qqbot.followup")
@@ -306,29 +306,43 @@ def apply(res: dict) -> int:
         n += 1
     return n
 
-def confirm_pending(text: str, window_hours: float = 24) -> int:
-    """上一轮问了「办完了吗」，这一轮整句是「对/是/嗯」才关掉**这一条**。
+def confirm_pending(text: str, window_hours: float = 24, session: str = "",
+                    last_assistant: str | None = None) -> int:
+    """整句肯定才关，而且必须是在接这条待确认的提问。
 
-    「不是」里含「是」，不能当成肯定。两条同时待确认时，一句「嗯」只关最近那条。
+    「好」另起话题不能关。两条同时待确认时，只关对得上的那一条。
     """
     if not is_affirm(text):
         return 0
     init()
+    asked = last_assistant if last_assistant is not None else last_sent_assistant(session)
+    if not asked:
+        return 0
     cutoff = time.time() - window_hours * 3600
     c = _conn()
-    row = c.execute(
-        "SELECT id FROM followups WHERE status='confirming' AND done=0 AND status_ts>=? "
-        "ORDER BY status_ts DESC LIMIT 1",
-        (cutoff,)).fetchone()
-    if row:
-        now = time.time()
-        with c:
-            c.execute(
-                "UPDATE followups SET status='done', done=1, status_ts=?, answered_ts=? "
-                "WHERE id=?",
-                (now, now, row[0]))
+    rows = c.execute(
+        "SELECT id, text, asked_text FROM followups "
+        "WHERE status='confirming' AND done=0 AND status_ts>=? "
+        "ORDER BY status_ts DESC LIMIT 8",
+        (cutoff,)).fetchall()
     c.close()
-    return 1 if row else 0
+    target = None
+    for fid, item, q in rows:
+        blob = f"{item or ''} {q or ''}"
+        if links_question(item or "", asked) or shared_span(blob, asked, 2):
+            target = fid
+            break
+    if target is None:
+        return 0
+    now = time.time()
+    c = _conn()
+    with c:
+        c.execute(
+            "UPDATE followups SET status='done', done=1, status_ts=?, answered_ts=? "
+            "WHERE id=?",
+            (now, now, target))
+    c.close()
+    return 1
 
 def describe_statuses() -> dict:
     init()
@@ -416,7 +430,7 @@ def for_prompt(user_text: str, limit: int = 3) -> list[str]:
     """普通回复注入：能问的只在聊到相关词时给；已回应/已搁置的带上状态，不当成没问过。"""
     t = user_text or ""
     lines = [x["text"][:40] for x in pending(limit * 2)
-             if _overlap(x.get("text") or "", t) >= 0.2]
+             if shared_span(x.get("text") or "", t)]
     init()
     c = _conn()
     rows = c.execute(
@@ -425,7 +439,7 @@ def for_prompt(user_text: str, limit: int = 3) -> list[str]:
         "ORDER BY answered_ts DESC, status_ts DESC LIMIT 20").fetchall()
     c.close()
     for text, status, answered in rows:
-        if _overlap(text or "", t) < 0.2:
+        if not shared_span(text or "", t):
             continue
         label = "已搁置" if status == "postponed" else "已回应"
         lines.append(f"{(text or '')[:40]}（{label}，别当没问过）")
@@ -524,7 +538,8 @@ def attribute_reply(user_text: str, session: str = "",
                 "WHERE done=0 AND last_asked_ts>0 "
                 "ORDER BY last_asked_ts DESC LIMIT 8").fetchall()
             for fid, text, q, _ts in rows:
-                if links_question(text or "", asked) or (q and asked[:80] in q or q[:80] in asked):
+                blob = f"{text or ''} {q or ''}"
+                if links_question(text or "", asked) or shared_span(blob, asked):
                     item = {"id": fid, "text": text, "asked_text": q or asked}
                     break
     c.close()

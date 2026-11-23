@@ -101,11 +101,13 @@ class ChatTurnMixin(CommitMixin):
                         turn.prefetch["weather"] = res
 
     async def _turn_prepare(self, session: str, user_text: str,
-                            images: list | None, store_text: str | None) -> Turn:
+                            images: list | None, store_text: str | None,
+                            quote_text: str | None = None) -> Turn:
         """取证：历史、记忆、知识、画像、情绪。"""
         turn = Turn(session=session, user_text=user_text, images=list(images or []),
                     store_text=store_text, owner=self._is_owner(session),
-                    rid=uuid.uuid4().hex[:6], t0=time.perf_counter())
+                    rid=uuid.uuid4().hex[:6], t0=time.perf_counter(),
+                    quote_text=(quote_text or "").strip())
         # 只有本人那一轮才动记忆/情绪/知识/工具。别人可以聊，但聊的是一个
         # 「不记得他、也不知道我」的版本——否则他一句话就能把我的记忆念出来，
         # 或者把话写进我的库（2026-11-05 实测：陌生人问「我是谁」，它答了 QQ 号）。
@@ -226,13 +228,16 @@ class ChatTurnMixin(CommitMixin):
         # 会把本人的待办直接置 done。和 650 行 due_for_asking 的写法保持一致。
         if not turn.owner:
             return
-        if turn.images or len(user_text) < 2:   # 「改完了」只有 3 个字，不能因此跳过
+        text = (user_text or "").strip()
+        if not text:
             return
+        quoted = (turn.quote_text or "").strip() or None
         try:
-            followup.confirm_pending(user_text)
-            res = followup.resolve(user_text)
-            # 普通回复里问过的事，和主动消息共用提问记录。短答按紧邻的上一条发送归因。
-            hit = followup.attribute_reply(user_text, session=turn.session)
+            followup.confirm_pending(text, session=turn.session, last_assistant=quoted)
+            res = followup.resolve(text)
+            # 引用优先用被引用的原文；否则看紧邻的上一条实际发送。
+            hit = followup.attribute_reply(
+                text, session=turn.session, last_assistant=quoted)
             if hit and hit["id"] not in (res.get("touched") or []) \
                     and hit["id"] not in (res.get("done") or []) \
                     and hit["id"] not in (res.get("drop") or []) \

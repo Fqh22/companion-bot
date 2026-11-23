@@ -97,26 +97,61 @@ def is_affirm(text: str) -> bool:
 
 def looks_like_question(text: str) -> bool:
     t = text or ""
-    return any(x in t for x in ("？", "?", "吗", "能不能", "可不可以", "是不是", "有没有", "要不要"))
+    return any(x in t for x in ("？", "?", "吗", "能不能", "可不可以", "是不是", "有没有", "要不要", "行不行"))
+
+
+# 打招呼、收到、在线，不是在回答刚才那件事。
+_ACK = {
+    "哈哈", "哈哈哈", "呵呵", "嘿嘿", "在的", "在呢", "在", "收到", "好呀",
+    "笑死", "ok", "okay", "666", "嗯嗯", "哦", "噢", "喔",
+}
+_STOP_CHARS = set("的了吗呢啊呀吧你我他她它这那是不有在和与或就也都还")
+_WEAK_SPANS = {"还没", "了吗", "没有", "是不", "不是", "这个", "那个", "什么", "怎么", "一下", "没定"}
+
+
+def _compact(text: str) -> str:
+    return "".join(ch for ch in (text or "") if ch.strip() and ch not in "。！？!?~.…，,、 ")
+
+
+def shared_span(a: str, b: str, n: int = 2) -> bool:
+    """至少有一段不是虚词的连续 n 字相同。单字「不/的」不算同一件事。"""
+    aa, bb = _compact(a), _compact(b)
+    if len(aa) < n or len(bb) < n:
+        return False
+    spans = {aa[i:i + n] for i in range(len(aa) - n + 1)}
+    for i in range(len(bb) - n + 1):
+        sp = bb[i:i + n]
+        if sp in spans and sp not in _WEAK_SPANS and not all(ch in _STOP_CHARS for ch in sp):
+            return True
+    return False
+
+
+def is_ack(text: str) -> bool:
+    t = strip_punct(text).lower()
+    return t in _ACK
 
 
 def links_question(item_text: str, asked: str) -> bool:
-    """发出去的这句话是不是在问这条跟进。陈述句提到话题不算问过。"""
+    """发出去的这句话是不是在问这条跟进。换个说法只要还咬住同一段词，也算。"""
     if not looks_like_question(asked):
         return False
+    if shared_span(item_text, asked):
+        return True
     return (_overlap(item_text, asked) >= 0.45
             or _overlap(asked, item_text) >= 0.45)
 
 
 def responds_to(item_text: str, question: str, user_text: str) -> bool:
-    """他这句是不是在接刚才那条提问。短答、带标点、同义算；换题不算。"""
+    """他这句是不是在接刚才那条提问。短答、同义算；附和和换题不算。"""
     t = strip_punct(user_text)
-    if not t:
+    if not t or is_ack(t):
         return False
     if is_affirm(t) or is_negate(t):
         return True
-    # 短答对着刚问的那条。再长就得和提问或事项有字面重合，避免把换题当成回答。
+    # 短的、但有内容的回答（「上完班再去」）。纯附和已在上面排除。
     if len(t) <= 8 and not looks_like_question(t):
+        return True
+    if shared_span(item_text, t) or shared_span(question or "", t):
         return True
     if (_overlap(item_text, t) >= TOUCH_OVERLAP
             or _overlap(question or "", t) >= TOUCH_OVERLAP):

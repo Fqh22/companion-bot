@@ -139,16 +139,28 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
         synth=lambda seg: tts.synth(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
         send_text=lambda t: ch.send_text(sid, t),
-        record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
+        record=lambda text, kind: _record_heard(sid, text, kind),
         mode=VOICE_REPLY_MODE,
         tag="[chat]",
     )
+
+
+async def _record_heard(sid: str, text: str, kind: str) -> None:
+    """语音或文字兜底真正发出去之后才记提问。缓冲阶段用户还没听见。"""
+    try:
+        await core.record_assistant(sid, text, kind=kind)
+    finally:
+        core.note_followup_asked(text)
 
 
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
     _turns.add(sid, text=text, images=images, file=file, meta=meta)
+    try:
+        core.note_user_active(sid)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _take(sid: str) -> turn_mod.Turn:
@@ -304,6 +316,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                 text=_model_text, images=list(turn.images or []),
                 event_id=turn.meta.get("event_id"),
                 reply_to=turn.meta.get("reply_to"),
+                quote_text=turn.meta.get("quote_text"),
                 store_text=stored,
                 voice=bool(turn.meta.get("voice")))
             out = await runner.run(msg)
@@ -610,12 +623,20 @@ async def _handle(event: MessageEvent):
     text = event.get_plaintext().strip()
     _is_group = isinstance(event, GroupMessageEvent)
     _reply = getattr(event, "reply", None)
+    _quoted = ""
+    if _reply is not None:
+        _qmsg = getattr(_reply, "message", None)
+        if _qmsg is not None and hasattr(_qmsg, "extract_plain_text"):
+            _quoted = _qmsg.extract_plain_text()
+        else:
+            _quoted = str(_qmsg or "")
     meta = {
         "user_id": str(event.user_id),
         "chat_id": str(event.group_id) if _is_group else None,
         "is_group": _is_group,
         "event_id": str(getattr(event, "message_id", "") or ""),
         "reply_to": str(getattr(_reply, "message_id", "") or "") or None,
+        "quote_text": (_quoted or "").strip()[:200] or None,
     }
     # 身份判定统一走 core（含 admin.identities 与平台映射）；缺省时不是主人。
     # 以前这里把空 admin 当主人，等于绕过 core 的口径自己开了一道门。

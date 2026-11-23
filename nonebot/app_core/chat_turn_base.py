@@ -113,6 +113,7 @@ class Turn:
     history: list = field(default_factory=list)
     query: str = ""
     user_msg_id: int = 0
+    quote_text: str = ""
     failed_parts: list = field(default_factory=list)
     mvec: list = field(default_factory=list)
     qv: list | None = None

@@ -260,7 +260,9 @@ class ReplyMixin:
                     store_text: str | None = None,
                     caps: Capability | None = None,
                     delivery_policy: DeliveryPolicy | None = None,
-                    defer_history: bool = False) -> tuple[list[str], list[str]]:
+                    defer_history: bool = False,
+                    reply_to: str | None = None,
+                    quote_text: str | None = None) -> tuple[list[str], list[str]]:
         """返回 (分段后的回复, 待发送的图片路径)。
 
         images：本轮用户发来的图片本地路径。只注入当前这轮，历史里只留文字标记。
@@ -278,7 +280,9 @@ class ReplyMixin:
         inflight.mark(session)
         inflight.note_inbound(session)
         try:
-            turn = await self._turn_prepare(session, user_text, images, store_text)
+            turn = await self._turn_prepare(
+                session, user_text, images, store_text,
+                quote_text=quote_text)
             await self._turn_compose(turn)
             await self._turn_generate(turn, on_sentence)
             await self._turn_commit(turn, on_sentence, defer_history=defer_history)

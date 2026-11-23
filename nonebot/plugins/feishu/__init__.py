@@ -389,6 +389,13 @@ async def _draw_later(session: str, chat_id: str, ask: str) -> None:
     )
 
 
+async def _record_heard(session: str, text: str, kind: str) -> None:
+    try:
+        await core.record_assistant(session, text, kind=kind)
+    finally:
+        core.note_followup_asked(text)
+
+
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
                                  rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
@@ -401,7 +408,7 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
         synth=lambda seg: tts.synth_opus(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_voice("", p),
         send_text=lambda t: ch.send_text("", t),
-        record=lambda text, kind: core.record_assistant(session, text, kind=kind),
+        record=lambda text, kind: _record_heard(session, text, kind),
         mode=VOICE_REPLY_MODE,
         tag="[feishu]",
     )
@@ -458,6 +465,10 @@ async def _handle(data) -> None:
         # 主人消息的会话由 config 统一解析；映射同时记平台键，主动消息
         # 在共享会话和平台会话两种布局下都能找到 chat_id。
         session = config.owner_session() or f"feishu:{open_id}"
+        try:
+            core.note_user_active(session)
+        except Exception:  # noqa: BLE001
+            pass
         _chat_of[session] = str(msg.chat_id)
         _chat_of[f"feishu:{open_id}"] = str(msg.chat_id)
         # 主动消息要靠这份映射；落盘，重启后仍然找得到

@@ -163,6 +163,14 @@ class HistoryMixin:
         except Exception:  # noqa: BLE001
             return 0
 
+    def note_user_active(self, session: str) -> None:
+        """入站一进队列就记活跃。reply() 才记的话，排队那一两秒主动消息还会插进来。"""
+        try:
+            from app_core import inflight
+            inflight.note_inbound(session)
+        except Exception:  # noqa: BLE001
+            return
+
     def note_followup_asked(self, text: str, msg_id: int = 0) -> None:
         """实际发出的助手文本如果在问某条跟进，和主动消息共用提问记录。"""
         try:

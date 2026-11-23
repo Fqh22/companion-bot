@@ -203,7 +203,8 @@ CORE_API = {
     "memory_cleanup", "memory_superseded", "memory_forgotten",
     "memory_embed", "memory_restore",
     # 写历史（插件发消息后必须回写，否则机器人不记得自己说过什么）
-    "record_assistant", "append_to_message",
+    "record_assistant", "append_to_message", "note_user_active",
+    "note_followup_asked",
     # 兼容入口
     "remember_safe", "catch_up_summary", "complete_raw", "init_db",
     # ---- 两层：插件门面 core.<ns>.<func>（2026-11-16）----

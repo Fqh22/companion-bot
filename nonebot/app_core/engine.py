@@ -25,6 +25,7 @@ class InboundMessage:
     external_chat_id: str | None = None
     event_id: str | None = None
     reply_to: str | None = None
+    quote_text: str | None = None
     store_text: str | None = None
     voice: bool = False        # 这条文字是语音转写来的（形式进数据，不进正文）
 
@@ -90,5 +91,6 @@ class Engine:
         replies, images = await self.core.reply(
             msg.session, msg.text, list(msg.images) or None,
             on_sentence=on_sentence, store_text=msg.store_text,
-            defer_history=defer_history, **kwargs)
+            defer_history=defer_history, reply_to=msg.reply_to,
+            quote_text=msg.quote_text, **kwargs)
         return OutboundMessage(chunks=list(replies or []), images=list(images or []))

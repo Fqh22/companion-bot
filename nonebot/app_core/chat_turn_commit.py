@@ -278,10 +278,9 @@ class CommitMixin:
         elif not await self.remember_safe(turn.session, "assistant", sent_text):
             turn.degraded += 1
         else:
+            # 非通道路径：历史在这里写，提问也在这里记。
+            # 通道路径不在这里记：sent_parts 含语音缓冲，用户可能还没听见。
             self.note_followup_asked(sent_text, turn.user_msg_id)
-        if defer_history and turn.sent_parts:
-            # 只记通道已经收下的段。runner 还会再记一次，note_asked 自己去重。
-            self.note_followup_asked("".join(turn.sent_parts))
         # 当场纠正：命中信号 + 上一轮有回复，后台判断（不阻塞本轮）。
         # 判断「是不是纠正、纠正什么、事实还是行为」需要一次小模型调用，
         # 放同步会吃掉 45 秒预算——照图注模式异步跑。

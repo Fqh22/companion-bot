@@ -10,6 +10,7 @@ from app_core.engine import InboundMessage
 def to_inbound(*, user_id: str, text: str, chat_id: str | None = None,
                is_group: bool = False, images: list[str] | None = None,
                event_id: str | None = None, reply_to: str | None = None,
+               quote_text: str | None = None,
                store_text: str | None = None,
                voice: bool = False,
                session: str | None = None) -> InboundMessage:
@@ -24,4 +25,5 @@ def to_inbound(*, user_id: str, text: str, chat_id: str | None = None,
         session=session, text=text or "", images=list(images or []),
         platform="qq", external_user_id=uid,
         external_chat_id=cid, event_id=event_id,
-        reply_to=reply_to, store_text=store_text, voice=voice)
+        reply_to=reply_to, quote_text=quote_text,
+        store_text=store_text, voice=voice)
