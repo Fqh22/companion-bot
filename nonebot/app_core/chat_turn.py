@@ -14,6 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+from app_core.round_timing import current as current_timing
 from app_core import (attention, config, correction, followup, intent, kb, memory_instant,
                       learn, mood, perception, relational, shadow, wiki)
 from app_core import profile as profile_mod
@@ -44,61 +45,78 @@ from app_core.chat_turn_base import (  # noqa: F401  兼容老调用方
 
 
 class ChatTurnMixin(CommitMixin):
+    @staticmethod
+    def _explicit_lookup(text: str) -> bool:
+        return any(term in text for term in ("帮我查", "查一下", "搜一下", "帮我搜", "核实", "查证"))
+
+    def _prep_left(self, turn: Turn) -> float:
+        elapsed = time.perf_counter() - turn.t0
+        budget = self.first_token_budget
+        if self._explicit_lookup(turn.user_text):
+            budget = max(budget, 18.0)
+        return max(0.0, min(budget, self.reply_deadline - GEN_RESERVE) - elapsed)
+
     async def _prepare_fetches(self, turn: Turn, user_text: str) -> None:
-        """取数：默认串行（行为与改造前完全一致）；开关打开时并发。
-
-        三个约束：
-        1. 开关默认全 false——关着时一条路径都不变，36/36 逐字节相同；
-        2. 总闸 = min(max(各路超时), 剩余预算)；剩余 <= 0.5s 时全降级，不把负数交给 wait；
-        3. 每路独立降级（空结果），异常不抛出；指标区分 budget_exhausted / cancelled / error。
-        """
-        # yaml 里 prepare_parallel 在 llm 段；旧代码读 chat 段，等于这个开关从来没生效过
-        # （默认全 false 恰好与串行一致，所以没人发现）。2026-11-16 对齐到 llm。
+        """并发开关只改变调度方式，两条取数路径共用首字预算。"""
         cfg = (config.load().get("llm") or {}).get("prepare_parallel") or {}
-        want = {k: bool(cfg.get(k)) for k in ("weather", "search")}
-        if not any(want.values()):
-            await self._prepare_search(turn, user_text)
-            if perception.should_read(user_text):
-                turn.prefetch["weather"] = await self._fetch_weather(turn)
-            return
+        tasks = []
+        timing = current_timing.get()
 
-        tasks: dict = {}
-        if want["search"]:
-            tasks["search"] = asyncio.create_task(self._prepare_search(turn, user_text))
-        if want["weather"] and perception.should_read(user_text):
-            tasks["weather"] = asyncio.create_task(self._fetch_weather(turn))
-        if not tasks:
-            return
-        turn.parallel = True
+        async def fetch(key: str) -> None:
+            seconds = min(_PATH_TIMEOUT[key], self._prep_left(turn))
+            if seconds <= 0:
+                turn.budget_exhausted = True
+                turn.fetch_metrics[key] = "budget_exhausted"
+                return
+            started = time.perf_counter()
+            if timing:
+                timing.checking += 1
+                timing.mark(key + "_start")
+            try:
+                async with asyncio.timeout(seconds):
+                    if key == "search":
+                        await self._prepare_search(turn, user_text)
+                    else:
+                        result = await self._fetch_weather(turn)
+                        if result:
+                            turn.prefetch["weather"] = result
+                turn.fetch_metrics.setdefault(key, "ok")
+            except TimeoutError:
+                turn.budget_exhausted = True
+                turn.fetch_metrics[key] = "timeout"
+            except Exception:
+                turn.fetch_metrics[key] = "error"
+            finally:
+                turn.fetch_metrics[key + "_ms"] = int((time.perf_counter() - started) * 1000)
+                if timing:
+                    timing.checking -= 1
+                    timing.mark(key + "_finish")
 
-        remaining = self.reply_deadline - (time.perf_counter() - turn.t0) - GEN_RESERVE
-        if remaining <= 0.5:
-            for t in tasks.values():
-                t.cancel()
-            await asyncio.gather(*tasks.values(), return_exceptions=True)
-            turn.budget_exhausted = True
-            turn.fetch_metrics = {k: "budget_exhausted" for k in tasks}
-            return
+        keys = []
+        if self._wants_search(turn, user_text):
+            keys.append("search")
+        if perception.should_read(user_text):
+            keys.append("weather")
+        try:
+            for key in keys:
+                if cfg.get(key):
+                    tasks.append(asyncio.create_task(fetch(key)))
+            turn.parallel = bool(tasks) and len(keys) > 1
+            for key in keys:
+                if not cfg.get(key):
+                    await fetch(key)
+            await asyncio.gather(*tasks)
+        finally:
+            if any(not task.done() for task in tasks):
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
 
-        budget = min(max(_PATH_TIMEOUT[k] for k in tasks), remaining)
-        _done, pending = await asyncio.wait(tasks.values(), timeout=budget)
-        for t in pending:
-            t.cancel()
-        # 收尸：不收集的话取消中的任务会留下未取回的异常
-        await asyncio.gather(*pending, return_exceptions=True)
-        for name, t in tasks.items():
-            if t.cancelled():
-                turn.fetch_metrics[name] = "cancelled"
-            elif t.exception() is not None:
-                turn.fetch_metrics[name] = "error"
-            else:
-                turn.fetch_metrics[name] = "ok"
-                # weather 的 task 返回数据本身，结果要落回 prefetch；
-                # search 的 task 是 _prepare_search，内部自己写。
-                if name == "weather":
-                    res = t.result()
-                    if res:
-                        turn.prefetch["weather"] = res
+    def _wants_search(self, turn: Turn, text: str) -> bool:
+        no_search = any(term in text for term in ("别查", "别搜", "不用查", "不用搜", "别帮我查", "不要搜索"))
+        return (not no_search and turn.owner and len(text.strip()) >= 4
+                and bool((config.load().get("chat") or {}).get("force_search", True))
+                and (self._explicit_lookup(text) or intent.looks_analytical(text)))
 
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None,
@@ -107,7 +125,8 @@ class ChatTurnMixin(CommitMixin):
         """取证：历史、记忆、知识、画像、情绪。"""
         turn = Turn(session=session, user_text=user_text, images=list(images or []),
                     store_text=store_text, owner=self._is_owner(session),
-                    rid=uuid.uuid4().hex[:6], t0=time.perf_counter(),
+                    rid=(timing.rid if (timing := current_timing.get()) else uuid.uuid4().hex[:6]),
+                    t0=time.perf_counter(),
                     quote_text=(quote_text or "").strip())
         # 只有本人那一轮才动记忆/情绪/知识/工具。别人可以聊，但聊的是一个
         # 「不记得他、也不知道我」的版本——否则他一句话就能把我的记忆念出来，
@@ -154,10 +173,20 @@ class ChatTurnMixin(CommitMixin):
         if turn.followup_control_reply:
             return turn
         await self._prepare_fetches(turn, user_text)
+        if timing:
+            timing.mark("vectors_start")
         await self._prepare_vectors(turn, user_text)
-        await self._prepare_recall(turn, user_text)
-
-        await self._prepare_knowledge(turn, user_text)
+        if timing:
+            timing.mark("vectors_finish")
+        if not turn.skip_recall and self._prep_left(turn) > 0:
+            try:
+                async with asyncio.timeout(self._prep_left(turn)):
+                    await self._prepare_recall(turn, user_text)
+                    await self._prepare_knowledge(turn, user_text)
+            except TimeoutError:
+                turn.budget_exhausted = True
+        if timing:
+            timing.mark("recall_finish")
 
         await self._prepare_profile(turn)
         return turn
@@ -181,7 +210,7 @@ class ChatTurnMixin(CommitMixin):
         except Exception:  # noqa: BLE001
             pass
         t = (user_text or "").strip()
-        if len(t) < 4 or not intent.looks_analytical(t):
+        if not self._wants_search(turn, t):
             return
         # 预搜索是锦上添花，不能吃掉整轮预算：web.search 自己的超时是 25s，
         # 而整轮 deadline 只有 45s —— 慢一次就只剩 20s 给模型，首字都可能出不来。
@@ -277,18 +306,29 @@ class ChatTurnMixin(CommitMixin):
         两条向量一次算完：本轮这句（判话题推进）+ 召回 query（含前几轮）。
         之前分两次串行 embed，同一个 provider 要握手两遍，白等一趟 HTTP。
         """
+        from app_core import recall_gate
+
+        no_recall = recall_gate.decide(user_text, has_images=bool(turn.images))[1] == "smalltalk"
+        turn.skip_recall = not turn.owner or no_recall
         try:
-            texts = [user_text] if user_text.strip() else []
-            if turn.query and turn.query != user_text:
+            seconds = min(2.0, self._prep_left(turn))
+            texts = [user_text] if user_text.strip() and not turn.skip_recall and seconds > 0 else []
+            if texts and turn.query and turn.query != user_text:
                 texts.append(turn.query)
             if texts:
-                vecs = await self.memory.embed(texts)
+                async with asyncio.timeout(seconds):
+                    vecs = await self.memory.embed(texts)
                 if user_text.strip():
                     turn.mvec, turn.qv = vecs[0], vecs[-1]
                 else:
                     turn.qv = vecs[0]
+        except TimeoutError:
+            turn.fetch_metrics["embedding"] = "timeout"
+            turn.mvec, turn.qv = [], []
         except Exception:
-            turn.mvec, turn.qv = [], None
+            turn.mvec, turn.qv = [], []
+        if turn.qv is None:
+            turn.qv = []
         # 情绪要等向量出来才能算「推进 / 重复 / 换话题」，所以 observe 挪到这里。
         # 不是本人就不观察也不保存：情绪是全局单例，别人几句话能把他的心情带跑。
         if turn.owner:
@@ -597,6 +637,8 @@ class ChatTurnMixin(CommitMixin):
                                         style_mode=self._style_mode(),
                                         context_format=self._context_format(),
                                         gap_hours=turn.gap)
+        if timing := current_timing.get():
+            timing.mark("prepare_finish")
         turn.prepare_ms = (time.perf_counter() - turn.t0) * 1000.0
         try:
             turn.prepare_over_budget = turn.prepare_ms > self.first_token_budget * 1000.0
@@ -622,6 +664,8 @@ class ChatTurnMixin(CommitMixin):
             turn.streamed = True
             if not turn.first_token_at:
                 turn.first_token_at = time.perf_counter()
+                if timing := current_timing.get():
+                    timing.mark("model_first")
             turn.buffer += delta
             # 自检标签在正文前一行：等它写完（换行）再剥，别把半截标签当正文发。
             if not getattr(turn, "_sc_done", False):
@@ -638,7 +682,7 @@ class ChatTurnMixin(CommitMixin):
                 else:
                     turn._sc_done = True
             cut = max(turn.buffer.rfind(c) for c in "。！？!?~…\n")
-            if cut >= 0 and cut < len(turn.buffer) - 1:
+            if cut >= 0:
                 chunk, turn.buffer = turn.buffer[:cut + 1], turn.buffer[cut + 1:]
                 for part in split_reply(chunk, turn.seg_max):
                     # 兜底：不管前面剥没剥，发送前再剥一次（幂等，正文里不会有 [自检]）

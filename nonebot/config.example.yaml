@@ -61,8 +61,8 @@ llm:
   # 超了就在 turn_stats 里标 over_budget，S2 据此决定跳过可选取数。
   # 工具超时也从它派生（+30s / ×1.5），改总上限不会连带改工具预算。
   first_token_budget_seconds: 10
-  # 取数并发（S2）。默认全 false = 与改造前完全一致；打开后 search/weather 并发跑，
-  # 受首字预算与总闸约束。embed 是 recall 的 barrier，暂不并行（保留位）。
+  # 取数并发。开关只控制对应取数是否与其他取数重叠，关闭仍正常取数，
+  # 搜索、天气、向量与召回共用首字预算，明确查证可适度延长。
   prepare_parallel:
     search: false
     weather: false

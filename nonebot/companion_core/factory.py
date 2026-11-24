@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from functools import cache
 
 from companion_core.config import EngineConfig
@@ -27,8 +28,29 @@ class Application:
             for issue in self.core.config_issues():
                 log.error("[config] %s", issue)
             log.info("chat core ready（%s）", self.core.config_status())
+            self._record_latency_settings()
             if catch_up:
                 self._catch_up_task = asyncio.create_task(self._catch_up())
+
+    def _record_latency_settings(self) -> None:
+        if not hasattr(self.core, "reply_deadline"):
+            return
+        from app_core import config, round_timing
+
+        try:
+            version = (Path(__file__).resolve().parents[1] / ".deployed_sha").read_text(
+                encoding="utf-8").strip()
+        except OSError:
+            version = "local"
+        settings = config.load()
+        llm = settings.get("llm") or {}
+        parallel = llm.get("prepare_parallel") or {}
+        round_timing.bind_release(version, {
+            "reply_deadline_seconds": self.core.reply_deadline,
+            "first_token_budget_seconds": self.core.first_token_budget,
+            "prepare_parallel": {key: bool(parallel.get(key)) for key in ("search", "weather")},
+            "force_search": bool((settings.get("chat") or {}).get("force_search", True)),
+        })
 
     async def _catch_up(self) -> None:
         try:
@@ -47,6 +69,10 @@ class Application:
                 task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
             self._catch_up_task = None
+            if self._started:
+                from app_core import embed_provider
+
+                await embed_provider.close()
             self._started = False
 
 

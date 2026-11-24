@@ -47,19 +47,43 @@ def check_dim(matrix_dim: int, query_dim: int, configured_dim: int = 0) -> tuple
     return True, ""
 
 
+_client = None
+_client_cls = None
+_client_loop = None
+
+
+def _http():
+    import httpx
+
+    global _client, _client_cls, _client_loop
+    loop = asyncio.get_running_loop()
+    cls = httpx.AsyncClient
+    if (_client is None or getattr(_client, "is_closed", False)
+            or _client_cls is not cls or _client_loop is not loop):
+        _client = cls(timeout=httpx.Timeout(60, connect=5))
+        _client_cls, _client_loop = cls, loop
+    return _client
+
+
+async def close() -> None:
+    global _client, _client_cls, _client_loop
+    client = _client
+    _client = _client_cls = _client_loop = None
+    if client is not None and hasattr(client, "aclose"):
+        await client.aclose()
+
+
 async def embed(texts: list[str], *, api: str, model: str, key: str,
                 dim: int = 0, retries: int = 3) -> list[list[float]]:
     """返回与 texts 同序的向量。429/5xx 退避重试，维度不符直接抛。"""
     if not texts:
         return []
-    import httpx  # 延迟导入：spec() / check_dim() 的离线测试不需要第三方依赖
 
     last: Exception | None = None
     for attempt in range(retries):
         try:
-            async with httpx.AsyncClient(timeout=60) as c:
-                r = await c.post(api, headers={"Authorization": "Bearer " + key},
-                                 json={"model": model, "input": texts})
+            r = await _http().post(api, headers={"Authorization": "Bearer " + key},
+                                   json={"model": model, "input": texts})
             if r.status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
                 await asyncio.sleep(1.5 * (attempt + 1))
                 continue

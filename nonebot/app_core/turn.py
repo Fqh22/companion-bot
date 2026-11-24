@@ -92,7 +92,10 @@ class TurnQueue:
         if file:
             turn.file = file
         if meta:
+            received = turn.meta.get("received_at", meta.get("received_at"))
             turn.meta.update(meta)
+            if received is not None and meta.get("received_at") is not None:
+                turn.meta["received_at"] = min(received, meta["received_at"])
         self._hits[sid] = self._hits.get(sid, 0) + 1
 
     def peek(self, sid: str) -> Turn | None:

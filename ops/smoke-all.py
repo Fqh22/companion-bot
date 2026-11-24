@@ -145,7 +145,7 @@ from app_core import (  # noqa: E402
     identity as identity_mod,
     diary as diary_mod, files as files_mod, followup as fu_mod,
     followup_domain as fu_domain_mod, followup_store as fu_store_mod,
-    turn_intent as turn_intent_mod, intent as intent_mod, kb as kb_mod, learn as learn_mod,
+    round_timing as round_timing_mod, turn_intent as turn_intent_mod, intent as intent_mod, kb as kb_mod, learn as learn_mod,
     meme as meme_mod, memory as memory_mod, memory_score as memory_score_mod,
     memory_common as memory_common_mod, memory_embed as memory_embed_mod,
     memory_instant as memory_instant_mod, insight as insight_mod, ocr as ocr_mod,
@@ -325,6 +325,10 @@ core = FakeCore()
 
 
 async def main() -> None:
+    timing = round_timing_mod.TurnTiming("test")
+    timing.mark("first_sent")
+    check("投递时延可记录首段", "first_sent" in timing.marks)
+
     plan = await turn_intent_mod.interpret(SimpleNamespace(is_owner=lambda _: False), "test", "朗读这段")
     check("turn_intent 朗读请求同时走语音", plan.read_aloud and plan.voice)
 

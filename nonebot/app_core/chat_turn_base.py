@@ -118,6 +118,7 @@ class Turn:
     failed_parts: list = field(default_factory=list)
     mvec: list = field(default_factory=list)
     qv: list | None = None
+    skip_recall: bool = False
     seg_max: int = 0
     memories: list = field(default_factory=list)
     knowledge: str = ""

@@ -14,6 +14,7 @@ silk，所以这里 silk→pcm→opus 转一次。入站语音反过来：下载
 from __future__ import annotations
 
 import asyncio
+import time
 import json
 import subprocess
 import tempfile
@@ -35,7 +36,7 @@ from nonebot import get_driver, logger
 from app_core import asr, config, paths, tts
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.seen import BoundedSeen
-from app_core.runner import TurnRunner
+from app_core.runner import TurnRunner, TurnTiming
 from app_core.outbound import READ_ALOUD_DIRECTIVE
 from adapters.feishu import parse_content, to_inbound
 
@@ -339,6 +340,9 @@ class FeishuChannel:
             if own:
                 opus.unlink(missing_ok=True)
 
+    async def send_progress(self, session: str, text: str) -> bool:
+        return bool(await asyncio.to_thread(_send_message, self.chat_id, "text", {"text": text}))
+
     async def typing(self, session: str, on: bool) -> None:
         # 飞书机器人没有「正在输入」；保持空实现，编排层不用关心
         return None
@@ -377,7 +381,7 @@ async def _draw_later(session: str, chat_id: str, ask: str) -> None:
 
 
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
-                                 rewrite: bool = True) -> None:
+                                 rewrite: bool = True, timing: TurnTiming | None = None) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
     from app_core import outbound
 
@@ -391,11 +395,14 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
         record_delivery=lambda text, refs: core.record_delivery(session, text, references=refs),
         mode=VOICE_REPLY_MODE,
         tag="[feishu]",
+        on_delivery=(lambda: timing.mark("first_sent")) if timing else None,
     )
 
 
 async def _handle(data) -> None:
     """处理一条飞书事件（3 秒内返回由 _on_event 保证，这里是后台任务）。"""
+    received = time.monotonic()
+    timing = None
     try:
         event = data.event
         msg = event.message
@@ -411,6 +418,7 @@ async def _handle(data) -> None:
         if mid and not _seen.add(mid):
             return
 
+        timing = TurnTiming("feishu", received=received)
         parsed = parse_content(msg.message_type, msg.content)
         text = str(parsed["text"] or "")
         images: list[str] = []
@@ -452,8 +460,12 @@ async def _handle(data) -> None:
         # 主动消息要靠这份映射；落盘，重启后仍然找得到
         _save_chat_map()
         reply_to = getattr(msg, "parent_id", None)
+        timing.mark("input_ready")
+        timing.mark("intent_start")
         decision = await core.interpret_intent(
             session, text, voice=voice, reply_to=f"feishu:{reply_to}" if reply_to else None)
+        timing.mark("intent_finish")
+        timing.reply_form = "voice" if decision.voice else "text"
         model_text = READ_ALOUD_DIRECTIVE + text if decision.read_aloud else text
         ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
                            defer_text=decision.voice and VOICE_REPLY_MODE != "text_then_voice")
@@ -462,7 +474,7 @@ async def _handle(data) -> None:
                              voice=voice, session=session, store_text=text,
                              reply_to=reply_to, intent=decision)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
-                            stall_seconds=getattr(core, "reply_stall_seconds", 30))
+                            stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
                     f"{f'（{len(images)} 图）' if images else ''}")
         try:
@@ -499,7 +511,7 @@ async def _handle(data) -> None:
             except Exception:  # noqa: BLE001
                 pass
         if decision.voice and ch.buffered:
-            await _deliver_voice_reply(session, ch, rewrite=not decision.read_aloud)
+            await _deliver_voice_reply(session, ch, rewrite=not decision.read_aloud, timing=timing)
         elif decision.voice and ch.sent_text:
             asyncio.create_task(
                 _speak_later(session, str(msg.chat_id), "".join(ch.sent_text),
@@ -508,7 +520,12 @@ async def _handle(data) -> None:
         if decision.draw:
             asyncio.create_task(_draw_later(session, str(msg.chat_id), text))
     except Exception as e:  # noqa: BLE001
+        if timing:
+            timing.status = "error"
         logger.warning(f"[feishu] 处理失败：{e!r}")
+    finally:
+        if timing:
+            timing.emit()
 
 
 def _on_event(data) -> None:

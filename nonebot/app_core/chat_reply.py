@@ -293,9 +293,16 @@ class ReplyMixin:
                 if not defer_history:
                     await self.record_delivery(session, control_reply)
                 return [control_reply], []
+            callback = on_sentence
+            if on_sentence and not defer_history:
+                async def legacy_callback(part: str):
+                    # 旧宿主的回调只消费片段，通常不返回 bool。
+                    return (await on_sentence(part)) is not False
+
+                callback = legacy_callback
             await self._turn_compose(turn)
-            await self._turn_generate(turn, on_sentence)
-            await self._turn_commit(turn, on_sentence, defer_history=defer_history)
+            await self._turn_generate(turn, callback)
+            await self._turn_commit(turn, callback, defer_history=defer_history)
 
             def _plan(text: str) -> list[str]:
                 policy = delivery_policy or DeliveryPolicy(max_chars=turn.seg_max)

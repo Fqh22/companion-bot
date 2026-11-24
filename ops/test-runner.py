@@ -105,6 +105,7 @@ async def main() -> None:
     check("流式段按顺序发出", ch.texts[:2] == ["一句。", "两句。"], str(ch.texts))
     check("尾巴补发在最后", ch.texts[-1] == "尾巴。", str(ch.texts))
     check("图片也发了", ch.images == ["x.png"], str(ch.images))
+    await asyncio.sleep(0.02)
     check("typing 开了也关了", ch.typing_on >= 1 and ch.typing_off >= 1,
           f"{ch.typing_on}/{ch.typing_off}")
 
@@ -119,6 +120,7 @@ async def main() -> None:
     except asyncio.TimeoutError:
         timed_out = True
     check("超时抛 TimeoutError", timed_out)
+    await asyncio.sleep(0.02)
     check("超时也会关 typing", ch2.typing_off >= 1, str(ch2.typing_off))
 
     # 3. 发送失败不崩：channel 返回 False 时继续
@@ -245,9 +247,12 @@ async def main() -> None:
             return True
 
     t0 = time.monotonic()
-    await TurnRunner(FakeEngine(["挂住。"], OutboundMessage(chunks=[])),
-                     HangChannel(), deadline=0.5).run(
-        InboundMessage(session="private:11", text="hi"))
+    try:
+        await TurnRunner(FakeEngine(["挂住。"], OutboundMessage(chunks=[])),
+                         HangChannel(), deadline=0.5).run(
+            InboundMessage(session="private:11", text="hi"))
+    except asyncio.TimeoutError:
+        pass
     check("平台发送挂死时本轮能收尾", time.monotonic() - t0 < 3,
           f"{time.monotonic() - t0:.2f}s")
     ch11 = FakeChannel()

@@ -13,6 +13,8 @@ import json
 import logging
 import time
 
+from app_core.round_timing import current as current_timing
+
 log = logging.getLogger("qqbot.tool_loop")
 
 # 只读工具可以在一轮里并发跑；写操作必须串行（同名文件别互相覆盖）。
@@ -44,6 +46,12 @@ async def _exec_one(core, exec_fn, name: str, args: dict, images: list[str],
                     tool_timeout: float) -> str:
     """执行单个工具，把超时/异常都变成「喂回模型的文字」。"""
     t0 = time.perf_counter()
+    timing = current_timing.get()
+    if timing and name in ("web_search", "web_open", "kb_search", "kb_read"):
+        timing.checking += 1
+        timing.mark("tool_start")
+    else:
+        timing = None
     try:
         result = await asyncio.wait_for(exec_fn(core, name, args, images),
                                         timeout=tool_timeout)
@@ -57,6 +65,10 @@ async def _exec_one(core, exec_fn, name: str, args: dict, images: list[str],
         result = f"工具 {name} 出错了：{type(e).__name__}: {e}"
         log.warning("工具 %s 异常：%s", name, e)
         await _mood(core, "tool_fail")
+    finally:
+        if timing:
+            timing.checking -= 1
+            timing.mark("tool_finish")
     log.info("工具 %s %.0fms 结果 %d 字", name,
              (time.perf_counter() - t0) * 1000, len(result or ""))
     return result or ""
@@ -169,10 +181,18 @@ async def run(core, msgs: list[dict], *,
         for i, tc in enumerate(calls):
             work.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                          "content": results[i]})
+        # 查询已给出可用证据时直接流式整理正文。缺证据或其他工具仍可继续调用。
+        if (on_text and len(pending) == 1 and pending[0][1] == "web_search"
+                and len(calls) == 1 and results[0]
+                and not results[0].startswith(("工具", "搜索失败", "没搜到", "没有搜到"))):
+            final = await stream(work, None, on_text)
+            st["rounds"] += 1
+            return (final.get("content") or "").strip()
+
     # 轮数用尽时模型可能还在调工具。这时去掉 tools 再问一次，逼它给正文，
     # 否则用户会收到一句莫名其妙的兜底「在」。
     try:
-        final = await complete(work, None)
+        final = await stream(work, None, on_text) if on_text else await complete(work, None)
         return (final.get("content") or "").strip()
     except Exception as e:  # noqa: BLE001
         log.warning("工具轮数用尽后补问失败：%s", e)

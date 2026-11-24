@@ -113,7 +113,8 @@ async def draw_later(*, ask: str, generate, cleanup, send_image: Sender,
 async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: Sender,
                               send_text: TextSender, record: Recorder | None = None,
                               mode: str = "voice", tag: str = "",
-                              record_delivery: DeliveryRecorder | None = None) -> bool:
+                              record_delivery: DeliveryRecorder | None = None,
+                              on_delivery: Callable[[], None] | None = None) -> bool:
     """voice / voice_then_text 形态：先语音，按 mode 决定要不要再补文字。
 
     这些文本在通道层只是**缓冲**（没有投递），所以历史必须等这里真正发出
@@ -152,6 +153,8 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
                         pass
             if sent:
                 voiced.append(seg)
+                if on_delivery:
+                    on_delivery()
             else:
                 failed.append(seg)
     except Exception as e:  # noqa: BLE001
@@ -171,6 +174,8 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
                 if result and not is_buffered(result):
                     delivered = result.text if isinstance(result, Receipt) and result.text is not None else seg
                     text_ok.append(delivered)
+                    if on_delivery:
+                        on_delivery()
                     if isinstance(result, Receipt) and result.reference:
                         references.append((result.reference, delivered))
                 else:

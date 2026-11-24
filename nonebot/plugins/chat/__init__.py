@@ -40,7 +40,7 @@ from nonebot.adapters.onebot.v11 import (
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
-from app_core.runner import TurnRunner
+from app_core.runner import TurnRunner, TurnTiming
 from app_core.outbound import READ_ALOUD_DIRECTIVE
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
@@ -112,7 +112,7 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
 
 
 async def _deliver_voice_reply(sid: str, ch: QQChannel,
-                             rewrite: bool = True) -> None:
+                             rewrite: bool = True, timing: TurnTiming | None = None) -> None:
     """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
     from app_core import outbound, tts
     from app_core.message import Part
@@ -127,12 +127,14 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
         record_delivery=lambda text, refs: core.record_delivery(sid, text, references=refs),
         mode=VOICE_REPLY_MODE,
         tag="[chat]",
+        on_delivery=(lambda: timing.mark("first_sent")) if timing else None,
     )
 
 
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
+    meta = {**(meta or {}), "ready_at": time.monotonic()}
     _turns.add(sid, text=text, images=images, file=file, meta=meta)
     try:
         core.note_user_active(sid)
@@ -265,11 +267,16 @@ class QQChannel:
             logger.warning(f"[chat] 语音发送失败：{type(e).__name__}: {e}")
             return False
 
+    async def send_progress(self, session: str, text: str) -> bool:
+        return bool(await _send_text(text))
+
     async def typing(self, session: str, on: bool) -> None:
         await _set_typing(session, on)
 
 
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
+    timing = TurnTiming("qq", received=turn.meta.get("received_at", time.monotonic()))
+    timing.marks["input_ready"] = turn.meta.get("ready_at", timing.received)
     prompt, stored = turn.compose()
     raw = "\n".join(turn.texts or [])
     voice = bool(turn.meta.get("voice"))
@@ -278,14 +285,17 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     # 引用 ID 跟本轮实例走：下一条消息的 turn 再创建自己的 ch，互不覆盖。
     ch = QQChannel(reply_to=turn.meta.get("event_id"))
     runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline,
-                        stall_seconds=getattr(core, "reply_stall_seconds", 30))
+                        stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     try:
         async with _lock(sid):
+            timing.mark("intent_start")
             decision = await core.interpret_intent(
                 sid, raw, voice=voice, quote_text=quoted,
                 reply_to=f"qq:{reply_to}" if reply_to else None)
+            timing.mark("intent_finish")
+            timing.reply_form = "voice" if decision.voice else "text"
             ch.defer_text = decision.voice and VOICE_REPLY_MODE != "text_then_voice"
             model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
             msg = to_inbound(
@@ -311,7 +321,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             except Exception:  # noqa: BLE001
                 pass
         if decision.voice and ch.buffered:
-            await _deliver_voice_reply(sid, ch, rewrite=not decision.read_aloud)
+            await _deliver_voice_reply(sid, ch, rewrite=not decision.read_aloud, timing=timing)
         elif decision.voice and ch.sent:
             asyncio.create_task(
                 _speak_later(sid, "".join(ch.sent), len(ch.sent), rewrite=not decision.read_aloud))
@@ -322,6 +332,7 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))
     except asyncio.TimeoutError:
+        timing.status = "timeout"
         logger.error(f"[chat] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） "
                      f"{sid}，已发 {len(ch.sent)} 段")
         await core.mood_event("timeout")
@@ -342,11 +353,14 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             except Exception:
                 pass
     except Exception as e:  # noqa: BLE001
+        timing.status = "error"
         logger.warning(f"[chat] reply failed: {e}")
         try:
             await chat.finish(f"出错了：{type(e).__name__}")
         except Exception:
             pass
+    finally:
+        timing.emit()
 
 
 async def _caption_later(msg_id: int, paths: list[str]) -> None:
@@ -571,6 +585,7 @@ async def _collect_images(sid: str, segs: list, text: str,
 
 @chat.handle()
 async def _handle(event: MessageEvent):
+    received = time.monotonic()
     # 群消息交给 plugins/group（另一条链路：无记忆、无情绪、限流、静默失败）。
     # 两条链路共用一个 handler 迟早出事——私聊那套会往私有记忆里写群友的话。
     if not isinstance(event, PrivateMessageEvent):
@@ -588,6 +603,7 @@ async def _handle(event: MessageEvent):
         else:
             _quoted = str(_qmsg or "")
     meta = {
+        "received_at": received,
         "user_id": str(event.user_id),
         "chat_id": str(event.group_id) if _is_group else None,
         "is_group": _is_group,

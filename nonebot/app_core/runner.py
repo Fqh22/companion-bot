@@ -35,6 +35,7 @@ from app_core import mood, pacing
 from app_core.delivery import BUFFERED, Capability, DeliveryPolicy, DeliveryResult, Receipt, is_buffered
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.message import Part as _Part
+from app_core.round_timing import TurnTiming, current
 
 log = logging.getLogger("app_core.runner")
 
@@ -53,23 +54,25 @@ class Channel(Protocol):
 
     async def typing(self, session: str, on: bool) -> None: ...
 
-    async def typing(self, session: str, on: bool) -> None: ...
-
 
 # 同一会话串行：两轮并发会各自 prepare，互相覆盖记忆/情绪/跟催状态。
 # 并发消息在真人聊天里也是「一句一句回」，排队是更对的行为，不是延迟缺陷。
 _SESSION_LOCKS: dict[str, asyncio.Lock] = {}
+_TYPING_TASKS: dict[tuple[type, str], asyncio.Task] = {}
 
 
 class TurnRunner:
     """跑完一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
+
+    PROGRESS_AFTER = 3.0
 
     def __init__(self, engine: Engine, channel: Channel,
                  caps: Capability | None = None,
                  policy: DeliveryPolicy | None = None,
                  deadline: float = 90.0,
                  stall_seconds: float = 30.0,
-                 typing_interval: float = 5.0) -> None:
+                 typing_interval: float = 5.0,
+                 timing: TurnTiming | None = None) -> None:
         self.engine = engine
         self.channel = channel
         self.caps = caps
@@ -79,6 +82,7 @@ class TurnRunner:
         # 无进展超时：首句发出后多久没有新句子就收尾（取证阶段不受它约束）
         self.stall_seconds = max(1.0, float(stall_seconds))
         self.typing_interval = float(typing_interval)
+        self.timing = timing
 
     def _remaining(self, started: float) -> float:
         """离整轮总上限还剩多少秒；用到 0 就停止一切平台调用。"""
@@ -137,14 +141,15 @@ class TurnRunner:
         except Exception as e:  # noqa: BLE001
             log.debug("[runner] typing(%s) 失败：%s", on, e)
 
-    async def _typing_loop(self, session: str) -> None:
-        """心跳：第一次由 run() 立刻发，这里只负责续期。"""
+    async def _typing_loop(self, session: str, previous: asyncio.Task | None) -> None:
+        if previous is not None and not previous.done():
+            await asyncio.shield(asyncio.gather(previous, return_exceptions=True))
         try:
             while True:
-                await asyncio.sleep(self.typing_interval)
                 await self._typing_safe(session, True)
-        except asyncio.CancelledError:
-            raise
+                await asyncio.sleep(self.typing_interval)
+        finally:
+            await self._typing_safe(session, False, timeout=1.0)
 
     async def _pace_and_send(self, session: str, text: str, sent: int,
                              started: float) -> DeliveryResult:
@@ -152,6 +157,9 @@ class TurnRunner:
         left = self.deadline - (time.monotonic() - started)
         if left <= 0:
             return False
+        # 首段立即投递。语音先缓冲，正文产生期间没有可见打字节奏。
+        if sent == 0 or getattr(self.channel, "defer_text", False):
+            return await self._send_part(session, _Part("text", text), timeout=left)
         try:
             m = mood.settle(mood.load())
         except Exception:  # noqa: BLE001
@@ -191,12 +199,28 @@ class TurnRunner:
             await asyncio.sleep(min(wait, 0.25))
 
     async def run(self, msg: InboundMessage) -> OutboundMessage:
-        """跑一轮。同一会话串行（见 _SESSION_LOCKS），超时抛 asyncio.TimeoutError。"""
-        lock = _SESSION_LOCKS.setdefault(msg.session, asyncio.Lock())
-        if lock.locked():
-            log.info("[runner] 上一轮未结束，排队等待：%s", str(msg.session)[:24])
-        async with lock:
-            return await self._run(msg)
+        """同一会话串行。计时从平台收件或宿主调用开始。"""
+        timing = self.timing or TurnTiming(msg.platform)
+        timing.mark("runner_queued")
+        token = current.set(timing)
+        try:
+            lock = _SESSION_LOCKS.setdefault(msg.session, asyncio.Lock())
+            async with lock:
+                timing.mark("runner_start")
+                return await self._run(msg, timing)
+        except asyncio.TimeoutError:
+            timing.status = "timeout"
+            raise
+        except asyncio.CancelledError:
+            timing.status = "cancelled"
+            raise
+        except Exception:
+            timing.status = "error"
+            raise
+        finally:
+            current.reset(token)
+            if self.timing is None:
+                timing.emit()
 
     async def _remember_confirmed(self, msg: InboundMessage,
                                   parts: list[str], references: list[tuple[str, str]]) -> None:
@@ -220,78 +244,92 @@ class TurnRunner:
         except Exception as e:  # noqa: BLE001
             log.warning("[runner] 写回已发送回复失败：%s", e)
 
-    async def _run(self, msg: InboundMessage) -> OutboundMessage:
-        """真正的一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
+    async def _run(self, msg: InboundMessage, timing: TurnTiming) -> OutboundMessage:
         started = time.monotonic()
-        sent = 0
         references: list[tuple[str, str]] = []
-        confirmed: list[str] = []      # 通道确认收到的段，历史只写这些
-        # watchdog 与这句之间的共享状态：最后一次有进展的时刻、已发段数、收尾原因
+        confirmed: list[str] = []
         state = {"last_progress": started, "sent": 0, "why": ""}
-        # 立刻亮一次「正在输入」：等 task 调度会晚一个 tick，短回复可能整个错过
-        await self._typing_safe(msg.session, True)
-        typing = asyncio.create_task(self._typing_loop(msg.session))
+        pending: asyncio.Queue[tuple[str, bool] | None] = asyncio.Queue(maxsize=4)
+        typing_key = (type(self.channel), msg.session)
+        previous = _TYPING_TASKS.get(typing_key)
+        typing = asyncio.create_task(self._typing_loop(msg.session, previous))
+        _TYPING_TASKS[typing_key] = typing
 
-        def confirm(part: str, status: DeliveryResult) -> None:
-            text = status.text if isinstance(status, Receipt) and status.text is not None else part
-            confirmed.append(text)
-            if isinstance(status, Receipt) and status.reference:
-                references.append((status.reference, text))
+        def forget_typing(task):
+            if _TYPING_TASKS.get(typing_key) is task:
+                _TYPING_TASKS.pop(typing_key, None)
 
-        async def on_sentence(part: str) -> bool:
-            """返回**是否真的发出去了**——调用方要用它决定记不记 sent_parts。
+        typing.add_done_callback(forget_typing)
 
-            原来返回 None，chat_turn 无条件 append，发失败也当成了已发：
-            后续「一个字都没发才重试」的判断会失效。
-            每次尝试都算一次「进展」，供 watchdog 判断是不是真卡住了。
-            """
-            nonlocal sent
+        async def sender() -> None:
+            while (entry := await pending.get()) is not None:
+                part, progress = entry
+                if progress:
+                    if not confirmed and timing.checking:
+                        timeout = min(2.0, self._remaining(started))
+                        send_progress = getattr(self.channel, "send_progress", None)
+                        try:
+                            sent = (await asyncio.wait_for(send_progress(msg.session, part), timeout)
+                                    if send_progress else
+                                    await self._send_part(msg.session, _Part("text", part), timeout=timeout))
+                        except Exception:
+                            sent = False
+                        if sent and not is_buffered(sent):
+                            timing.mark("progress_sent")
+                    continue
+                status = await self._pace_and_send(msg.session, part, len(confirmed), started)
+                if not status or is_buffered(status):
+                    continue
+                text = status.text if isinstance(status, Receipt) and status.text is not None else part
+                confirmed.append(text)
+                if isinstance(status, Receipt) and status.reference:
+                    references.append((status.reference, text))
+                state["sent"] = len(confirmed)
+                state["last_progress"] = time.monotonic()
+                timing.mark("first_sent")
+
+        async def enqueue(part: str) -> DeliveryResult:
             state["last_progress"] = time.monotonic()
-            status = await self._pace_and_send(msg.session, part, sent, started)
-            if is_buffered(status):
-                # 通道已收下，等语音路径真正送达后再写历史。返回真值，引擎不要补发。
-                return BUFFERED
-            if status:
-                sent += 1
-                state["sent"] = sent
-                confirm(part, status)
-                return True
-            return False
+            await asyncio.wait_for(pending.put((part, False)), timeout=self._remaining(started))
+            # 内核只知道片段已入队，发送结果由消费者统一回写。
+            return BUFFERED
 
-        # defer_history：由这里在发送确认后写历史，引擎不先入库。
+        async def notify_progress() -> None:
+            await asyncio.sleep(self.PROGRESS_AFTER)
+            while not confirmed and timing.reply_form != "voice" and not getattr(self.channel, "defer_text", False):
+                if timing.checking and pending.empty():
+                    pending.put_nowait(("我查一下。", True))
+                    return
+                await asyncio.sleep(0.25)
+
+        worker = asyncio.create_task(sender())
+        progress = asyncio.create_task(notify_progress())
         handle = asyncio.create_task(
-            self.engine.handle(msg, on_sentence=on_sentence, caps=self.caps,
+            self.engine.handle(msg, on_sentence=enqueue, caps=self.caps,
                                delivery_policy=self.policy, defer_history=True))
         watch = asyncio.create_task(self._watchdog(handle, started, state))
         try:
             try:
                 out = await handle
             except asyncio.CancelledError:
-                # watchdog 主动收尾 → 转成 TimeoutError，走通道插件原有的补收尾；
-                # 外部取消（关服务等）时 state["why"] 为空，原样往上抛。
-                # 已发出的段由 finally 写回历史。
                 if state["why"]:
                     raise asyncio.TimeoutError() from None
                 raise
+            progress.cancel()
             for part in out.chunks:
-                status = await self._pace_and_send(msg.session, part, sent, started)
-                if is_buffered(status):
-                    continue
-                if status:
-                    sent += 1
-                    confirm(part, status)
-            for path in out.images:
-                if await self._send_part(msg.session, _Part("image", path),
-                                         timeout=self._remaining(started)):
-                    out.images_sent.append(path)
-            for path in out.audio:
-                if await self._send_part(msg.session, _Part("voice", path),
-                                         timeout=self._remaining(started)):
-                    out.audio_sent.append(path)
+                await enqueue(part)
+            await asyncio.wait_for(pending.put(None), timeout=self._remaining(started))
+            await asyncio.wait_for(worker, timeout=self._remaining(started))
+            for target, form, sent in ((out.images, "image", out.images_sent),
+                                       (out.audio, "voice", out.audio_sent)):
+                for path in target:
+                    if await self._send_part(msg.session, _Part(form, path),
+                                             timeout=self._remaining(started)):
+                        sent.append(path)
+                        timing.mark("first_sent")
             return out
         finally:
-            watch.cancel()
-            await asyncio.gather(watch, return_exceptions=True)
-            typing.cancel()
-            await self._typing_safe(msg.session, False)
+            for task in (watch, worker, progress, typing):
+                task.cancel()
+            await asyncio.gather(watch, worker, progress, return_exceptions=True)
             await self._remember_confirmed(msg, confirmed, references)
