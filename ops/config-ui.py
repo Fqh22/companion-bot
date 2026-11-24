@@ -106,7 +106,7 @@ F = {
     "context.history_item_max_chars": ("单条消息上限", "防止一条 8000 字文件反复塞回 prompt。", {"min": 100, "max": 5000}),
     "context.recall_query_items": ("召回拼接条数", "召回 query 额外拼最近几条用户消息。", {"min": 1, "max": 10}),
     "context.summary_idle_minutes": ("空闲总结（分钟）", "距上次总结这么久且有新消息，再触发一次。", {"min": 5, "max": 240}),
-    "chat.text_settle_seconds": ("连发合并（秒）", "私聊短时间连发时，等待下一句的间隔。设为 0 可关闭文本等待。", {"min": 0, "max": 10, "step": 0.1}),
+    "chat.text_settle_seconds": ("连发合并（秒）", "连发和明显有续句时的等待。普通单条最多等 0.9 秒，设为 0 可关闭文本等待。", {"min": 0, "max": 10, "step": 0.1}),
     "chat.media_settle_seconds": ("媒体等待（秒）", "图片/文件后等他补一句说明的窗口。", {"min": 0, "max": 10, "step": 0.1}),
     "chat.budget_mode": ("背景块预算", "legacy = 旧行为（prompt 基线）；tiered = fact / insight 各自配额。默认 legacy，可一键回退。", {"options": ["legacy", "tiered"]}),
     "group.enabled": ("启用群聊", "独立链路，无记忆无情绪。", {}),

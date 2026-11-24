@@ -148,7 +148,7 @@ chat:
   #   voice_then_text 先发语音，再发文字
   #   voice          只发语音（合成失败才退回文字）
   voice_reply_mode: voice
-  # 私聊连发按停顿分轮。设为 0 可关闭纯文本等待。
+  # 已开始连发或明显在等补充时的停顿。普通单条最多等 0.9 秒，设为 0 关闭纯文本等待。
   text_settle_seconds: 2.0
   # 图片/文件后等补充说明，沿用两种窗口较长的一个。
   media_settle_seconds: 1.5

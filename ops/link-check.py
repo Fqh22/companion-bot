@@ -295,11 +295,11 @@ async def dynamic_checks(chat_mod) -> None:
     chat_mod.save_from_segment = fake_file
     chat_mod.parse = fake_parse
 
-    def ev(segs, text=""):
+    def ev(segs, text="", mid=1, reply=None):
         msg = Message(segs) if segs else Message(text)
         return PrivateMessageEvent(
             time=0, self_id=10000, post_type="message", sub_type="friend",
-            user_id=10001, message_type="private", message_id=1,
+            user_id=10001, message_type="private", message_id=mid, reply=reply,
             message=msg, raw_message=text, font=0,
             sender={"user_id": 10001, "nickname": "x"}, to_me=True)
 
@@ -308,8 +308,8 @@ async def dynamic_checks(chat_mod) -> None:
     chat_mod._turns.text_gap = 0.08
     chat_mod._turns.media_gap = 0.12
 
-    def capture(*args):
-        task = submit(*args)
+    def capture(*args, **kwargs):
+        task = submit(*args, **kwargs)
         if task is not None and task not in spawned:
             spawned.append(task)
         return task
@@ -347,6 +347,33 @@ async def dynamic_checks(chat_mod) -> None:
     check("图 + 补一句合并成一轮", len(calls) == 1, f"{len(calls)} 次调用")
     check("合并后图片没丢", bool(merged.get("images")), str(merged.get("images")))
     check("合并后文字进了正文", "昨天的报错" in str(merged.get("text")), str(merged.get("text"))[:40])
+
+    calls.clear()
+    release_picture = asyncio.Event()
+
+    async def slow_picture(bot, seg):
+        await release_picture.wait()
+        return "/tmp/slow.jpg"
+
+    chat_mod.save_image = slow_picture
+    await chat_mod._handle(ev([], "看我发的图"))
+    await chat_mod._handle(ev([MessageSegment.image("https://x/slow.jpg")], mid=12))
+    await asyncio.sleep(0.16)
+    waiting = not calls
+    release_picture.set()
+    await drain()
+    check("QQ 先文字，图片下载较慢时仍一起回答",
+          waiting and len(calls) == 1 and calls[0]["text"] == "看我发的图"
+          and calls[0]["images"] == ["/tmp/slow.jpg"])
+    calls.clear()
+    reply = {"message_id": 12, "real_id": 12, "message_type": "private",
+             "time": 0, "sender": {"user_id": 10001},
+             "message": Message([MessageSegment.image("https://x/slow.jpg")])}
+    await chat_mod._handle(ev([], "红框在哪", mid=13, reply=reply))
+    await drain()
+    check("QQ 引用之前的图片按消息 ID 取回原图",
+          len(calls) == 1 and calls[0]["images"] == ["/tmp/slow.jpg"])
+    chat_mod.save_image = fake_image
 
     # 6. 只有图片
     calls.clear()
@@ -445,11 +472,11 @@ async def feishu_checks():
             calls.append(inbound)
             return SimpleNamespace()
 
-    def event(mid, text, parent_id=None):
+    def event(mid, text, parent_id=None, message_type="text"):
         import json
-        message = SimpleNamespace(chat_type="p2p", message_type="text", message_id=mid,
+        message = SimpleNamespace(chat_type="p2p", message_type=message_type, message_id=mid,
                                   chat_id="chat", parent_id=parent_id,
-                                  content=json.dumps({"text": text}))
+                                  content=json.dumps(text if isinstance(text, dict) else {"text": text}))
         sender = SimpleNamespace(sender_id=SimpleNamespace(open_id="owner"))
         return SimpleNamespace(event=SimpleNamespace(message=message, sender=sender))
 
@@ -462,6 +489,45 @@ async def feishu_checks():
     check("飞书连发只进入一次 Runner，保留引用且过滤重复事件",
           len(calls) == 1 and calls[0].text == "那件事先等等\n下周一再说"
           and calls[0].reply_to == "asked" and calls[0].event_id == "burst-2")
+
+
+    async def drain():
+        await asyncio.wait_for(asyncio.gather(*(s.task for s in feishu._turns._sessions.values())), 6)
+
+    calls.clear()
+    release_image = asyncio.Event()
+
+    async def load_image(mid, key):
+        await release_image.wait()
+        return "/tmp/feishu-image.jpg"
+
+    with (patch.object(feishu, "OWNER", "owner"), patch.object(feishu, "TurnRunner", Runner),
+          patch.object(feishu, "_load_image", load_image),
+          patch.object(feishu._turns, "media_gap", 0.05), patch.object(feishu._turns, "text_gap", 0.05)):
+        await feishu._handle(event("image-1", {"image_key": "key"}, message_type="image"))
+        await feishu._handle(event("image-caption", "帮我看这张图"))
+        await asyncio.sleep(0.12)
+        waiting = not calls
+        release_image.set()
+        await drain()
+        check("飞书先发图，图下载较慢时仍和后发说明一起进 Runner",
+              waiting and len(calls) == 1 and calls[0].images == ["/tmp/feishu-image.jpg"]
+              and calls[0].text == "帮我看这张图")
+        calls.clear()
+        await feishu._handle(event("image-reference", "红框怎么看", "image-1"))
+        await drain()
+        check("飞书引用跨轮可取回指定原图",
+              len(calls) == 1 and calls[0].reply_to == "image-1"
+              and calls[0].images == ["/tmp/feishu-image.jpg"])
+
+        calls.clear()
+        post = {"content": [[{"tag": "text", "text": "这张图怎么读"},
+                             {"tag": "img", "image_key": "in-post"}]]}
+        await feishu._handle(event("image-in-post", post, message_type="post"))
+        await drain()
+        check("飞书富文本同条图文一起处理",
+              len(calls) == 1 and calls[0].text == "这张图怎么读"
+              and calls[0].images == ["/tmp/feishu-image.jpg"])
 
 
 # ---------------- 群聊：独立链路 ----------------

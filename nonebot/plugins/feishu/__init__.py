@@ -19,6 +19,7 @@ import json
 import subprocess
 import tempfile
 import threading
+from functools import partial
 from pathlib import Path
 
 import lark_oapi as lark
@@ -35,7 +36,7 @@ from nonebot import get_driver, logger
 
 from app_core import asr, config, paths, tts
 from app_core.inbound_turns import InboundTurns
-from app_core.turn import Turn
+from app_core.turn import IMAGE_UNAVAILABLE, Turn
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner, TurnTiming
@@ -207,6 +208,11 @@ def _save_image(message_id: str, image_key: str) -> Path | None:
     out = _SAVE / f"feishu-{message_id[-12:]}-{image_key[-8:]}{ext}"
     out.write_bytes(data)
     return out
+
+
+async def _load_image(message_id: str, image_key: str) -> str | None:
+    path = await asyncio.to_thread(_save_image, message_id, image_key)
+    return str(path) if path else None
 
 
 def _audio_duration_ms(path: Path) -> int:
@@ -421,11 +427,7 @@ async def _handle(data) -> None:
 
         parsed = parse_content(msg.message_type, msg.content)
         text = str(parsed["text"] or "")
-        images: list[str] = []
-        for key in parsed["image_keys"]:
-            p = await asyncio.to_thread(_save_image, mid, key)
-            if p:
-                images.append(str(p))
+        loaders = tuple(partial(_load_image, mid, key) for key in parsed["image_keys"])
         voice = False
         if parsed["audio_key"]:
             wav = await asyncio.to_thread(_audio_to_wav, mid, parsed["audio_key"])
@@ -438,7 +440,7 @@ async def _handle(data) -> None:
                 wav.unlink(missing_ok=True)
             if not text:
                 logger.info(f"[feishu] 语音转写为空：{str(res.get('error') or '')[:80]}")
-        if not text and not images:
+        if not text and not loaders:
             await asyncio.to_thread(
                 _send_message, msg.chat_id, "text",
                 {"text": "这条消息我暂时读不了（%s）" % (parsed["unsupported"] or msg.message_type)})
@@ -456,9 +458,9 @@ async def _handle(data) -> None:
         # 主动消息要靠这份映射；落盘，重启后仍然找得到
         _save_chat_map()
         _turns.submit((session, str(msg.chat_id)), Turn(
-            texts=[text] if text else [], images=images,
+            texts=[text] if text else [],
             meta={"received_at": received, "event_id": mid, "user_id": open_id,
-                  "reply_to": getattr(msg, "parent_id", None), "voice": voice}))
+                  "reply_to": getattr(msg, "parent_id", None), "voice": voice}), image_loaders=loaders)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 接收失败：{e!r}")
 
@@ -475,12 +477,18 @@ async def _run_turn(key: tuple[str, str], turn: Turn) -> None:
     voice = bool(turn.meta.get("voice"))
     reply_to = turn.meta.get("reply_to")
     try:
+        if turn.empty() and turn.meta.get("image_unavailable"):
+            timing.status = "image_unavailable"
+            if await asyncio.to_thread(_send_message, chat_id, "text", {"text": IMAGE_UNAVAILABLE}):
+                timing.mark("first_sent")
+            return
         timing.mark("intent_start")
         decision = await core.interpret_intent(
             session, raw, voice=voice, reply_to=f"feishu:{reply_to}" if reply_to else None)
         timing.mark("intent_finish")
         timing.reply_form = "voice" if decision.voice else "text"
-        model_text = READ_ALOUD_DIRECTIVE + text if decision.read_aloud else text
+        prompt = turn.image_status(text)
+        model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
         ch = FeishuChannel(session=session, chat_id=chat_id,
                            defer_text=decision.voice and VOICE_REPLY_MODE != "text_then_voice")
         inbound = to_inbound(open_id=turn.meta["user_id"], chat_id=chat_id,

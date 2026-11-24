@@ -6,6 +6,7 @@ import base64
 import tempfile
 import time
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import httpx
@@ -21,7 +22,7 @@ from nonebot.adapters.onebot.v11 import (
 
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
-from app_core.inbound_turns import InboundTurns
+from app_core.inbound_turns import ImageLoad, InboundTurns
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.runner import TurnRunner, TurnTiming
 from app_core.outbound import READ_ALOUD_DIRECTIVE
@@ -98,11 +99,11 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
     )
 
 
-def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
+def _add(sid: str, *, text: str | None = None, image_loaders: tuple[ImageLoad, ...] = (),
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
     _turns.submit(sid, turn_mod.Turn(texts=[text] if text else [],
-                                    images=images or [], file=file, meta=dict(meta or {})))
+                                    file=file, meta=dict(meta or {})), image_loaders=image_loaders)
     try:
         core.note_user_active(sid)
     except Exception:  # noqa: BLE001
@@ -206,6 +207,14 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     try:
+        if turn.empty() and turn.meta.get("image_unavailable"):
+            timing.status = "image_unavailable"
+            if await ch.send_text(sid, turn_mod.IMAGE_UNAVAILABLE):
+                timing.mark("first_sent")
+            return
+        if turn.meta.get("image_unavailable") and stored is None:
+            stored = prompt
+        prompt = turn.image_status(prompt)
         timing.mark("intent_start")
         decision = await core.interpret_intent(
             sid, raw, voice=voice, quote_text=quoted,
@@ -481,27 +490,11 @@ async def _collect_voice(sid: str, seg, text: str,
             tmp.unlink(missing_ok=True)
 
 
-async def _collect_images(sid: str, segs: list, text: str,
-                          meta: dict | None = None) -> None:
-    """下载图片，和同一条消息里的文字一起塞进队列。"""
-    bot = _bot()
+async def _load_image(bot, segment) -> str | None:
     if bot is None:
-        await chat.finish("机器人没连上，稍后再试")
-        return
-    paths = []
-    for seg in segs[:MAX_IMAGES]:
-        try:
-            p = await save_image(bot, seg)
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"[chat] image save failed: {e}")
-            p = None
-        if p:
-            paths.append(p)
-    if not paths:
-        await chat.finish("图片没拿到，可能太大了或者格式不支持")
-        return
-    logger.info(f"[chat] recv {sid}: {len(paths)} 张图 + {len(text)} 字")
-    _add(sid, images=paths, text=text or None, meta=meta)
+        return None
+    path = await save_image(bot, segment)
+    return str(path) if path else None
 
 
 @chat.handle()
@@ -552,7 +545,9 @@ async def _handle(event: MessageEvent):
 
     img_segs = [s for s in event.message if getattr(s, "type", "") == "image"]
     if img_segs:
-        await _collect_images(sid, img_segs, text, meta=meta)
+        bot = _bot()
+        loaders = tuple(partial(_load_image, bot, seg) for seg in img_segs[:MAX_IMAGES])
+        _add(sid, text=text, meta=meta, image_loaders=loaders)
         return
 
     if not text or text.startswith("/"):

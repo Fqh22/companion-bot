@@ -1,7 +1,19 @@
 """[domain] 合并并渲染同一轮里的文本、图片、文件和平台元数据。"""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+
+IMAGE_UNAVAILABLE = "图片没拿到，可以重发一下。"
+_MORE_INPUT = re.compile(
+    r"[，、：,:…（(]$|(?:等我一下|等我发|我给你看|我(?:先|再|马上|等会儿|待会儿|接下来)?"
+    r"(?:给你)?(?:发|补发|截)(?:一张|个|张)?(?:截图|图片|图)|我(?:还没说完|再补一句))"
+)
+
+
+def expects_more(text: str) -> bool:
+    return bool(_MORE_INPUT.search(text.strip()))
 
 
 @dataclass
@@ -15,6 +27,11 @@ class Turn:
 
     def empty(self) -> bool:
         return not (self.texts or self.images or self.file)
+
+    def image_status(self, prompt: str) -> str:
+        if not self.meta.get("image_unavailable"):
+            return prompt
+        return prompt + "\n[有图片未能读取，请告知用户，并仅根据现有内容回答。]"
 
     def merge(self, other: "Turn") -> "Turn":
         self.texts.extend(other.texts)

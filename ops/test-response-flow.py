@@ -212,18 +212,23 @@ async def inbound_bursts():
             await release.wait()
 
     queue = InboundTurns(handle)
-    first = queue.submit("qq", Turn(texts=["明天去上海"]))
+    quick = queue.submit("qq", Turn(texts=["今天几点下班？"],
+                                    meta={"received_at": time.monotonic() - 0.95}))
+    await asyncio.wait_for(quick, 0.3)
+    check("普通单条文字走 0.9 秒等待窗口", len(seen) == 1)
+    seen.clear()
+    first = queue.submit("qq", Turn(texts=["我给你看个截图"]))
     await asyncio.sleep(1.2)
-    same = queue.submit("qq", Turn(texts=["上午有空"], meta={"reply_to": "a", "quote_text": "几点？"}))
+    same = queue.submit("qq", Turn(texts=["这是昨天的"], meta={"reply_to": "a", "quote_text": "几点？"}))
     other = queue.submit("feishu", Turn(texts=["另一通道"], meta={"received_at": time.monotonic() - 3}))
     await other
     check("默认窗口能合并间隔超过一秒的连发，两通道互不阻塞",
           first is same and [key for key, _ in seen] == ["feishu"])
-    queue.submit("qq", Turn(texts=["帮我排一下"]))
+    queue.submit("qq", Turn(texts=["帮我看下"]))
     await first
     merged = seen[-1][1]
     check("首条到末条原样按顺序合并并保留引用和最早收件时间",
-          merged.texts == ["明天去上海", "上午有空", "帮我排一下"]
+          merged.texts == ["我给你看个截图", "这是昨天的", "帮我看下"]
           and merged.meta["reply_to"] == "a" and merged.meta["quote_text"] == "几点？"
           and merged.meta["input_count"] == 3
           and merged.meta["received_at"] < merged.meta["ready_at"] - 1)
@@ -232,14 +237,14 @@ async def inbound_bursts():
     now = time.monotonic()
     task = queue.submit("qq", Turn(texts=["已开始"], meta={"received_at": now - 10}))
     await asyncio.wait_for(started.wait(), 1)
-    for text, offset in (("补一句", -7.5), ("同一件事", -6.1), ("接着说", -4.5),
+    for text, offset in (("我再补一句", -7.5), ("同一件事", -6.1), ("接着说", -4.5),
                          ("超过首条四秒", -3.3), ("隔一阵再说", -0.95)):
         queue.submit("qq", Turn(texts=[text], meta={"received_at": now + offset}))
     check("当前回复在途时先排队", len(seen) == 1)
     release.set()
     await task
     check("当前回复后的短时间补充合并，连续发到上限或隔太久就另起一轮",
-          [turn.texts for _, turn in seen] == [["已开始"], ["补一句", "同一件事", "接着说"],
+          [turn.texts for _, turn in seen] == [["已开始"], ["我再补一句", "同一件事", "接着说"],
                                              ["超过首条四秒"], ["隔一阵再说"]])
 
     seen.clear()
@@ -258,8 +263,70 @@ async def inbound_bursts():
     check("两条消息引用不同对象时分轮", [turn.meta["reply_to"] for _, turn in seen] == ["a", "b"])
 
 
+async def inbound_images():
+    seen = []
+
+    async def handle(key, turn):
+        seen.append((key, turn))
+
+    for image_first in (True, False):
+        ready = asyncio.Event()
+
+        async def slow_image():
+            await ready.wait()
+            return "screenshot.jpg"
+
+        queue = InboundTurns(handle, text_gap=0.05, media_gap=0.05)
+        image = Turn(meta={"event_id": "image"})
+        text = Turn(texts=["帮我看红框"])
+        if image_first:
+            task = queue.submit("a", image, image_loaders=(slow_image,))
+            queue.submit("a", text)
+        else:
+            task = queue.submit("a", text)
+            queue.submit("a", image, image_loaders=(slow_image,))
+        await asyncio.sleep(0.08)
+        blocked = not task.done()
+        ready.set()
+        await task
+        check(f"慢图与说明仍为同一轮（先发{'图' if image_first else '文字'}）",
+              blocked and len(seen) == 1 and seen[0][1].texts == ["帮我看红框"]
+              and seen[0][1].images == ["screenshot.jpg"])
+        seen.clear()
+
+    await queue.submit("b", Turn(texts=["看引用"], meta={"reply_to": "image"}))
+    await queue.submit("a", Turn(texts=["看引用"], meta={"reply_to": "image"}))
+    check("引用原图跨轮仍有效，其他会话的同一个 ID 无法取图",
+          [(key, turn.images) for key, turn in seen] == [("b", []), ("a", ["screenshot.jpg"])])
+
+    seen.clear()
+    with patch.object(InboundTurns, "REFERENCE_SECONDS", 0.01):
+        queue = InboundTurns(handle, text_gap=0, media_gap=0)
+        await queue.submit("a", Turn(meta={"event_id": "expires"}), image_loaders=(slow_image,))
+        await asyncio.sleep(0.03)
+        await queue.submit("a", Turn(texts=["看旧引用"], meta={"reply_to": "expires"}))
+    check("引用索引到期后释放且不再次带出旧图",
+          [turn.images for _, turn in seen] == [["screenshot.jpg"], []])
+
+    async def missing():
+        await asyncio.Event().wait()
+
+    async def available():
+        return "available.jpg"
+
+    seen.clear()
+    queue = InboundTurns(handle, text_gap=0, media_gap=0, image_timeout=0.04)
+    a = queue.submit("a", Turn(texts=["看这两张图"]), image_loaders=(missing, available))
+    await asyncio.wait_for(a, 0.3)
+    mixed = seen[0][1]
+    check("部分图片超时保留可用图，告诉模型有图没拿到",
+          len(seen) == 1 and mixed.images == ["available.jpg"]
+          and "未能读取" in mixed.image_status("看这两张图"))
+
+
 async def main() -> int:
     await inbound_bursts()
+    await inbound_images()
     await delivery()
     await lookups()
     await progress()
