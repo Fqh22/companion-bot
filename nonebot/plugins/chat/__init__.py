@@ -41,6 +41,7 @@ from app_core import asr, config, pacing
 from app_core import turn as turn_mod
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.runner import TurnRunner
+from app_core.outbound import READ_ALOUD_DIRECTIVE
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
 from adapters.qq import to_inbound
@@ -62,18 +63,6 @@ VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "v
 
 _locks: dict[str, asyncio.Lock] = {}
 
-# 用户明确要求「原样念一段」时：让模型逐字输出；TTS 也不做口语化改写。
-_READ_ALOUD_KEYS = ("读一遍", "念一遍", "读一下", "念一下", "朗读", "照着读",
-                    "照着念", "原样念", "一字不差")
-_READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原样念出来："
-                         "逐字输出原文，不要改写、不要寒暄、不要加解释。\n\n")
-
-
-def _read_aloud_requested(text: str) -> bool:
-    from app_core import outbound
-
-    return outbound.read_aloud_requested(text)
-
 chat = on_message(priority=10, block=False)
 
 
@@ -88,10 +77,6 @@ def _lock(sid: str) -> asyncio.Lock:
 
 _turns = turn_mod.TurnQueue()
 _pump: dict[str, asyncio.Task] = {}
-
-
-# 画图的触发词：动词 + 量词组合，避免「画的」「画面」这类误触发
-_DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "给我画")
 
 
 async def _draw_later(sid: str, ask: str) -> None:
@@ -286,32 +271,34 @@ class QQChannel:
 
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     prompt, stored = turn.compose()
-    # 语音回复只在两种情况下发：他发语音，或者他明确要求。要在跑之前知道，
-    # 才能决定本轮文字是先压住（voice/voice_then_text）还是照旧流式发（旧行为）。
-    _want_voice = (stored or "").startswith("[语音]") or any(
-        k in (prompt or "") for k in ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
-    _read_aloud = _read_aloud_requested(prompt)
-    _model_text = (_READ_ALOUD_DIRECTIVE + prompt) if _read_aloud else prompt
+    raw = "\n".join(turn.texts or [])
+    voice = bool(turn.meta.get("voice"))
+    reply_to = turn.meta.get("reply_to")
+    quoted = turn.meta.get("quote_text")
     # 引用 ID 跟本轮实例走：下一条消息的 turn 再创建自己的 ch，互不覆盖。
     ch = QQChannel(reply_to=turn.meta.get("event_id"))
-    ch.defer_text = _want_voice and VOICE_REPLY_MODE != "text_then_voice"
     runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline,
                         stall_seconds=getattr(core, "reply_stall_seconds", 30))
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     try:
         async with _lock(sid):
+            decision = await core.interpret_intent(
+                sid, raw, voice=voice, quote_text=quoted,
+                reply_to=f"qq:{reply_to}" if reply_to else None)
+            ch.defer_text = decision.voice and VOICE_REPLY_MODE != "text_then_voice"
+            model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
             msg = to_inbound(
                 session=sid,
                 user_id=str(turn.meta.get("user_id") or ""),
                 chat_id=turn.meta.get("chat_id"),
                 is_group=bool(turn.meta.get("is_group")),
-                text=_model_text, images=list(turn.images or []),
+                text=model_text, images=list(turn.images or []),
                 event_id=turn.meta.get("event_id"),
-                reply_to=turn.meta.get("reply_to"),
-                quote_text=turn.meta.get("quote_text"),
+                reply_to=reply_to,
+                quote_text=quoted,
                 store_text=stored,
-                voice=bool(turn.meta.get("voice")))
+                voice=voice, intent=decision)
             out = await runner.run(msg)
             # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
             msg_id = int(getattr(core, "user_msg_id", 0) or 0)
@@ -323,15 +310,14 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
                     sid, "（另外发了一张图）", kind="image")
             except Exception:  # noqa: BLE001
                 pass
-        if _want_voice and ch.buffered:
-            await _deliver_voice_reply(sid, ch, rewrite=not _read_aloud)
-        elif _want_voice and ch.sent:
+        if decision.voice and ch.buffered:
+            await _deliver_voice_reply(sid, ch, rewrite=not decision.read_aloud)
+        elif decision.voice and ch.sent:
             asyncio.create_task(
-                _speak_later(sid, "".join(ch.sent), len(ch.sent), rewrite=not _read_aloud))
+                _speak_later(sid, "".join(ch.sent), len(ch.sent), rewrite=not decision.read_aloud))
         # 画画同理：只在他明确要求时画，不做「氛围到了就画」
-        _ask = " ".join(turn.texts or [])
-        if any(k in _ask for k in _DRAW_TRIGGERS):
-            asyncio.create_task(_draw_later(sid, _ask))
+        if decision.draw:
+            asyncio.create_task(_draw_later(sid, raw))
         if turn.images and msg_id:
             # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
             asyncio.create_task(_caption_later(msg_id, list(turn.images)))

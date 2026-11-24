@@ -36,6 +36,7 @@ from app_core import asr, config, paths, tts
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner
+from app_core.outbound import READ_ALOUD_DIRECTIVE
 from adapters.feishu import parse_content, to_inbound
 
 # 和 QQ 共用宿主启动的同一个应用。
@@ -59,18 +60,6 @@ MAX_CHARS = int(_cfg.get("max_text_chars", 4000) or 4000)
 _CHAT_CFG = (config.load().get("chat") or {})
 _VMODE = str(_CHAT_CFG.get("voice_reply_mode") or "voice").strip().lower()
 VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
-
-# 用户明确要求「原样念一段」：让模型逐字输出，TTS 不做口语化改写。
-_READ_ALOUD_KEYS = ("读一遍", "念一遍", "读一下", "念一下", "朗读", "照着读",
-                    "照着念", "原样念", "一字不差")
-_READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原样念出来："
-                         "逐字输出原文，不要改写、不要寒暄、不要加解释。\n\n")
-
-
-def _read_aloud_requested(text: str) -> bool:
-    from app_core import outbound
-
-    return outbound.read_aloud_requested(text)
 
 _client: "lark.Client | None" = None
 _loop: asyncio.AbstractEventLoop | None = None
@@ -371,10 +360,6 @@ async def _speak_later(session: str, chat_id: str, text: str,
     )
 
 
-# 画图触发词：和 QQ 同一套（动词 + 量词组合，避免「画的」「画面」误触发）
-_DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "给我画")
-
-
 async def _draw_later(session: str, chat_id: str, ask: str) -> None:
     """后台画图并发送。公共编排在 app_core/outbound.py。"""
     from app_core import image_provider, outbound
@@ -455,8 +440,6 @@ async def _handle(data) -> None:
                 {"text": "这条消息我暂时读不了（%s）" % (parsed["unsupported"] or msg.message_type)})
             return
 
-        _read_aloud = _read_aloud_requested(text)
-        _model_text = (_READ_ALOUD_DIRECTIVE + text) if _read_aloud else text
         # 主人消息的会话由 config 统一解析；映射同时记平台键，主动消息
         # 在共享会话和平台会话两种布局下都能找到 chat_id。
         session = config.owner_session() or f"feishu:{open_id}"
@@ -468,14 +451,16 @@ async def _handle(data) -> None:
         _chat_of[f"feishu:{open_id}"] = str(msg.chat_id)
         # 主动消息要靠这份映射；落盘，重启后仍然找得到
         _save_chat_map()
-        want_voice = voice or any(k in text for k in
-                                  ("用语音", "语音说", "发语音", "读给我听", "念给我听"))
+        reply_to = getattr(msg, "parent_id", None)
+        decision = await core.interpret_intent(
+            session, text, voice=voice, reply_to=f"feishu:{reply_to}" if reply_to else None)
+        model_text = READ_ALOUD_DIRECTIVE + text if decision.read_aloud else text
         ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
-                           defer_text=want_voice and VOICE_REPLY_MODE != "text_then_voice")
+                           defer_text=decision.voice and VOICE_REPLY_MODE != "text_then_voice")
         inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id),
-                             text=_model_text, images=images, event_id=mid,
+                             text=model_text, images=images, event_id=mid,
                              voice=voice, session=session, store_text=text,
-                             reply_to=getattr(msg, "parent_id", None))
+                             reply_to=reply_to, intent=decision)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
                             stall_seconds=getattr(core, "reply_stall_seconds", 30))
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"
@@ -513,14 +498,14 @@ async def _handle(data) -> None:
                     session, "（另外发了一张图）", kind="image")
             except Exception:  # noqa: BLE001
                 pass
-        if want_voice and ch.buffered:
-            await _deliver_voice_reply(session, ch, rewrite=not _read_aloud)
-        elif want_voice and ch.sent_text:
+        if decision.voice and ch.buffered:
+            await _deliver_voice_reply(session, ch, rewrite=not decision.read_aloud)
+        elif decision.voice and ch.sent_text:
             asyncio.create_task(
                 _speak_later(session, str(msg.chat_id), "".join(ch.sent_text),
-                             rewrite=not _read_aloud))
+                             rewrite=not decision.read_aloud))
         # 画画：只在他明确要求时画（和 QQ 同一策略）
-        if any(k in text for k in _DRAW_TRIGGERS):
+        if decision.draw:
             asyncio.create_task(_draw_later(session, str(msg.chat_id), text))
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 处理失败：{e!r}")

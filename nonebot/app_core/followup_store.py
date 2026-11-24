@@ -7,12 +7,12 @@ import sqlite3
 import time
 
 from app_core import paths as _paths
-from app_core import textsim
+from app_core import textsim, timenorm
 from app_core.followup_domain import (  # noqa: F401
     ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
     IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
     NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis,
-    is_affirm, links_question, resolve_from, responds_to, shared_span, is_negate, strip_punct,
+    QuietControl, control_target, is_affirm, links_question, quiet_control, resolve_from, responds_to, shared_span, is_negate, snooze_deadline, strip_punct,
 )
 
 log = logging.getLogger("qqbot.followup")
@@ -53,6 +53,7 @@ def init() -> None:
             "ALTER TABLE followups ADD COLUMN source_ts REAL NOT NULL DEFAULT 0",
             "ALTER TABLE followups ADD COLUMN asked_msg_id INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE followups ADD COLUMN asked_text TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE followups ADD COLUMN quiet_until REAL NOT NULL DEFAULT 0",
         ):
             try:
                 c.execute(ddl)
@@ -63,6 +64,12 @@ def init() -> None:
             "session TEXT NOT NULL, platform_ref TEXT NOT NULL, "
             "assistant_msg_id INTEGER NOT NULL, text TEXT NOT NULL, "
             "PRIMARY KEY(session, platform_ref))")
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS followup_clarifications ("
+            "session TEXT PRIMARY KEY, action TEXT NOT NULL, until_ts REAL NOT NULL, "
+            "expires_ts REAL NOT NULL, target_id INTEGER NOT NULL DEFAULT 0)")
+        if not any(r[1] == "target_id" for r in c.execute("PRAGMA table_info(followup_clarifications)")):
+            c.execute("ALTER TABLE followup_clarifications ADD COLUMN target_id INTEGER NOT NULL DEFAULT 0")
         c.execute("CREATE INDEX IF NOT EXISTS idx_delivery_refs_message ON delivery_refs(assistant_msg_id)")
         # 历史清理脚本各自连接 SQLite，触发器让引用跟随历史删除。
         if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages'").fetchone():
@@ -99,7 +106,7 @@ def add(text: str, source: str = "memory", ref_id: str = "",
             # 只比未关闭的，会让「已经说过的事」换个说法重新进来再问一遍。
             rows = c.execute(
                 "SELECT text FROM followups WHERE (done=0 AND status!='cancelled') "
-                "OR created_ts > ?", (time.time() - 30 * 86400,)).fetchall()
+                "OR created_ts > ? OR quiet_until < 0", (time.time() - 30 * 86400,)).fetchall()
             for (old,) in rows:
                 if similar(old, t) >= NEAR_DUP:
                     log.debug("跟进近似重复，跳过：%s ≈ %s", t[:20], old[:20])
@@ -147,10 +154,10 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
         "FROM followups "
         "WHERE done=0 AND status NOT IN ('confirming','postponed') "
         "AND (last_asked_ts=0 OR last_asked_ts < ?) "
-        "AND ask_count < ? "
+        "AND quiet_until>=0 AND quiet_until<=? AND ask_count < ? "
         "AND (answered_ts=0 OR answered_ts < ?) "
         "ORDER BY ask_count ASC, created_ts DESC LIMIT ?",
-        (cutoff, ASK_MAX_TIMES, answer_cutoff,
+        (cutoff, now, ASK_MAX_TIMES, answer_cutoff,
          max(limit * 6, limit))).fetchall()
     c.close()
     out = []
@@ -218,12 +225,15 @@ def mark_ignored(ids: list[int], conn: sqlite3.Connection | None = None) -> None
     c = conn or _conn()
     try:
         with c:
-            c.executemany("UPDATE followups SET ignored=ignored+1 WHERE id=?",
-                          [(i,) for i in ids])
+            now = time.time()
+            c.executemany(
+                "UPDATE followups SET ignored=ignored+1 WHERE id=? AND done=0 "
+                "AND quiet_until>=0 AND quiet_until<=?",
+                [(i, now) for i in ids])
             c.executemany(
                 "UPDATE followups SET status='postponed', status_ts=? "
-                "WHERE id=? AND done=0 AND ignored>=?",
-                [(time.time(), i, IGNORE_LIMIT) for i in ids])
+                "WHERE id=? AND done=0 AND quiet_until>=0 AND quiet_until<=? AND ignored>=?",
+                [(now, i, now, IGNORE_LIMIT) for i in ids])
     finally:
         if conn is None:
             c.close()
@@ -395,17 +405,22 @@ def expire(max_age_days: float = MAX_AGE_DAYS, max_asks: int = MAX_ASKS,
     old_cut = now - max_age_days * 86400
     n_old = c.execute(
         "UPDATE followups SET status='cancelled', status_ts=?, done=1 "
-        "WHERE done=0 AND created_ts < ?", (now, old_cut)).rowcount
+        "WHERE done=0 AND quiet_until>=0 AND quiet_until<=? AND created_ts < ?",
+        (now, now, old_cut)).rowcount
     n_ask = c.execute(
         "UPDATE followups SET status='cancelled', status_ts=?, done=1 "
-        "WHERE done=0 AND ask_count >= ?", (now, max_asks)).rowcount
+        "WHERE done=0 AND quiet_until>=0 AND quiet_until<=? AND ask_count >= ?",
+        (now, now, max_asks)).rowcount
     n_over = 0
-    left = c.execute("SELECT COUNT(*) FROM followups WHERE done=0").fetchone()[0]
+    c.execute("DELETE FROM followup_clarifications WHERE expires_ts<=?", (now,))
+    left = c.execute(
+        "SELECT COUNT(*) FROM followups WHERE done=0 AND quiet_until>=0 AND quiet_until<=?",
+        (now,)).fetchone()[0]
     if left > keep_max:
         extra = left - keep_max
         rows = c.execute(
-            "SELECT id FROM followups WHERE done=0 "
-            "ORDER BY ask_count ASC, created_ts ASC LIMIT ?", (extra,)).fetchall()
+            "SELECT id FROM followups WHERE done=0 AND quiet_until>=0 AND quiet_until<=? "
+            "ORDER BY ask_count ASC, created_ts ASC LIMIT ?", (now, extra)).fetchall()
         if rows:
             c.executemany(
                 "UPDATE followups SET status='cancelled', status_ts=?, done=1 WHERE id=?",
@@ -425,8 +440,8 @@ def pending(limit: int = 10) -> list[dict]:
         "SELECT id, text, source, ask_count, status, created_ts, source_ts, "
         "answered_ts FROM followups "
         "WHERE done=0 AND status NOT IN ('postponed','confirming') "
-        "ORDER BY created_ts DESC LIMIT ?",
-        (max(limit * 6, limit),)).fetchall()
+        "AND quiet_until>=0 AND quiet_until<=? ORDER BY created_ts DESC LIMIT ?",
+        (now, max(limit * 6, limit))).fetchall()
     c.close()
     out = []
     for r in rows:
@@ -450,8 +465,9 @@ def for_prompt(user_text: str, limit: int = 3) -> list[str]:
     c = _conn()
     rows = c.execute(
         "SELECT text, status, answered_ts FROM followups "
-        "WHERE done=0 AND (status='postponed' OR answered_ts>0) "
-        "ORDER BY answered_ts DESC, status_ts DESC LIMIT 20").fetchall()
+        "WHERE done=0 AND quiet_until>=0 AND quiet_until<=? "
+        "AND (status='postponed' OR answered_ts>0) "
+        "ORDER BY answered_ts DESC, status_ts DESC LIMIT 20", (time.time(),)).fetchall()
     c.close()
     for text, status, answered in rows:
         if not shared_span(text or "", t):
@@ -501,7 +517,8 @@ def note_asked(text: str, msg_id: int = 0) -> list[int]:
 def _note_asked(c, asked: str, msg_id: int, now: float) -> list[int]:
     rows = c.execute(
         "SELECT id, text, last_asked_ts, asked_text FROM followups "
-        "WHERE done=0 AND status NOT IN ('done','cancelled')").fetchall()
+        "WHERE done=0 AND status NOT IN ('done','cancelled') "
+        "AND quiet_until>=0 AND quiet_until<=?", (now,)).fetchall()
     ids = [fid for fid, text, last, prev in rows
            if links_question(text, asked)
            and not (last and now - last < 120 and prev == asked[:MAX_TEXT])]
@@ -575,7 +592,8 @@ def _reply_context(c, session: str, user_msg_id: int):
 def attribute_reply(user_text: str, session: str = "",
                     reply_msg_id: int = 0,
                     last_assistant: str | None = None,
-                    user_msg_id: int = 0, platform_ref: str | None = None) -> dict | None:
+                    user_msg_id: int = 0, platform_ref: str | None = None,
+                    *, require_answer: bool = True) -> dict | None:
     """先找唯一的提问对象，再判用户是否在回答。"""
     init()
     c = _conn()
@@ -590,7 +608,7 @@ def attribute_reply(user_text: str, session: str = "",
                 if len(sent) != 1:
                     return None
                 pid, question, fid, text, status, done = sent[0]
-                if done or not responds_to(text, question, user_text):
+                if done or (require_answer and not responds_to(text, question, user_text)):
                     return None
                 return {"id": fid, "text": text, "asked_text": question, "status": status,
                         "assistant_msg_id": 0, "proactive_id": pid}
@@ -617,7 +635,7 @@ def attribute_reply(user_text: str, session: str = "",
             return None
         fid, text, recorded, status, _ = matches[0]
         question = asked or recorded
-        if not responds_to(text, question, user_text):
+        if require_answer and not responds_to(text, question, user_text):
             return None
         return {"id": fid, "text": text, "asked_text": question, "status": status,
                 "assistant_msg_id": adjacent[0] if adjacent else 0}
@@ -625,16 +643,142 @@ def attribute_reply(user_text: str, session: str = "",
         c.close()
 
 
+_CLARIFY = "你指哪件事？回我事项名就行。"
+_CLARIFY_DATE = "暂停到哪天？可以说「三天」或给个具体日期。"
+
+
+def _named_control(c, target: str) -> tuple[int, str] | None:
+    if len(target) < 2:
+        return None
+    rows = c.execute(
+        "SELECT id,text FROM followups WHERE done=0 AND instr(text,?)>0",
+        (target,)).fetchall()
+    exact = [row for row in rows if row[1] == target]
+    matches = exact or rows
+    return matches[0] if len(matches) == 1 else None
+
+
+def control_turn(text: str, session: str, user_msg_id: int = 0,
+                 quote_text: str | None = None, reply_to: str | None = None,
+                 *, suggested: QuietControl | None = None,
+                 expected_question: str = "") -> str | None:
+    """处理主人明确的跟进指令。认不出对象时只确认一次。"""
+    now = time.time()
+    direct = quiet_control(text, now)
+    command = direct or suggested
+    hit = None
+    if command and (quote_text or reply_to or not command.target):
+        hit = attribute_reply(text, session=session, last_assistant=quote_text,
+                              user_msg_id=user_msg_id, platform_ref=reply_to,
+                              require_answer=False)
+        if not direct and hit and hit["asked_text"] != expected_question:
+            hit = None
+    with closing(_conn()) as c, c:
+        pending = c.execute(
+            "SELECT action,until_ts,expires_ts,target_id FROM followup_clarifications WHERE session=?",
+            (session,)).fetchone()
+        if pending:
+            c.execute("DELETE FROM followup_clarifications WHERE session=?", (session,))
+        if command:
+            item = _named_control(c, command.target)
+            if hit and (not command.target or (item and item[0] == hit["id"])):
+                item = (hit["id"], hit["text"])
+            elif hit or ((reply_to or quote_text) and not hit):
+                item = None
+            if not item:
+                c.execute(
+                    "INSERT INTO followup_clarifications(session,action,until_ts,expires_ts) "
+                    "VALUES(?,?,?,?)", (session, command.action, command.until, now + 600))
+                return _CLARIFY
+        else:
+            if not pending or pending[2] <= now:
+                return None
+            previous = _reply_context(c, session, user_msg_id)
+            if not previous or previous[3] != "assistant":
+                return None
+            if pending[3] and previous[1] == _CLARIFY_DATE:
+                until = snooze_deadline(text, now)
+                if not until:
+                    return None
+                item = c.execute(
+                    "SELECT id,text FROM followups WHERE id=? AND done=0", (pending[3],)).fetchone()
+                command = QuietControl(pending[0], "", until)
+            elif not pending[3] and previous[1] == _CLARIFY:
+                item = _named_control(c, control_target(text))
+                command = QuietControl(pending[0], "", pending[1])
+            else:
+                return None
+            if not item:
+                return None
+
+        fid, subject = item
+        if command.action == "snooze" and not command.until:
+            c.execute(
+                "INSERT INTO followup_clarifications(session,action,until_ts,expires_ts,target_id) "
+                "VALUES(?,?,?,?,?)", (session, command.action, 0, now + 600, fid))
+            return _CLARIFY_DATE
+        if command.action == "snooze" and command.until <= now:
+            return "刚才指定的暂停时间已经过了。"
+        if command.action == "cancel":
+            updated = c.execute(
+                "UPDATE followups SET quiet_until=-1,status='cancelled',status_ts=?,done=1 "
+                "WHERE id=? AND done=0", (now, fid))
+        elif command.action == "resume":
+            updated = c.execute(
+                "UPDATE followups SET quiet_until=0,ignored=0,"
+                "status=CASE WHEN status='postponed' THEN 'todo' ELSE status END "
+                "WHERE id=? AND done=0", (fid,))
+        else:
+            updated = c.execute(
+                "UPDATE followups SET quiet_until=? WHERE id=? AND done=0",
+                (command.until, fid))
+        if not updated.rowcount:
+            return "这件事已经结束跟进了。"
+        if hit and hit["id"] == fid:
+            _link_proactive_answer(c, fid, session, hit, now)
+
+    if command.action == "cancel":
+        return f"好，「{subject}」就跟进到这里。"
+    if command.action == "resume":
+        return f"好，「{subject}」已解除暂停。"
+    if command.action == "hold":
+        return f"好，「{subject}」先放着，等你自己提。"
+    until = timenorm.from_ts(command.until)
+    return f"好，「{subject}」在 {until:%m月%d日 %H:%M} 前先不问。"
+
+
+def mentions_open_item(text: str) -> bool:
+    with closing(_conn()) as c:
+        rows = c.execute("SELECT text FROM followups WHERE done=0").fetchall()
+    return any(shared_span(row[0], text) for row in rows)
+
+
+def quiet_topics(limit: int = KEEP_MAX_OPEN) -> list[str]:
+    """给普通回复同一条禁问规则，含用户主动结束的事项。"""
+    with closing(_conn()) as c:
+        return [r[0] for r in c.execute(
+            "SELECT text FROM followups WHERE quiet_until<0 OR quiet_until>? "
+            "ORDER BY id DESC LIMIT ?", (time.time(), limit))]
+
+
 def answer_turn(text: str, session: str, user_msg_id: int = 0,
-                quote_text: str | None = None, reply_to: str | None = None) -> dict:
+                quote_text: str | None = None, reply_to: str | None = None,
+                *, report: str = "", expected_question: str = "") -> dict:
     """一个用户回合只更新一个事项。引用失败时保留原状态。"""
     text = text.strip().removeprefix("[语音]").strip()
     hit = attribute_reply(text, session=session, last_assistant=quote_text,
-                          user_msg_id=user_msg_id, platform_ref=reply_to)
+                          user_msg_id=user_msg_id, platform_ref=reply_to,
+                          require_answer=not bool(report))
+    if report and (not hit or not expected_question or hit["asked_text"] != expected_question):
+        return {}
     if hit:
         fid = hit["id"]
         normalized = strip_punct(text)
-        if (hit["status"] == "confirming" and normalized in
+        if report == "completed" and not is_negate(normalized):
+            res = {"done": [fid]}
+        elif report:
+            res = {"touched": [fid]}
+        elif (hit["status"] == "confirming" and normalized in
                 ("对", "是", "是的", "没错", "对的", "确实")):
             res = {"done": [fid]}
         elif is_negate(normalized):

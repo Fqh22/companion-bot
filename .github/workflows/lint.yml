@@ -108,6 +108,10 @@ jobs:
         run: python ops/test-package.py
       - name: 投递账本
         run: python ops/test-delivery-ledger.py
+      - name: 跟进控制
+        run: python ops/test-followup-control.py
+      - name: 当轮意图
+        run: python ops/test-turn-intent.py
       # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04-评测与实验.md 的矩阵）
       - name: 联动体检
         env:

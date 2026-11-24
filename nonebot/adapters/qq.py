@@ -13,7 +13,7 @@ def to_inbound(*, user_id: str, text: str, chat_id: str | None = None,
                quote_text: str | None = None,
                store_text: str | None = None,
                voice: bool = False,
-               session: str | None = None) -> InboundMessage:
+               session: str | None = None, intent=None) -> InboundMessage:
     uid = str(user_id or "").strip()
     cid = str(chat_id).strip() if chat_id is not None else None
     if session is None:
@@ -26,4 +26,4 @@ def to_inbound(*, user_id: str, text: str, chat_id: str | None = None,
         platform="qq", external_user_id=uid,
         external_chat_id=cid, event_id=event_id,
         reply_to=reply_to, quote_text=quote_text,
-        store_text=store_text, voice=voice)
+        store_text=store_text, voice=voice, intent=intent)

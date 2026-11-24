@@ -31,7 +31,7 @@ from app_core.chat_turn_commit import CommitMixin
 TURN_DEPS = {
     "_affect_port", "_context_format", "_memory_port", "_run_tools",
     "_style_mode", "_thinking_for", "build_messages", "caption_images",
-    "first_token_budget", "get_digest", "history", "history_max_chars",
+    "first_token_budget", "get_digest", "history", "history_max_chars", "interpret_intent",
     "last_user_ts", "max_tokens", "memory", "persist_inbound", "persona_for",
     "recall_query_items", "reply_deadline", "seg_max",
 }
@@ -102,7 +102,8 @@ class ChatTurnMixin(CommitMixin):
 
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None,
-                            quote_text: str | None = None, reply_to: str | None = None) -> Turn:
+                            quote_text: str | None = None, reply_to: str | None = None,
+                            turn_intent=None) -> Turn:
         """取证：历史、记忆、知识、画像、情绪。"""
         turn = Turn(session=session, user_text=user_text, images=list(images or []),
                     store_text=store_text, owner=self._is_owner(session),
@@ -122,9 +123,6 @@ class ChatTurnMixin(CommitMixin):
         else:
             turn.stored = user_text
 
-        # 取数：默认串行；chat.prepare_parallel 打开时并发（S2）。
-        await self._prepare_fetches(turn, user_text)
-
         try:
             turn.digest = await self.get_digest(session)
         except Exception:
@@ -138,6 +136,10 @@ class ChatTurnMixin(CommitMixin):
         recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
+        if turn_intent is None and turn.owner:
+            turn_intent = await self.interpret_intent(
+                session, store_text or user_text, quote_text=quote_text, reply_to=reply_to)
+
         # gap 用「上一条用户消息的时间」冻结。历史读完后再落本轮，避免 prompt 里出现两遍。
         turn.gap_basis = await self.last_user_ts(session)
         turn.gap = (max(0.0, (time.time() - turn.gap_basis) / 3600.0)
@@ -148,7 +150,10 @@ class ChatTurnMixin(CommitMixin):
             turn.user_msg_id = await asyncio.shield(
                 self.persist_inbound(turn.session, turn.stored)) or 0
 
-        self._prepare_followup(turn, store_text or user_text, reply_to=reply_to)
+        self._prepare_followup(turn, store_text or user_text, reply_to=reply_to, decision=turn_intent)
+        if turn.followup_control_reply:
+            return turn
+        await self._prepare_fetches(turn, user_text)
         await self._prepare_vectors(turn, user_text)
         await self._prepare_recall(turn, user_text)
 
@@ -219,7 +224,8 @@ class ChatTurnMixin(CommitMixin):
             log.debug("分析类预搜索失败：%s", e)
             return ""
 
-    def _prepare_followup(self, turn: Turn, user_text: str, reply_to: str | None = None) -> None:
+    def _prepare_followup(self, turn: Turn, user_text: str, reply_to: str | None = None,
+                          decision=None) -> None:
         """他提到某件事的进展 → 对应 followup 推进状态，别反复追问同一件事。
 
         上一版只要命中完成信号词就关闭，「那个还没搞定」也会被当成办完了。
@@ -233,8 +239,24 @@ class ChatTurnMixin(CommitMixin):
             return
         quoted = (turn.quote_text or "").strip() or None
         try:
+            turn.followup_control_reply = followup.control_turn(
+                text, turn.session, turn.user_msg_id, quote_text=quoted, reply_to=reply_to,
+                suggested=decision.control if decision else None,
+                expected_question=decision.question if decision else "")
+            if turn.followup_control_reply:
+                return
+            context = "\n".join([text] + [
+                str(m.get("content") or "") for m in turn.history[-4:]])
+            quiet = [topic for topic in followup.quiet_topics()
+                     if followup.shared_span(topic, context, 3)]
+            if quiet:
+                turn.prefetch.setdefault("followup", []).append(
+                    (3, "他已要求停止主动提起这些事项：" + "、".join(quiet)
+                     + "。只回应他明确提起的内容，别主动问进展。"))
             res = followup.answer_turn(text, turn.session, turn.user_msg_id,
-                                       quote_text=quoted, reply_to=reply_to)
+                                       quote_text=quoted, reply_to=reply_to,
+                                       report=decision.report if decision else "",
+                                       expected_question=decision.question if decision else "")
             if res.get("done"):
                 turn.prefetch.setdefault("followup", []).append(
                     (0, "他刚说这件事办完了，你已经记成完成——"

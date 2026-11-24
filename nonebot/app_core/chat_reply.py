@@ -254,6 +254,11 @@ class ReplyMixin:
             stats=stats,
         )
 
+    async def interpret_intent(self, session: str, text: str, **context):
+        from app_core.turn_intent import interpret
+
+        return await interpret(self, session, text, **context)
+
     async def reply(self, session: str, user_text: str,
                     images: list | None = None,
                     on_sentence=None,
@@ -262,7 +267,7 @@ class ReplyMixin:
                     delivery_policy: DeliveryPolicy | None = None,
                     defer_history: bool = False,
                     reply_to: str | None = None,
-                    quote_text: str | None = None) -> tuple[list[str], list[str]]:
+                    quote_text: str | None = None, turn_intent=None) -> tuple[list[str], list[str]]:
         """返回 (分段后的回复, 待发送的图片路径)。
 
         images：本轮用户发来的图片本地路径。只注入当前这轮，历史里只留文字标记。
@@ -282,7 +287,12 @@ class ReplyMixin:
         try:
             turn = await self._turn_prepare(
                 session, user_text, images, store_text,
-                quote_text=quote_text, reply_to=reply_to)
+                quote_text=quote_text, reply_to=reply_to, turn_intent=turn_intent)
+            control_reply = getattr(turn, "followup_control_reply", None)
+            if control_reply:
+                if not defer_history:
+                    await self.record_delivery(session, control_reply)
+                return [control_reply], []
             await self._turn_compose(turn)
             await self._turn_generate(turn, on_sentence)
             await self._turn_commit(turn, on_sentence, defer_history=defer_history)

@@ -27,6 +27,7 @@ class InboundMessage:
     reply_to: str | None = None
     quote_text: str | None = None
     store_text: str | None = None
+    intent: object | None = None
     voice: bool = False        # 这条文字是语音转写来的（形式进数据，不进正文）
 
     @property
@@ -90,6 +91,8 @@ class Engine:
             kwargs["delivery_policy"] = delivery_policy
         if msg.reply_to:
             kwargs["reply_to"] = f"{msg.platform}:{msg.reply_to}"
+        if msg.intent is not None:
+            kwargs["turn_intent"] = msg.intent
         if msg.quote_text:
             kwargs["quote_text"] = msg.quote_text
         replies, images = await self.core.reply(

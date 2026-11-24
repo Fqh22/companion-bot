@@ -206,7 +206,7 @@ CORE_API = {
     "record_assistant", "record_delivery", "append_to_message", "note_user_active",
     "note_followup_asked",
     # 兼容入口
-    "remember_safe", "catch_up_summary", "complete_raw", "init_db",
+    "remember_safe", "catch_up_summary", "complete_raw", "init_db", "interpret_intent",
     # ---- 两层：插件门面 core.<ns>.<func>（2026-11-16）----
     "learn.review", "learn.weekly", "learn.profile_fields", "learn.profile_path",
     "learn.set_meta", "learn.parse_ts", "learn.archive_raw", "learn.note_list",

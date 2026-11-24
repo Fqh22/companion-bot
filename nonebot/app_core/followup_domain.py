@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from datetime import timedelta
+
+from app_core import timenorm
 
 MAX_TEXT = 160
 NEAR_DUP = 0.62
@@ -74,6 +78,86 @@ NEGATE_EXACT = ("不是", "不对", "没有", "不行", "不能", "不可以", "
 
 def strip_punct(text: str) -> str:
     return (text or "").strip().strip("。！？!?~.…，,、 ")
+
+
+@dataclass(frozen=True)
+class QuietControl:
+    action: str
+    target: str
+    until: float = 0.0
+
+
+_DURATION = r"这周|本周|今天|今日|明天|后天|[1-9][0-9]?天|[一二两三四五六七八九十]天"
+_QUIET_COMMAND = re.compile(
+    rf"(?P<before>[^，,。！？!?；;：:「」“”]{{0,40}}?)"
+    r"(?:[，,]\s*)?"
+    rf"(?P<command>等我(?:自己|主动)?(?:再)?提(?:起)?(?:再问)?|(?:先|暂时)不用跟进(?:了)?|"
+    rf"(?:不用|不必|不要再)跟进(?:了)?|结束跟进|"
+    rf"(?:{_DURATION})(?:内)?(?:先)?(?:别|不要)(?:再)?(?:问|追问|跟进)(?:了)?|"
+    rf"(?:先)?(?:别|不要)(?:再)?(?:问|追问|跟进)(?:了)?|"
+    rf"(?:恢复|继续)跟进)"
+    rf"(?P<after>[^，,。！？!?；;：:「」“”]{{0,40}})"
+)
+_DEICTIC_CONTROL = {"", "这件", "这件事", "这个", "这个事", "那件", "那件事", "那个", "刚才", "刚才那件事", "我", "我了", "了", "吧", "哈"}
+
+
+def _quiet_deadline(duration: str, now: float) -> float:
+    local = timenorm.from_ts(now)
+    midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    if duration in ("这周", "本周"):
+        return (midnight + timedelta(days=7 - midnight.weekday())).timestamp()
+    days = {"今天": 1, "今日": 1, "明天": 2, "后天": 3}
+    if duration in days:
+        return (midnight + timedelta(days=days[duration])).timestamp()
+    value = duration[:-1]
+    digits = dict(zip("一二两三四五六七八九十", (1, 2, 2, 3, 4, 5, 6, 7, 8, 9, 10)))
+    count = int(value) if value.isdecimal() else digits[value]
+    return (local + timedelta(days=count)).timestamp()
+
+
+def snooze_deadline(text: str, now: float) -> float:
+    value = strip_punct(text).removesuffix("再问").strip()
+    if value in ("到明天", "到后天"):
+        return _quiet_deadline("今天" if value == "到明天" else "明天", now)
+    value = value.removeprefix("到").removesuffix("后").strip()
+    if re.fullmatch(_DURATION, value):
+        return _quiet_deadline(value, now)
+    if re.fullmatch(r"20\d{2}[-/]\d{1,2}[-/]\d{1,2}", value):
+        deadline = event_epoch(value, now)
+        return deadline if deadline and deadline > now else 0.0
+    return 0.0
+
+
+def control_target(text: str) -> str:
+    target = strip_punct(text).strip("《》")
+    target = re.sub(r"^(?:关于|至于|把|我这边的|我(?=.+))", "", target)
+    target = re.sub(r"(?:这件事|那件事|这事|那事|的事|这个|那个|请|麻烦)$", "", target).strip()
+    return "" if target in _DEICTIC_CONTROL else target
+
+
+def quiet_control(text: str, now: float) -> QuietControl | None:
+    """只处理主人自己发出的明确跟进指令。"""
+    raw = (text or "").strip().removeprefix("[语音]").strip()
+    if not raw or raw.startswith("[") or raw.endswith(("?", "？")):
+        return None
+    match = _QUIET_COMMAND.fullmatch(strip_punct(raw))
+    if not match:
+        return None
+    before, command, after = match.groups()
+    if any(w in before for w in ("他说", "她说", "我说过", "如果", "假如", "的意思", "怎么", "能不能")):
+        return None
+    left, right = control_target(before), control_target(after)
+    target = left or right
+    if left and right:
+        return None
+    if command.startswith(("恢复", "继续")):
+        return QuietControl("resume", target)
+    if command.startswith(("不用", "不必", "不要再跟进", "结束")):
+        return QuietControl("cancel", target, -1.0)
+    duration = re.match(_DURATION, command)
+    if duration:
+        return QuietControl("snooze", target, _quiet_deadline(duration.group(), now))
+    return QuietControl("hold", target, -1.0)
 
 
 def is_negate(text: str) -> bool:
