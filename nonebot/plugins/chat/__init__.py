@@ -39,16 +39,16 @@ from nonebot.adapters.onebot.v11 import (
 
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
-from app_core.chat import ChatCore
-from app_core.delivery import BUFFERED, Capability
-from app_core.engine import Engine
+from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.runner import TurnRunner
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
 from adapters.qq import to_inbound
+from companion_core import shared_application
 
-core = ChatCore()
-engine = Engine(core)
+_application = shared_application()
+core = _application.core
+engine = _application.engine
 QQ_CAPS = Capability(name="qq")
 driver = get_driver()
 
@@ -139,18 +139,10 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
         synth=lambda seg: tts.synth(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
         send_text=lambda t: ch.send_text(sid, t),
-        record=lambda text, kind: _record_heard(sid, text, kind),
+        record_delivery=lambda text, refs: core.record_delivery(sid, text, references=refs),
         mode=VOICE_REPLY_MODE,
         tag="[chat]",
     )
-
-
-async def _record_heard(sid: str, text: str, kind: str) -> None:
-    """语音或文字兜底真正发出去之后才记提问。缓冲阶段用户还没听见。"""
-    try:
-        await core.record_assistant(sid, text, kind=kind)
-    finally:
-        core.note_followup_asked(text)
 
 
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
@@ -229,7 +221,7 @@ class QQChannel:
         self.defer_text = False
         self.buffered: list[str] = []
 
-    async def send_part(self, session: str, part) -> bool:
+    async def send_part(self, session: str, part) -> DeliveryResult:
         """协议入口：按 form 分派到具体原语。
 
         加「画画」时这里不用改——画出来的图就是 image。
@@ -243,7 +235,7 @@ class QQChannel:
             return await self.send_voice(session, part.content)
         return False
 
-    async def send_text(self, session: str, text: str) -> bool:
+    async def send_text(self, session: str, text: str) -> DeliveryResult:
         if self.defer_text:
             # 已缓冲 ≠ 已送达，也 ≠ 发送失败。返回 BUFFERED：引擎不要再补发
             # 一遍，历史仍等语音/文字兜底真正成功后再写。
@@ -271,7 +263,7 @@ class QQChannel:
             logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
             return False
 
-    async def send_voice(self, session: str, path: str) -> bool:
+    async def send_voice(self, session: str, path: str) -> bool | Receipt:
         try:
             p = Path(path)
             if not p.exists():
@@ -281,8 +273,9 @@ class QQChannel:
             # bytes 传进去 QQ 播不了。这里显式编成 base64:// 前缀。
             data = await asyncio.to_thread(p.read_bytes)
             b64 = base64.b64encode(data).decode("ascii")
-            await chat.send(MessageSegment.record(f"base64://{b64}"))
-            return True
+            response = await chat.send(MessageSegment.record(f"base64://{b64}"))
+            mid = response.get("message_id") if isinstance(response, dict) else None
+            return Receipt("qq", str(mid or ""))
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 语音发送失败：{type(e).__name__}: {e}")
             return False
@@ -385,29 +378,6 @@ async def _caption_later(msg_id: int, paths: list[str]) -> None:
         logger.warning(f"[chat] 补图注失败：{type(e).__name__}: {e}")
 
 
-@driver.on_startup
-async def _init() -> None:
-    await core.init_db()
-    # 静默失效的配置在这里喊出来：admin.user_id 没配时记忆不写、主动消息不发，
-    # 而且不抛任何异常，只能靠启动日志和 /ping 发现。
-    for issue in core.config_issues():
-        logger.error(f"[config] {issue}")
-    logger.info(f"chat core ready（{core.config_status()}）")
-    asyncio.create_task(_catch_up())
-
-
-async def _catch_up() -> None:
-    """启动补偿总结：把崩溃窗口里还没固化的对话补进长期记忆。"""
-    try:
-        r = await core.catch_up_summary()
-        if r.get("ran"):
-            logger.info(f"[summary] 启动补偿：补了 {r.get('pending')} 轮未总结的对话")
-        elif r.get("reason") == "no-admin":
-            logger.warning("[summary] 启动补偿跳过：admin.user_id 未配置")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[summary] 启动补偿失败：{type(e).__name__}: {e}")
-
-
 def _bot():
     """取当前连上的 bot。
 
@@ -462,7 +432,7 @@ async def _pace(text: str, fast: bool = False) -> None:
                                             core.mood.load(), fast=fast))
 
 
-async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> bool:
+async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> DeliveryResult:
     """发一条文字，失败重试一次。发不出去不抛异常——用户侧无能为力，
     但必须留日志，否则「它回了但没收到」永远查不出来。
 
@@ -477,8 +447,9 @@ async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> 
             msg = part
     for attempt in range(1, tries + 1):
         try:
-            await chat.send(msg)
-            return True
+            response = await chat.send(msg)
+            mid = response.get("message_id") if isinstance(response, dict) else None
+            return Receipt("qq", str(mid or ""), part)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"[chat] 发送失败（{attempt}/{tries}）：{type(e).__name__}: {e}")
             await asyncio.sleep(0.5 * attempt)

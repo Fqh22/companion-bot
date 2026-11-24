@@ -1,6 +1,7 @@
 """[orchestration] followup 的 SQLite 读写；DB 路径在模块内定义（测试直接补本模块）。"""
 from __future__ import annotations
 
+from contextlib import closing
 import logging
 import sqlite3
 import time
@@ -57,6 +58,17 @@ def init() -> None:
                 c.execute(ddl)
             except Exception:
                 pass
+        c.execute(
+            "CREATE TABLE IF NOT EXISTS delivery_refs ("
+            "session TEXT NOT NULL, platform_ref TEXT NOT NULL, "
+            "assistant_msg_id INTEGER NOT NULL, text TEXT NOT NULL, "
+            "PRIMARY KEY(session, platform_ref))")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_delivery_refs_message ON delivery_refs(assistant_msg_id)")
+        # 历史清理脚本各自连接 SQLite，触发器让引用跟随历史删除。
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages'").fetchone():
+            c.execute(
+                "CREATE TRIGGER IF NOT EXISTS delete_delivery_refs AFTER DELETE ON messages "
+                "BEGIN DELETE FROM delivery_refs WHERE assistant_msg_id=OLD.id; END")
         c.execute("UPDATE followups SET status='done' "
                   "WHERE done=1 AND status='todo'")
     c.close()
@@ -158,16 +170,19 @@ def mark_asked(ids: list[int], msg_id: int = 0, asked_text: str = "") -> None:
         return
     init()
     now = time.time()
-    c = _conn()
-    with c:
+    with closing(_conn()) as c, c:
+        _mark_asked(c, ids, msg_id, asked_text, now)
+
+
+def _mark_asked(c, ids: list[int], msg_id: int, text: str, now: float) -> None:
+    c.executemany(
+        "UPDATE followups SET last_asked_ts=?, ask_count=ask_count+1 WHERE id=? AND done=0",
+        [(now, fid) for fid in ids])
+    if msg_id or text:
         c.executemany(
-            "UPDATE followups SET last_asked_ts=?, ask_count=ask_count+1 WHERE id=?",
-            [(now, i) for i in ids])
-        if msg_id or asked_text:
-            c.executemany(
-                "UPDATE followups SET asked_msg_id=?, asked_text=? WHERE id=?",
-                [(int(msg_id or 0), (asked_text or "")[:MAX_TEXT], i) for i in ids])
-    c.close()
+            "UPDATE followups SET asked_msg_id=?, asked_text=? WHERE id=? AND done=0",
+            [(msg_id, text[:MAX_TEXT], fid) for fid in ids])
+
 
 def mark_answered(ids: list[int]) -> None:
     """他回应了这件事（不一定是办完）。只记时间，不改状态。
@@ -479,21 +494,53 @@ def note_asked(text: str, msg_id: int = 0) -> list[int]:
         return []
     init()
     now = time.time()
-    c = _conn()
+    with closing(_conn()) as c, c:
+        return _note_asked(c, asked, msg_id, now)
+
+
+def _note_asked(c, asked: str, msg_id: int, now: float) -> list[int]:
     rows = c.execute(
         "SELECT id, text, last_asked_ts, asked_text FROM followups "
         "WHERE done=0 AND status NOT IN ('done','cancelled')").fetchall()
-    c.close()
-    ids = []
-    for fid, item, last, prev in rows:
-        if not links_question(item or "", asked):
-            continue
-        if (float(last or 0) and now - float(last) < 120
-                and (prev or "") == asked[:MAX_TEXT]):
-            continue
-        ids.append(int(fid))
-    mark_asked(ids, msg_id=msg_id, asked_text=asked)
+    ids = [fid for fid, text, last, prev in rows
+           if links_question(text, asked)
+           and not (last and now - last < 120 and prev == asked[:MAX_TEXT])]
+    _mark_asked(c, ids, msg_id, asked, now)
     return ids
+
+
+def record_delivery(db, session: str, text: str, *, track_followup: bool,
+                    references: tuple[tuple[str, str], ...] = (),
+                    topic_key: str = "", topic: str = "") -> int:
+    """将已发送的正文、引用、跟进及主动日志写进同一个 SQLite 事务。"""
+    references = tuple(dict(references).items())
+    with closing(sqlite3.connect(db, timeout=15)) as c, c:
+        # 先拿写锁，让重复平台回执的检查和插入串行。
+        c.execute("BEGIN IMMEDIATE")
+        for reference, _ in references:
+            existing = c.execute(
+                "SELECT assistant_msg_id FROM delivery_refs WHERE session=? AND platform_ref=?",
+                (session, reference)).fetchone()
+            if existing:
+                return int(existing[0])
+        now = time.time()
+        msg_id = c.execute(
+            "INSERT INTO messages(session, role, content, ts) VALUES (?,'assistant',?,?)",
+            (session, text, now)).lastrowid
+        c.executemany(
+            "INSERT INTO delivery_refs(session, platform_ref, assistant_msg_id, text) VALUES (?,?,?,?)",
+            [(session, reference, msg_id, segment) for reference, segment in references])
+        if topic_key:
+            c.execute(
+                "INSERT INTO proactive_log(ts,topic_key,topic,text,session,assistant_msg_id,platform_ref) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (now, topic_key, topic, text, session, msg_id, references[0][0] if references else ""))
+            _, _, fid = topic_key.partition(":")
+            if topic_key.startswith("fu:") and fid.isdigit():
+                _mark_asked(c, [int(fid)], msg_id, text, now)
+        elif track_followup:
+            _note_asked(c, text, msg_id, now)
+        return int(msg_id)
 
 
 def last_sent_assistant(session: str) -> str:
@@ -547,6 +594,13 @@ def attribute_reply(user_text: str, session: str = "",
                     return None
                 return {"id": fid, "text": text, "asked_text": question, "status": status,
                         "assistant_msg_id": 0, "proactive_id": pid}
+        if platform_ref:
+            recorded = c.execute(
+                "SELECT r.text FROM delivery_refs r JOIN messages m ON m.id=r.assistant_msg_id "
+                "WHERE r.session=? AND r.platform_ref=? AND m.session=r.session",
+                (session, platform_ref)).fetchone()
+            if recorded:
+                last_assistant = recorded[0]
         if platform_ref and last_assistant is None:
             return None
         adjacent = _reply_context(c, session, user_msg_id) if last_assistant is None else None

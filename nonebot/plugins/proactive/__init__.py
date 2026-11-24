@@ -10,9 +10,14 @@ import asyncio
 from nonebot import get_bots, get_driver, logger
 
 from app_core import config
-from plugins.chat import core
+from app_core.delivery import Receipt
+from companion_core import shared_application
+
+_application = shared_application()
+core = _application.core
 
 driver = get_driver()
+_task: asyncio.Task | None = None
 
 
 def _admin_id() -> int:
@@ -43,11 +48,9 @@ async def _send(text: str):
     for bot in get_bots().values():
         try:
             response = await bot.call_api("send_private_msg", user_id=uid, message=text)
-            # 自己说过的话也要进历史，否则下一轮它完全不知道
-            await core.record_assistant(f"private:{uid}", text, "proactive")
             logger.info("[proactive] 已发送: %r", text[:60])
             mid = response.get("message_id") if isinstance(response, dict) else None
-            return core.proactive_channels.Receipt("qq", str(mid or ""))
+            return Receipt("qq", str(mid or ""))
         except Exception as e:  # noqa: BLE001
             logger.warning("[proactive] 发送到 bot %s 失败：%s",
                            getattr(bot, "self_id", "?"), e)
@@ -69,8 +72,21 @@ async def _compose(topic: str, why: str, mood_hint: str = "") -> str:
 
 @driver.on_startup
 async def _start() -> None:
+    global _task
+    await _application.start(catch_up=True)
+    if _task is not None and not _task.done():
+        return
     try:
         runtime.init()
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[proactive] 初始化表失败: {type(e).__name__}: {e}")
-    asyncio.create_task(runtime.run())
+    _task = asyncio.create_task(runtime.run())
+
+
+@driver.on_shutdown
+async def _stop() -> None:
+    global _task
+    if _task is not None:
+        _task.cancel()
+        await asyncio.gather(_task, return_exceptions=True)
+        _task = None

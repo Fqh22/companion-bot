@@ -5,6 +5,8 @@ import nonebot
 from nonebot.adapters.onebot.v11 import Adapter
 from nonebot.log import logger as _nb_logger
 
+from companion_core import shared_application
+
 nonebot.init()
 
 
@@ -63,6 +65,15 @@ _bridge_stdlib_logging()
 driver = nonebot.get_driver()
 driver.register_adapter(Adapter)
 
+application = shared_application()
+
+
+@driver.on_startup
+async def _start_application() -> None:
+    await application.start(catch_up=True)
+
+
+driver.on_shutdown(application.stop)
 nonebot.load_plugins("plugins")
 
 if __name__ == "__main__":

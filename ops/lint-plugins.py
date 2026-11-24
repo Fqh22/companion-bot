@@ -203,7 +203,7 @@ CORE_API = {
     "memory_cleanup", "memory_superseded", "memory_forgotten",
     "memory_embed", "memory_restore",
     # 写历史（插件发消息后必须回写，否则机器人不记得自己说过什么）
-    "record_assistant", "append_to_message", "note_user_active",
+    "record_assistant", "record_delivery", "append_to_message", "note_user_active",
     "note_followup_asked",
     # 兼容入口
     "remember_safe", "catch_up_summary", "complete_raw", "init_db",
@@ -225,7 +225,7 @@ CORE_API = {
     "introspect.mem_status_text", "introspect.profile_text",
     "tools.execute",
     "scheduler.Scheduler",
-    "proactive_channels.register", "proactive_channels.send", "proactive_channels.Receipt",
+    "proactive_channels.register", "proactive_channels.unregister", "proactive_channels.send", "proactive_channels.Receipt",
     "proactive_runtime.ProactiveRuntime",
     "relational.is_quiet_hour", "relational.describe",
 }
@@ -261,7 +261,7 @@ def check_core_api() -> tuple[list[str], list[str]]:
             continue
         # 只查持有 ChatCore 的插件。group 里的 core 是 GroupCore（另一个类），
         # 它自己的 budget_left 是合法接口，不属于这条检查。
-        if "from plugins.chat import core" not in text and f.name != "__init__.py":
+        if "shared_application" not in text and f.name != "__init__.py":
             continue
         if f.parent.name == "group":
             continue

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import asyncio
+import sqlite3
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -14,7 +17,7 @@ if not (CODE / "app_core").is_dir():
     CODE = HERE.parent
 sys.path.insert(0, str(CODE))
 
-from companion_core import EngineConfig, __version__, create_engine  # noqa: E402
+from companion_core import EngineConfig, __version__, create_application, create_engine  # noqa: E402
 from app_core.engine import Engine  # noqa: E402
 
 from harness import check, report
@@ -23,6 +26,63 @@ from harness import check, report
 class FakeCore:
     async def reply(self, *a, **k):
         return ["ok"], []
+
+
+class StartupCore(FakeCore):
+    initialized = 0
+
+    async def init_db(self):
+        self.initialized += 1
+        await asyncio.sleep(0)
+
+    def config_issues(self):
+        return []
+
+    def config_status(self):
+        return "test"
+
+
+async def check_startup():
+    core = StartupCore()
+    app = create_application(core=core)
+    await asyncio.gather(app.start(), app.start())
+    check("并发启动只初始化一次", core.initialized == 1)
+    await app.stop()
+
+
+def check_roots(tmp: Path):
+    script = """
+import asyncio, sys
+from pathlib import Path
+from companion_core import EngineConfig, create_application
+async def main():
+    app = create_application(EngineConfig(Path(sys.argv[1])))
+    await app.start()
+    assert await app.core.record_delivery("private:test", sys.argv[2])
+    await app.stop()
+    try:
+        EngineConfig(Path(sys.argv[1]) / "other").apply()
+    except RuntimeError:
+        return
+    raise AssertionError("已启动的进程不能悄悄改用另一份库")
+asyncio.run(main())
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(CODE), env.get("PYTHONPATH"))))
+    procs = []
+    for marker in ("alpha", "beta"):
+        target = tmp / marker
+        done = subprocess.run([sys.executable, "-B", "-c", script, str(target), marker],
+                              env=env, capture_output=True, text=True, timeout=30)
+        if done.returncode:
+            check("独立数据根应用启动 " + marker, False, done.stderr[-1200:])
+            continue
+        conn = sqlite3.connect(target / "nonebot/data/chat.db")
+        try:
+            procs.append(conn.execute("SELECT content FROM messages").fetchall())
+        finally:
+            conn.close()
+    check("两个进程各写自己的数据根", procs == [[("alpha",)], [("beta",)]], procs)
 
 
 def main():
@@ -50,6 +110,9 @@ def main():
             os.environ.pop("QQBOT_ROOT", None)
         else:
             os.environ["QQBOT_ROOT"] = old
+
+    asyncio.run(check_startup())
+    check_roots(tmp)
 
     check("memory_schema 在包内", (CODE / "app_core" / "memory_schema.sql").exists())
 

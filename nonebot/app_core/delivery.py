@@ -20,7 +20,23 @@ def is_buffered(result) -> bool:
 
 def is_delivered(result) -> bool:
     """真正交给平台了。缓冲不算。"""
-    return result is True
+    return result is True or isinstance(result, Receipt)
+
+
+@dataclass(frozen=True)
+class Receipt:
+    """平台已接受消息。部分通道没有 ID，但仍可确认发送。"""
+
+    platform: str
+    message_id: str
+    text: str | None = None
+
+    @property
+    def reference(self) -> str:
+        return f"{self.platform}:{self.message_id}" if self.message_id else ""
+
+
+DeliveryResult = bool | str | Receipt
 
 
 @dataclass(frozen=True)

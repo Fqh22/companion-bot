@@ -256,6 +256,31 @@ async def main() -> None:
             InboundMessage(session="private:11", text="hi")), timeout=3)
     check("挂死之后同会话下一轮能继续", ch11.texts == ["下一轮。"], str(ch11.texts))
 
+    from app_core.delivery import BUFFERED, Receipt
+
+    class DeliveryCore:
+        records = []
+
+        async def record_delivery(self, session, text, *, references):
+            self.records.append((session, text, references))
+
+    class ReceiptChannel(FakeChannel):
+        async def send_part(self, session, part):
+            if part.content == "buffered":
+                return BUFFERED
+            if part.content == "failed":
+                return False
+            return Receipt("feishu", "test-message-id", "实际送达")
+
+    ledger = DeliveryCore()
+    await TurnRunner(FakeEngine(["buffered", "failed", "delivered"], OutboundMessage(),
+                               core=ledger), ReceiptChannel(), deadline=5).run(
+        InboundMessage(session="private:receipt", text="hi"))
+    check("只记录送达正文与平台引用",
+          ledger.records == [("private:receipt", "实际送达",
+                              (("feishu:test-message-id", "实际送达"),))],
+          ledger.records)
+
     return report()
 
 

@@ -51,7 +51,7 @@ except Exception:                              # 版本差异时退回 0，不�
 
 # 每个插件该暴露的关键对象：缺了说明导入期就出了问题
 EXPECT = {
-    "plugins.chat": ["core", "driver", "_handle", "_init", "_catch_up"],
+    "plugins.chat": ["core", "driver", "_handle"],
     "plugins.group": ["core", "driver", "_handle", "_init"],
     "plugins.commands": ["mood_cmd", "mood_hist", "kb_verify", "kb_deprecate", "raw_cmd", "restore_cmd"],
     "plugins.admin": ["ping", "help_cmd", "reload_cmd"],
@@ -71,6 +71,13 @@ for mod, names in EXPECT.items():
 
 print(f"注册的 matcher 数：{n_matchers}")
 ok = len(loaded) == EXPECT_COUNT and not missing
+if ok:
+    from companion_core import shared_application
+
+    core = shared_application().core
+    shared = ("chat", "feishu", "commands", "admin", "schedule", "proactive")
+    ok = all(sys.modules[f"plugins.{name}"].core is core for name in shared)
+    print(("PASS " if ok else "FAIL ") + "QQ、飞书、管理与调度共用应用实例")
 print(("PASS " if ok else "FAIL ") +
       f"插件加载（{len(loaded)}/{EXPECT_COUNT} 插件，缺 {len(missing)} 个关键对象）")
 if missing:

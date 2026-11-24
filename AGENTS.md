@@ -48,7 +48,7 @@ ops/verify.sh                    # 全量
 | `nonebot/app_core/` | domain / orchestration / infra | 业务内核，**不许 import nonebot** |
 | `nonebot/adapters/` | 适配 | 平台字段 → `InboundMessage`；只走门面 |
 | `nonebot/plugins/` | 平台胶水 | NoneBot 的 `on_message/on_command` |
-| `nonebot/companion_core/` | 门面包 | `EngineConfig` + `create_engine` |
+| `nonebot/companion_core/` | 门面包 | `EngineConfig` + `create_application` |
 | `ops/` | 运维/测试 | 每个脚本可独立跑 |
 | `docs/` | 文档 | 地图见 `docs/README.md`：01 定义与决策 / 02 系统与扩展 / 03 运维与通道 / 04 评测与实验 |
 
@@ -107,7 +107,7 @@ ops/verify.sh                    # 全量
 
 ## 7. 常见错误（AI 最容易犯）
 
-- 在 `plugins/` 里直接 `import app_core.chat`——应该用 `from plugins.chat import core`。
+- 在 `plugins/` 里直接 `import app_core.chat`——通过 `companion_core.shared_application()` 取得宿主实例。
 - 新建一个平行模块（`new_tools.py`）而不是注册进 `HANDLERS`。
 - 加工具只改 `TOOLS` 不改 `HANDLERS`（加载就抛错）。
 - 测完只跑一个脚本就说「全绿」——至少跑第 1 节的 8 条。

@@ -9,7 +9,9 @@ from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 
-from plugins.chat import core
+from companion_core import shared_application
+
+core = shared_application().core
 
 NL = chr(10)
 

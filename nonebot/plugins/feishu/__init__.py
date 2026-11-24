@@ -33,13 +33,17 @@ from lark_oapi.api.im.v1 import (
 from nonebot import get_driver, logger
 
 from app_core import asr, config, paths, tts
-from app_core.delivery import BUFFERED, Capability
+from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner
 from adapters.feishu import parse_content, to_inbound
 
-# 和 QQ 共用同一个 ChatCore / Engine（chat 插件在模块导入时创建）
-from plugins.chat import core, engine
+# 和 QQ 共用宿主启动的同一个应用。
+from companion_core import shared_application
+
+_application = shared_application()
+core = _application.core
+engine = _application.engine
 
 driver = get_driver()
 
@@ -117,12 +121,7 @@ async def _send_proactive(text: str):
         return False
     ok = await asyncio.to_thread(
         _send_message, chat_id, "text", {"text": text})
-    if ok:
-        try:
-            await core.record_assistant(session, text, "proactive")
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"[feishu] 主动消息写历史失败：{e}")
-    return core.proactive_channels.Receipt("feishu", ok if isinstance(ok, str) else "") if ok else False
+    return Receipt("feishu", ok if isinstance(ok, str) else "") if ok else False
 
 
 def _creds() -> tuple[str, str]:
@@ -285,7 +284,7 @@ class FeishuChannel:
         self.defer_text = defer_text
         self.buffered: list[str] = []
 
-    async def send_part(self, session: str, part) -> bool:
+    async def send_part(self, session: str, part) -> DeliveryResult:
         if part.form == "text":
             return await self.send_text(session, part.content)
         if part.form in ("image", "drawing"):
@@ -294,7 +293,7 @@ class FeishuChannel:
             return await self.send_voice(session, part.content)
         return False
 
-    async def send_text(self, session: str, text: str) -> bool:
+    async def send_text(self, session: str, text: str) -> DeliveryResult:
         text = (text or "").strip()
         if not text:
             return False
@@ -305,9 +304,11 @@ class FeishuChannel:
             return BUFFERED
         ok = await asyncio.to_thread(
             _send_message, self.chat_id, "text", {"text": text[:MAX_CHARS]})
-        if ok:
-            self.sent_text.append(text)
-        return ok
+        if not ok:
+            return False
+        sent = text[:MAX_CHARS]
+        self.sent_text.append(sent)
+        return Receipt("feishu", ok if isinstance(ok, str) else "", sent)
 
     async def send_image(self, session: str, path: str) -> bool:
         p = Path(path)
@@ -320,7 +321,7 @@ class FeishuChannel:
         return await asyncio.to_thread(
             _send_message, self.chat_id, "image", {"image_key": key})
 
-    async def send_voice(self, session: str, path: str) -> bool:
+    async def send_voice(self, session: str, path: str) -> bool | Receipt:
         p = Path(path)
         if not p.exists():
             logger.warning(f"[feishu] 语音不存在：{p}")
@@ -341,9 +342,10 @@ class FeishuChannel:
                 _upload_file, opus, "opus", "voice.opus", duration)
             if not key:
                 return False
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 _send_message, self.chat_id, "audio",
                 {"file_key": key, "duration": duration})
+            return Receipt("feishu", result if isinstance(result, str) else "") if result else False
         finally:
             if own:
                 opus.unlink(missing_ok=True)
@@ -389,13 +391,6 @@ async def _draw_later(session: str, chat_id: str, ask: str) -> None:
     )
 
 
-async def _record_heard(session: str, text: str, kind: str) -> None:
-    try:
-        await core.record_assistant(session, text, kind=kind)
-    finally:
-        core.note_followup_asked(text)
-
-
 async def _deliver_voice_reply(session: str, ch: FeishuChannel,
                                  rewrite: bool = True) -> None:
     """voice / voice_then_text 形态：先发语音，按配置决定是否再补文字。"""
@@ -408,7 +403,7 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
         synth=lambda seg: tts.synth_opus(seg, mood=core.mood.load(), rewrite=rewrite),
         send_voice=lambda p: ch.send_voice("", p),
         send_text=lambda t: ch.send_text("", t),
-        record=lambda text, kind: _record_heard(session, text, kind),
+        record_delivery=lambda text, refs: core.record_delivery(session, text, references=refs),
         mode=VOICE_REPLY_MODE,
         tag="[feishu]",
     )
@@ -551,6 +546,9 @@ async def _start() -> None:
     if not OWNER:
         logger.warning("[feishu] config.feishu.owner_open_id 未配置，跳过（只和主人聊）")
         return
+    await _application.start(catch_up=True)
+    if _client is not None:
+        return
     _client = _new_client(app_id, app_secret)
     _loop = asyncio.get_running_loop()
     # 注册主动发送能力（注册 ≠ 启用，是否使用由 proactive.channel 决定）
@@ -568,5 +566,7 @@ async def _start() -> None:
 @driver.on_shutdown
 async def _stop() -> None:
     # 长连接线程是 daemon，进程退出即断；这里只清引用，避免热重载时重复启动
-    global _client
+    global _client, _loop
+    _loop = None
     _client = None
+    core.proactive_channels.unregister("feishu")

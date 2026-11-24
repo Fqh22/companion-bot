@@ -244,7 +244,7 @@ def check_plugins(core: Path) -> None:
             else:
                 FAILS.append(
                     f"{p.relative_to(core.parent)}: 插件不得直接 import 业务实现：app_core.{mod}"
-                    "（走 plugins.chat 的 core 门面；通道协议模块见 PLUGIN_ALLOWED）")
+                    "（走宿主应用的 core 门面；通道协议模块见 PLUGIN_ALLOWED）")
 
 
 def check_adapters(core: Path) -> None:

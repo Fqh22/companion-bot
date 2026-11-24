@@ -179,6 +179,23 @@ class HistoryMixin:
         except Exception:  # noqa: BLE001
             return
 
+    async def record_delivery(self, session: str, text: str, *,
+                              references: tuple[tuple[str, str], ...] = (),
+                              topic_key: str = "", topic: str = "") -> int:
+        """统一写入一条已经送达的回复或主动消息。"""
+        from app_core import followup_store
+
+        if not (session and text.strip()):
+            return 0
+        try:
+            return await asyncio.to_thread(
+                followup_store.record_delivery, DB, session, text,
+                track_followup=self._is_owner(session), references=references,
+                topic_key=topic_key, topic=topic)
+        except Exception as e:  # noqa: BLE001
+            log.warning("已送达消息入账失败：%s", e)
+            return 0
+
     async def record_assistant(self, session: str, text: str, kind: str = "push") -> None:
         """把机器人**主动发出**的消息也写进历史。
 

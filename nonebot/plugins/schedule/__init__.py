@@ -6,7 +6,10 @@ import asyncio
 from nonebot import get_bots, get_driver
 from nonebot.log import logger
 
-from plugins.chat import core
+from companion_core import shared_application
+
+_application = shared_application()
+core = _application.core
 
 driver = get_driver()
 
@@ -74,10 +77,14 @@ async def _send(text: str) -> bool:
 
 
 sched = core.scheduler.Scheduler(core, send=_send)
+_warm_tasks: list[asyncio.Task] = []
 
 
 @driver.on_startup
 async def _start() -> None:
+    await _application.start(catch_up=True)
+    if _warm_tasks:
+        return
     sched.start()
 
     async def _warm() -> None:
@@ -90,10 +97,14 @@ async def _start() -> None:
         except Exception:
             pass
 
-    asyncio.create_task(_warm())
-    asyncio.create_task(core.meme.ensure_vectors())
+    _warm_tasks.extend((asyncio.create_task(_warm()),
+                        asyncio.create_task(core.meme.ensure_vectors())))
 
 
 @driver.on_shutdown
 async def _stop() -> None:
     await sched.stop()
+    for task in _warm_tasks:
+        task.cancel()
+    await asyncio.gather(*_warm_tasks, return_exceptions=True)
+    _warm_tasks.clear()

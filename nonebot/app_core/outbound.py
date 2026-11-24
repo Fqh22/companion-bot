@@ -16,6 +16,7 @@ import logging
 from typing import Awaitable, Callable
 
 from app_core import pacing
+from app_core.delivery import Receipt, is_buffered
 
 log = logging.getLogger("qqbot.outbound")
 
@@ -26,9 +27,10 @@ READ_ALOUD_DIRECTIVE = ("【朗读模式】用户要求把下面这段文字原�
 DRAW_TRIGGERS = ("画一张", "画个", "画幅", "画一下", "帮我画", "给我画")
 
 Synth = Callable[[str], Awaitable[object]]
-Sender = Callable[[str], Awaitable[bool]]
+Sender = Callable[[str], Awaitable[bool | Receipt]]
 TextSender = Callable[[str], Awaitable[object]]
 Recorder = Callable[[str, str], Awaitable[object]]
+DeliveryRecorder = Callable[[str, tuple[tuple[str, str], ...]], Awaitable[object]]
 
 
 def read_aloud_requested(text: str) -> bool:
@@ -110,7 +112,8 @@ async def draw_later(*, ask: str, generate, cleanup, send_image: Sender,
 
 async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: Sender,
                               send_text: TextSender, record: Recorder | None = None,
-                              mode: str = "voice", tag: str = "") -> bool:
+                              mode: str = "voice", tag: str = "",
+                              record_delivery: DeliveryRecorder | None = None) -> bool:
     """voice / voice_then_text 形态：先语音，按 mode 决定要不要再补文字。
 
     这些文本在通道层只是**缓冲**（没有投递），所以历史必须等这里真正发出
@@ -121,6 +124,7 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
     if not say:
         return False
     segments = list(pacing.split_for_voice(say))
+    references: list[tuple[str, str]] = []
     voiced: list[str] = []
     failed: list[str] = []
     # 分段有上限。超出的尾巴不能静默丢掉，也不能因为前面发成功就报整段成功。
@@ -131,15 +135,16 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
             break
         cursor = i + len(seg)
     remainder = say[cursor:].strip()
-    if remainder:
-        failed.append(remainder)
     try:
         for seg in segments:
             audio = await synth(seg)
             sent = False
             if audio:
                 try:
-                    sent = bool(await send_voice(str(audio)))
+                    result = await send_voice(str(audio))
+                    sent = bool(result)
+                    if isinstance(result, Receipt) and result.reference:
+                        references.append((result.reference, seg))
                 finally:
                     try:
                         audio.unlink(missing_ok=True)  # type: ignore[attr-defined]
@@ -153,6 +158,8 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
         log.warning("%s 语音发送失败，退回文字：%s", tag, e)
         seen = len(voiced) + len(failed)
         failed.extend(segments[seen:])
+    if remainder:
+        failed.append(remainder)
 
     text_ok: list[str] = []
     text_bad: list[str] = []
@@ -160,8 +167,12 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
     async def _send_text_parts(parts: list[str]) -> None:
         for seg in parts:
             try:
-                if await send_text(seg):
-                    text_ok.append(seg)
+                result = await send_text(seg)
+                if result and not is_buffered(result):
+                    delivered = result.text if isinstance(result, Receipt) and result.text is not None else seg
+                    text_ok.append(delivered)
+                    if isinstance(result, Receipt) and result.reference:
+                        references.append((result.reference, delivered))
                 else:
                     text_bad.append(seg)
             except Exception:  # noqa: BLE001
@@ -188,7 +199,12 @@ async def deliver_voice_reply(*, buffered: list[str], synth: Synth, send_voice: 
     else:
         spoken = "".join(voiced)
         ok = bool(spoken)
-    if spoken:
+    if spoken and record_delivery is not None:
+        try:
+            await record_delivery(spoken, tuple(references))
+        except Exception as exc:
+            log.warning("%s 语音投递入账失败：%s", tag, exc)
+    elif spoken:
         await _safe_record(record, spoken, "voice")
     else:
         log.warning("%s 语音与文字兜底都没发出去，不写历史", tag)

@@ -10,17 +10,9 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Awaitable, Callable
 
-@dataclass(frozen=True)
-class Receipt:
-    platform: str
-    message_id: str
-
-    @property
-    def reference(self) -> str:
-        return f"{self.platform}:{self.message_id}" if self.message_id else ""
+from app_core.delivery import Receipt as Receipt
 
 
 Sender = Callable[[str], Awaitable[bool | Receipt]]

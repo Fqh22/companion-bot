@@ -157,26 +157,15 @@ class ProactiveRuntime:
         except Exception:  # noqa: BLE001
             return None
 
-    def log_send(self, topic_key: str, topic: str, text: str,
-                 started_at: float | None = None, platform_ref: str = "") -> None:
-        try:
-            session = self._session()
-            c = self._conn()
-            try:
-                with c:
-                    message = c.execute(
-                        "SELECT id, ts FROM messages WHERE session=? AND role='assistant' "
-                        "AND content=? AND ts>=? ORDER BY id DESC LIMIT 1",
-                        (session, text, started_at)).fetchone() if started_at is not None else None
-                    c.execute(
-                        "INSERT INTO proactive_log(ts, topic_key, topic, text, session, assistant_msg_id, platform_ref) "
-                        "VALUES (?,?,?,?,?,?,?)",
-                        (message[1] if message else time.time(), topic_key, topic, text,
-                         session, message[0] if message else 0, platform_ref))
-            finally:
-                c.close()
-        except Exception as e:  # noqa: BLE001
-            log.warning("主动消息落库失败：%s", e)
+    async def _deliver(self, key: str, topic: str, text: str) -> bool:
+        receipt = await self.send(text)
+        if not receipt:
+            return False
+        ref = receipt.reference if isinstance(receipt, proactive_channels.Receipt) else ""
+        refs = ((ref, text),) if ref else ()
+        await self.core.record_delivery(
+            self._session(), text, references=refs, topic_key=key, topic=topic)
+        return True
 
     # ---------- 生成 ----------
     async def compose(self, topic: str, why: str, mood_hint: str = "") -> str:
@@ -342,8 +331,7 @@ class ProactiveRuntime:
             if self._inbound_since(compose_at):
                 log.info("[proactive] 生成期间他发了新消息，取消天气提醒")
                 return
-            if text and len(text) >= 6 and await self.send(text):
-                self.log_send(key, topic, text)
+            if text and len(text) >= 6 and await self._deliver(key, topic, text):
                 perception.mark_alert(now)
                 log.info("[proactive] 天气突变已发送（key=%s）：%r", key, text[:60])
             return
@@ -373,18 +361,9 @@ class ProactiveRuntime:
                     return
             except Exception as e:  # noqa: BLE001
                 log.debug("发送前复查跟进失败：%s", e)
-        started_at = time.time()
-        receipt = await self.send(text)
-        if not receipt:
-            log.error("[proactive] 发送失败（不记「问过了」）：%s", text[:40])
+        if not await self._deliver(key, topic, text):
+            log.error("主动消息发送失败，不登记提问")
             return
-        ref = receipt.reference if isinstance(receipt, proactive_channels.Receipt) else ""
-        self.log_send(key, topic, text, started_at=started_at, platform_ref=ref)
-        if key.startswith("fu:"):
-            try:
-                followup.mark_asked([int(key[3:])], asked_text=text)
-            except Exception as e:  # noqa: BLE001
-                log.warning("标记跟进已问失败：%s", e)
         log.info("[proactive] 已发送（key=%s）: %r", key, text[:60])
 
     async def run(self) -> None:

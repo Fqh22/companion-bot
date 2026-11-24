@@ -32,7 +32,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app_core import mood, pacing
-from app_core.delivery import BUFFERED, Capability, DeliveryPolicy, is_buffered
+from app_core.delivery import BUFFERED, Capability, DeliveryPolicy, DeliveryResult, Receipt, is_buffered
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.message import Part as _Part
 
@@ -49,7 +49,7 @@ class Channel(Protocol):
 
     forms: set[str]
 
-    async def send_part(self, session: str, part) -> bool | str: ...
+    async def send_part(self, session: str, part) -> DeliveryResult: ...
 
     async def typing(self, session: str, on: bool) -> None: ...
 
@@ -84,7 +84,7 @@ class TurnRunner:
         """离整轮总上限还剩多少秒；用到 0 就停止一切平台调用。"""
         return max(0.0, self.deadline - (time.monotonic() - started))
 
-    async def _send_part(self, session: str, part, timeout: float | None = None) -> bool:
+    async def _send_part(self, session: str, part, timeout: float | None = None) -> DeliveryResult:
         """按形式发送；平台不支持的形式在这里降级。
 
         降级放在 runner 而不是 adapter：adapter 只回答「我会什么」，
@@ -116,7 +116,7 @@ class TurnRunner:
                 # 声明支持 != 发得出去：合成/上传失败时也要有文字兜底
                 return await self._send_part(
                     session, _Part("text", "（这条本来是语音，这里发不了）"), timeout)
-            return ok
+            return result if isinstance(result, Receipt) else ok
         if part.form == "voice":
             # 语音发不了就说一句，不要静默丢——用户会以为漏回了
             return await self._send_part(
@@ -147,7 +147,7 @@ class TurnRunner:
             raise
 
     async def _pace_and_send(self, session: str, text: str, sent: int,
-                             started: float) -> bool | str:
+                             started: float) -> DeliveryResult:
         """发出这一条之前等「打字」时间；预算见底就跳过等待。"""
         left = self.deadline - (time.monotonic() - started)
         if left <= 0:
@@ -199,7 +199,7 @@ class TurnRunner:
             return await self._run(msg)
 
     async def _remember_confirmed(self, msg: InboundMessage,
-                                  parts: list[str]) -> None:
+                                  parts: list[str], references: list[tuple[str, str]]) -> None:
         """只把通道确认发出去的文本写回历史。
 
         以前 commit 先入库、runner 后发送：发送失败时历史里也留着用户根本
@@ -210,15 +210,13 @@ class TurnRunner:
         if not text.strip():
             return
         core = getattr(self.engine, "core", None)
-        remember = getattr(core, "remember_safe", None)
-        if remember is None:      # 测试里的 FakeEngine：没有历史库
-            return
+        record = getattr(core, "record_delivery", None)
         try:
-            # shield：超时取消路径上也要把已发出的内容写完，否则下一轮失忆。
-            await asyncio.shield(remember(msg.session, "assistant", text))
-            note = getattr(core, "note_followup_asked", None)
-            if note is not None:
-                note(text)
+            if record is not None:
+                await asyncio.shield(record(msg.session, text, references=tuple(references)))
+            elif remember := getattr(core, "remember_safe", None):
+                # 兼容只实现历史接口的旧宿主。
+                await asyncio.shield(remember(msg.session, "assistant", text))
         except Exception as e:  # noqa: BLE001
             log.warning("[runner] 写回已发送回复失败：%s", e)
 
@@ -226,12 +224,19 @@ class TurnRunner:
         """真正的一轮：typing 心跳 + 引擎 + 流式发送 + 补发尾巴。"""
         started = time.monotonic()
         sent = 0
+        references: list[tuple[str, str]] = []
         confirmed: list[str] = []      # 通道确认收到的段，历史只写这些
         # watchdog 与这句之间的共享状态：最后一次有进展的时刻、已发段数、收尾原因
         state = {"last_progress": started, "sent": 0, "why": ""}
         # 立刻亮一次「正在输入」：等 task 调度会晚一个 tick，短回复可能整个错过
         await self._typing_safe(msg.session, True)
         typing = asyncio.create_task(self._typing_loop(msg.session))
+
+        def confirm(part: str, status: DeliveryResult) -> None:
+            text = status.text if isinstance(status, Receipt) and status.text is not None else part
+            confirmed.append(text)
+            if isinstance(status, Receipt) and status.reference:
+                references.append((status.reference, text))
 
         async def on_sentence(part: str) -> bool:
             """返回**是否真的发出去了**——调用方要用它决定记不记 sent_parts。
@@ -249,7 +254,7 @@ class TurnRunner:
             if status:
                 sent += 1
                 state["sent"] = sent
-                confirmed.append(part)
+                confirm(part, status)
                 return True
             return False
 
@@ -274,7 +279,7 @@ class TurnRunner:
                     continue
                 if status:
                     sent += 1
-                    confirmed.append(part)
+                    confirm(part, status)
             for path in out.images:
                 if await self._send_part(msg.session, _Part("image", path),
                                          timeout=self._remaining(started)):
@@ -289,4 +294,4 @@ class TurnRunner:
             await asyncio.gather(watch, return_exceptions=True)
             typing.cancel()
             await self._typing_safe(msg.session, False)
-            await self._remember_confirmed(msg, confirmed)
+            await self._remember_confirmed(msg, confirmed, references)

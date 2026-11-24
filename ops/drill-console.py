@@ -37,17 +37,20 @@ os.environ["QQBOT_ROOT"] = str(TMP)
 sys.path.insert(0, str(CODE))
 
 from adapters.console import ConsoleChannel  # noqa: E402
-from app_core.chat import ChatCore  # noqa: E402
-from app_core.engine import Engine  # noqa: E402
+from companion_core import create_application  # noqa: E402
 
 
 async def main() -> None:
-    core = ChatCore()
-    await core.init_db()
+    app = create_application()
+    await app.start()
+    core = app.core
     print(f"[drill] 根目录 {TMP}；没有 QQ、没有 NoneBot 插件")
     print(f"[drill] 人格 {len((core.persona or {}).get('system_prompt') or '')} 字；"
           f"记忆库 {TMP / 'qqbot-data/livingmemory.db'}")
-    await ConsoleChannel().run(Engine(core))
+    try:
+        await ConsoleChannel().run(app.engine)
+    finally:
+        await app.stop()
     print("\n[drill] 结束")
 
 

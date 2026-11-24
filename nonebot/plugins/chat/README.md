@@ -1,6 +1,6 @@
 # chat
 
-消息接入层，持有整个机器人的 `ChatCore` 单例（其他插件通过 `from plugins.chat import core` 复用）。
+QQ 消息接入层。宿主通过 `companion_core.shared_application()` 提供共用的应用实例。插件转换入站事件并回传送达凭据，历史与跟进由内核统一登记。
 
 ## 职责
 
