@@ -14,6 +14,8 @@ bootstrap()
 from app_core import chat_turn, embed_provider, pacing, tool_loop
 from app_core.delivery import BUFFERED
 from app_core.engine import InboundMessage, OutboundMessage
+from app_core.inbound_turns import InboundTurns
+from app_core.turn import Turn
 from app_core.round_timing import TurnTiming, current
 from app_core.runner import TurnRunner
 
@@ -198,7 +200,66 @@ async def pooled_embedding():
         await embed_provider.close()
 
 
+async def inbound_bursts():
+    seen = []
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def handle(key, turn):
+        seen.append((key, turn))
+        if turn.texts == ["已开始"]:
+            started.set()
+            await release.wait()
+
+    queue = InboundTurns(handle)
+    first = queue.submit("qq", Turn(texts=["明天去上海"]))
+    await asyncio.sleep(1.2)
+    same = queue.submit("qq", Turn(texts=["上午有空"], meta={"reply_to": "a", "quote_text": "几点？"}))
+    other = queue.submit("feishu", Turn(texts=["另一通道"], meta={"received_at": time.monotonic() - 3}))
+    await other
+    check("默认窗口能合并间隔超过一秒的连发，两通道互不阻塞",
+          first is same and [key for key, _ in seen] == ["feishu"])
+    queue.submit("qq", Turn(texts=["帮我排一下"]))
+    await first
+    merged = seen[-1][1]
+    check("首条到末条原样按顺序合并并保留引用和最早收件时间",
+          merged.texts == ["明天去上海", "上午有空", "帮我排一下"]
+          and merged.meta["reply_to"] == "a" and merged.meta["quote_text"] == "几点？"
+          and merged.meta["input_count"] == 3
+          and merged.meta["received_at"] < merged.meta["ready_at"] - 1)
+
+    seen.clear()
+    now = time.monotonic()
+    task = queue.submit("qq", Turn(texts=["已开始"], meta={"received_at": now - 10}))
+    await asyncio.wait_for(started.wait(), 1)
+    for text, offset in (("补一句", -7.5), ("同一件事", -6.1), ("接着说", -4.5),
+                         ("超过首条四秒", -3.3), ("隔一阵再说", -0.95)):
+        queue.submit("qq", Turn(texts=[text], meta={"received_at": now + offset}))
+    check("当前回复在途时先排队", len(seen) == 1)
+    release.set()
+    await task
+    check("当前回复后的短时间补充合并，连续发到上限或隔太久就另起一轮",
+          [turn.texts for _, turn in seen] == [["已开始"], ["补一句", "同一件事", "接着说"],
+                                             ["超过首条四秒"], ["隔一阵再说"]])
+
+    seen.clear()
+    queue = InboundTurns(handle, text_gap=0)
+    a = queue.submit("qq", Turn(texts=["一"]))
+    queue.submit("qq", Turn(texts=["二"]))
+    await a
+    check("关闭文本等待后连发按独立输入处理", [turn.texts for _, turn in seen] == [["一"], ["二"]])
+
+    seen.clear()
+    queue = InboundTurns(handle)
+    now = time.monotonic() - 3
+    task = queue.submit("qq", Turn(texts=["这条"], meta={"received_at": now, "reply_to": "a"}))
+    queue.submit("qq", Turn(texts=["另一条"], meta={"received_at": now + 0.1, "reply_to": "b"}))
+    await task
+    check("两条消息引用不同对象时分轮", [turn.meta["reply_to"] for _, turn in seen] == ["a", "b"])
+
+
 async def main() -> int:
+    await inbound_bursts()
     await delivery()
     await lookups()
     await progress()

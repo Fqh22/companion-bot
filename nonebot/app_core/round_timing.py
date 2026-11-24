@@ -25,6 +25,7 @@ class TurnTiming:
     rid: str = field(default_factory=lambda: uuid4().hex[:10])
     marks: dict[str, float] = field(default_factory=dict)
     reply_form: str = "text"
+    input_count: int = 1
     checking: int = 0
     status: str = "ok"
 
@@ -39,7 +40,7 @@ class TurnTiming:
                   for key, end in self.marks.items()}
         log.info("[latency] %s", json.dumps({
             "rid": self.rid, "platform": self.platform, "form": self.reply_form,
-            "status": self.status, "release": _release, **fields,
+            "status": self.status, "release": _release, "inputs": self.input_count, **fields,
         }, ensure_ascii=False))
 
 

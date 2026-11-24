@@ -2421,22 +2421,7 @@ async def main() -> None:
     check("事件也有当日计数", cnt["events_today"] == 1, str(cnt["events_today"]))
 
     # ---------- Z8. 输入聚合队列 / 情绪配置化 / 原文归档 ----------
-    # （等待式防抖已删除：实测 14 天 472 次连发里合并成功 0 次，
-    #   却让每条消息白等 1.05 秒。现在等待只发生在图片/文件之后。）
     from app_core import turn as turn_mod
-
-    q = turn_mod.TurnQueue()
-    q.add("private:1", images=["/tmp/a.jpg"])
-    check("图片先到，队列里有货", q.has("private:1"))
-    check("另一个会话不受影响", not q.has("private:2"))
-    q.add("private:1", text="这是昨天的报错")
-    t = q.take("private:1")
-    check("图 + 补一句话并成同一轮",
-          t.images == ["/tmp/a.jpg"] and t.texts == ["这是昨天的报错"],
-          f"{t.images} {t.texts}")
-    check("取走之后队列清空", not q.has("private:1"))
-    check("计数用于判断窗口内有没有新输入", q.hits("private:1") == 2,
-          str(q.hits("private:1")))
 
     f1 = turn_mod.Turn(file=("报错.log", "堆栈内容" * 100, "文本"))
     f1.merge(turn_mod.Turn(texts=["帮我看看"]))

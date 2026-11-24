@@ -28,6 +28,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 # Windows 控制台默认 GBK，打印 emoji / 生僻字会直接 UnicodeEncodeError 把测试打断。
 # 放在这里是为了在任何输出之前生效；不支持 reconfigure 的环境静默跳过。
@@ -302,30 +303,23 @@ async def dynamic_checks(chat_mod) -> None:
             message=msg, raw_message=text, font=0,
             sender={"user_id": 10001, "nickname": "x"}, to_me=True)
 
-    sid = "private:10001"
+    spawned = []
+    submit = chat_mod._turns.submit
+    chat_mod._turns.text_gap = 0.08
+    chat_mod._turns.media_gap = 0.12
 
-    # 把每次起的泵收集下来，才能把异常打出来（否则任务失败只会静默消失）
-    spawned: list[asyncio.Task] = []
-    _orig_kick = chat_mod._kick
-
-    def _kick_spy(s: str) -> None:
-        _orig_kick(s)
-        task = chat_mod._pump.get(s)
+    def capture(*args):
+        task = submit(*args)
         if task is not None and task not in spawned:
             spawned.append(task)
+        return task
 
-    chat_mod._kick = _kick_spy
+    chat_mod._turns.submit = capture
 
     async def drain():
-        for _ in range(300):
-            live = [t for t in spawned if not t.done()]
-            if not live:
-                break
-            await asyncio.sleep(0.02)
-        for t in spawned:
-            if t.done() and t.exception() is not None:
-                print("  [泵异常]", repr(t.exception()))
-        spawned.clear()
+        if spawned:
+            await asyncio.wait_for(asyncio.gather(*spawned), 6)
+            spawned.clear()
 
     # 4. 纯文本
     calls.clear(); sent.clear()
@@ -333,7 +327,6 @@ async def dynamic_checks(chat_mod) -> None:
     await drain()
     check("纯文本触发一次回复", len(calls) == 1 and calls[0]["text"] == "在吗",
           str(calls))
-    check("纯文本立即开始（无等待）", len(calls) == 1)
     check("默认不挂引用框", bool(sent) and "[CQ:reply" not in sent[0], str(sent[:1])[:80])
     # 开关打开时才引用：配置 chat.quote_reply
     chat_mod.QUOTE_REPLY = True
@@ -366,7 +359,7 @@ async def dynamic_checks(chat_mod) -> None:
     calls.clear(); sent.clear()
     delay["v"] = 0.3
     await chat_mod._handle(ev([], "第一句"))
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.13)
     await chat_mod._handle(ev([], "第二句"))
     await drain()
     delay["v"] = 0.0
@@ -428,19 +421,47 @@ async def dynamic_checks(chat_mod) -> None:
     await drain()
     check("私聊 handler 不处理群消息", not calls and not sent, str(calls))
 
-    # 13. 连发多条：一条都不能丢（生成期到达的会被合并进下一轮，这是期望行为）
-    calls.clear()
-    delay["v"] = 0.05
+    # 13. 连发多条：实际 handler 只调用引擎一次。
+    calls.clear(); sent.clear()
     for i in range(5):
         await chat_mod._handle(ev([], f"第{i}句"))
         await asyncio.sleep(0.01)
     await drain()
-    delay["v"] = 0.0
-    all_text = " ".join(str(c.get("text")) for c in calls)
-    lost = [i for i in range(5) if f"第{i}句" not in all_text]
-    check("连发 5 条一条不丢（可合并成多轮）", not lost,
-          f"{len(calls)} 轮，缺 {lost}")
-    check("处理完泵表已清空（无泄漏）", not chat_mod._pump, str(chat_mod._pump))
+    check("QQ 连发五条只回复一轮，原文依次保留",
+          [c["text"] for c in calls] == ["\n".join(f"第{i}句" for i in range(5))]
+          and len(sent) == 1, repr(calls))
+    check("QQ 批次处理完成后清空会话", not chat_mod._turns._sessions)
+
+
+async def feishu_checks():
+    from unittest.mock import patch
+    from plugins import feishu
+
+    class Runner:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def run(self, inbound):
+            calls.append(inbound)
+            return SimpleNamespace()
+
+    def event(mid, text, parent_id=None):
+        import json
+        message = SimpleNamespace(chat_type="p2p", message_type="text", message_id=mid,
+                                  chat_id="chat", parent_id=parent_id,
+                                  content=json.dumps({"text": text}))
+        sender = SimpleNamespace(sender_id=SimpleNamespace(open_id="owner"))
+        return SimpleNamespace(event=SimpleNamespace(message=message, sender=sender))
+
+    calls = []
+    with patch.object(feishu, "OWNER", "owner"), patch.object(feishu, "TurnRunner", Runner):
+        await feishu._handle(event("burst-1", "那件事先等等", "asked"))
+        await feishu._handle(event("burst-2", "下周一再说"))
+        await feishu._handle(event("burst-2", "重复事件"))
+        await asyncio.wait_for(asyncio.gather(*(s.task for s in feishu._turns._sessions.values())), 6)
+    check("飞书连发只进入一次 Runner，保留引用且过滤重复事件",
+          len(calls) == 1 and calls[0].text == "那件事先等等\n下周一再说"
+          and calls[0].reply_to == "asked" and calls[0].event_id == "burst-2")
 
 
 # ---------------- 群聊：独立链路 ----------------
@@ -629,6 +650,7 @@ def main() -> None:
     print("=" * 50)
     chat_mod = build_harness()
     asyncio.run(dynamic_checks(chat_mod))
+    asyncio.run(feishu_checks())
 
     print("=" * 50)
     print("群聊：与私聊彻底隔离的独立链路")

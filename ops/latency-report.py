@@ -39,8 +39,9 @@ def main() -> int:
 
     for (release, platform, form, route), rows in sorted(groups.items()):
         counts = Counter(row.get("status", "unknown") for row in rows)
-        print(release, platform, form, route, len(rows), dict(counts))
-        for phase in ("input_ready", "intent_finish", "runner_start", "prepare_finish",
+        merged = sum(row.get("inputs", 1) > 1 for row in rows)
+        print(release, platform, form, route, len(rows), dict(counts), f"merged={merged}")
+        for phase in ("input_ready", "batch_start", "intent_finish", "runner_start", "prepare_finish",
                       "model_first", "progress_sent", "first_sent", "finish"):
             values = [row[phase + "_ms"] for row in rows
                       if isinstance(row.get(phase + "_ms"), int) and row[phase + "_ms"] >= 0]

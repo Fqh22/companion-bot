@@ -572,15 +572,9 @@ async def main() -> None:
         async def _ret(v):
             return v
 
-        tq = turn_mod.TurnQueue()
-        tq.add("g1", text="在吗")
-        tq.add("g1", images=["/tmp/a.jpg"])
-        tq.add("g1", file=("报错.log", "堆栈" * 10, "文本"))
-        check("turn.has", tq.has("g1"))
-        check("turn.peek", tq.peek("g1") is not None)
-        check("turn.hits", tq.hits("g1") == 3, str(tq.hits("g1")))
-        _t = tq.take("g1")
-        check("turn.take 取走并清空", not tq.has("g1") and not _t.empty())
+        from app_core import inbound_turns
+        check("私聊入站聚合已加载", callable(inbound_turns.InboundTurns))
+        _t = turn_mod.Turn(images=["/tmp/a.jpg"])
         check("turn.compose 出正文", isinstance(_t.compose()[0], str))
         _tv = turn_mod.Turn(texts=["明天几点开会"], meta={"voice": True})
         _vp, _vs = _tv.compose()
@@ -588,8 +582,6 @@ async def main() -> None:
         _t2 = turn_mod.Turn()
         _t2.merge(turn_mod.Turn(texts=["补充"]))
         check("turn.empty", not _t2.empty())
-        tq.drop("g1")
-        check("turn.drop", tq.hits("g1") == 0)
 
         check("group.rate_ok", group_mod.rate_ok([], time.time(), 3, 5))
         check("group.trim_context",

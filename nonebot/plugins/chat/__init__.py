@@ -1,22 +1,4 @@
-"""chat 插件：消息接入、排队合并、分段、节奏、文件、表情包。
-
-## 为什么是「队列」而不是「等待式防抖」
-
-旧做法是收到消息先睡 1.1 秒，指望这期间再来一条好合并。实测 14 天 472 次连发：
-**一次都没合并成功**（最短间隔 1.1s，多数在 20 秒以上），却让每条消息白等 1.05 秒。
-等待式防抖对「一句一句发、间隔二十秒起」的人纯属空转。
-
-现在改成会话级队列 + 边答边接：
-
-- 文本、图片、文件走**同一个入口**，先进 `TurnQueue`，再统一由 `_pump_loop` 处理。
-  旧实现里图片和文件是「立即处理并 return」的近路，所以「发图 + 补一句」会被拆成
-  两条互不知情的回复——这就是那个 bug 的根因。
-- **纯文本零等待**，立刻开始生成。
-- **图片/文件等最多 1.5 秒**，看他有没有补一句；期间来了就合并成一轮。
-  图片本来就少，1.5 秒换「图和说明一起理解」很划算。
-- **生成期间来的消息排队**，当前轮一结束立刻接着处理，不丢、不额外等。
-- 同一会话用锁串行，保证历史顺序不乱。
-"""
+"""QQ 私聊接入、回复投递及附件处理。"""
 from __future__ import annotations
 
 import asyncio
@@ -39,6 +21,7 @@ from nonebot.adapters.onebot.v11 import (
 
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
+from app_core.inbound_turns import InboundTurns
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.runner import TurnRunner, TurnTiming
 from app_core.outbound import READ_ALOUD_DIRECTIVE
@@ -54,29 +37,13 @@ QQ_CAPS = Capability(name="qq")
 driver = get_driver()
 
 _SETTLE_CFG = dict(config.load().get("chat") or {})
-SETTLE_MEDIA = float(_SETTLE_CFG.get("media_settle_seconds", 1.5))
 # 第一段是否引用他的消息。默认关：实测每条回复都挂引用框太重，只在长对话里才像接话。
 QUOTE_REPLY = bool(_SETTLE_CFG.get("quote_reply", False))
 # 语音回复形态：text_then_voice（旧）| voice_then_text | voice（只语音，失败退文字）
 _VMODE = str(_SETTLE_CFG.get("voice_reply_mode") or "voice").strip().lower()
 VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
 
-_locks: dict[str, asyncio.Lock] = {}
-
 chat = on_message(priority=10, block=False)
-
-
-def _lock(sid: str) -> asyncio.Lock:
-    """同一会话串行处理：否则两次并发 reply 会打乱历史顺序、重复召回。"""
-    lk = _locks.get(sid)
-    if lk is None:
-        lk = asyncio.Lock()
-        _locks[sid] = lk
-    return lk
-
-
-_turns = turn_mod.TurnQueue()
-_pump: dict[str, asyncio.Task] = {}
 
 
 async def _draw_later(sid: str, ask: str) -> None:
@@ -134,64 +101,12 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
 def _add(sid: str, *, text: str | None = None, images: list[str] | None = None,
          file: tuple[str, str, str] | None = None,
          meta: dict | None = None) -> None:
-    meta = {**(meta or {}), "ready_at": time.monotonic()}
-    _turns.add(sid, text=text, images=images, file=file, meta=meta)
+    _turns.submit(sid, turn_mod.Turn(texts=[text] if text else [],
+                                    images=images or [], file=file, meta=dict(meta or {})))
     try:
         core.note_user_active(sid)
     except Exception:  # noqa: BLE001
         pass
-
-
-def _take(sid: str) -> turn_mod.Turn:
-    return _turns.take(sid)
-
-
-def _kick(sid: str) -> None:
-    """有活就起一个泵；已经在跑就交给它——它会在收尾前再检查一次队列。"""
-    task = _pump.get(sid)
-    if task is not None and not task.done():
-        return
-    _pump[sid] = asyncio.create_task(_pump_loop(sid))
-
-
-
-
-async def _settle(sid: str, base: int, timeout: float) -> None:
-    """等 timeout 秒，或者等到又来了新输入——谁先到算谁。"""
-    if timeout <= 0:
-        return
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if _turns.hits(sid) > base:
-            return
-        await asyncio.sleep(0.05)
-
-
-async def _pump_loop(sid: str) -> None:
-    try:
-        while True:
-            turn = _turns.peek(sid)
-            if turn is None or turn.empty():
-                return
-            # 图片/文件之后往往还有一句说明，给它一个短窗口；期间来了就一起处理
-            if (turn.images or turn.file) and not turn.texts:
-                await _settle(sid, _turns.hits(sid), SETTLE_MEDIA)
-            turn = _take(sid)
-            if turn.empty():
-                return
-            # 观测：「生成期间又来了一条」。这里记的是**真·生成中到达**
-            # （settle 期间到达的会在 _take 之前被合并，不会落进这个分支）。
-            # 攒两周数据再决定要不要动落库时序去支持"真合并"。
-            if _turns.has(sid):
-                logger.info("[chat] 生成期间收到补充，已排队为下一轮")
-            await _run_turn(sid, turn)
-    finally:
-        # 只摘掉自己那一格：收尾瞬间可能已经有新泵被 _kick 起出来了，
-        # 无脑 pop 会把新任务从登记表里抹掉，下一条消息就会再起一个泵 → 双回复。
-        if _pump.get(sid) is asyncio.current_task():
-            _pump.pop(sid, None)
-        if _turns.has(sid):
-            _kick(sid)          # 收尾竞态：退出瞬间又来了消息
 
 
 class QQChannel:
@@ -276,6 +191,8 @@ class QQChannel:
 
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     timing = TurnTiming("qq", received=turn.meta.get("received_at", time.monotonic()))
+    timing.input_count = turn.meta["input_count"]
+    timing.mark("batch_start")
     timing.marks["input_ready"] = turn.meta.get("ready_at", timing.received)
     prompt, stored = turn.compose()
     raw = "\n".join(turn.texts or [])
@@ -289,29 +206,28 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     try:
-        async with _lock(sid):
-            timing.mark("intent_start")
-            decision = await core.interpret_intent(
-                sid, raw, voice=voice, quote_text=quoted,
-                reply_to=f"qq:{reply_to}" if reply_to else None)
-            timing.mark("intent_finish")
-            timing.reply_form = "voice" if decision.voice else "text"
-            ch.defer_text = decision.voice and VOICE_REPLY_MODE != "text_then_voice"
-            model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
-            msg = to_inbound(
-                session=sid,
-                user_id=str(turn.meta.get("user_id") or ""),
-                chat_id=turn.meta.get("chat_id"),
-                is_group=bool(turn.meta.get("is_group")),
-                text=model_text, images=list(turn.images or []),
-                event_id=turn.meta.get("event_id"),
-                reply_to=reply_to,
-                quote_text=quoted,
-                store_text=stored,
-                voice=voice, intent=decision)
-            out = await runner.run(msg)
-            # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
-            msg_id = int(getattr(core, "user_msg_id", 0) or 0)
+        timing.mark("intent_start")
+        decision = await core.interpret_intent(
+            sid, raw, voice=voice, quote_text=quoted,
+            reply_to=f"qq:{reply_to}" if reply_to else None)
+        timing.mark("intent_finish")
+        timing.reply_form = "voice" if decision.voice else "text"
+        ch.defer_text = decision.voice and VOICE_REPLY_MODE != "text_then_voice"
+        model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
+        msg = to_inbound(
+            session=sid,
+            user_id=str(turn.meta.get("user_id") or ""),
+            chat_id=turn.meta.get("chat_id"),
+            is_group=bool(turn.meta.get("is_group")),
+            text=model_text, images=list(turn.images or []),
+            event_id=turn.meta.get("event_id"),
+            reply_to=reply_to,
+            quote_text=quoted,
+            store_text=stored,
+            voice=voice, intent=decision)
+        out = await runner.run(msg)
+        # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
+        msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
         if getattr(out, "images_sent", None):
             # 只看**实际发成功**的图；发送失败时不能写「另外发了一张图」。
@@ -361,6 +277,11 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             pass
     finally:
         timing.emit()
+
+
+_turns = InboundTurns(_run_turn,
+                     text_gap=float(_SETTLE_CFG.get("text_settle_seconds", 2.0)),
+                     media_gap=float(_SETTLE_CFG.get("media_settle_seconds", 1.5)))
 
 
 async def _caption_later(msg_id: int, paths: list[str]) -> None:
@@ -622,23 +543,19 @@ async def _handle(event: MessageEvent):
     file_segs = [s for s in event.message if getattr(s, "type", "") == "file"]
     if file_segs:
         await _collect_file(sid, file_segs[0], text, owner=_owner, meta=meta)
-        _kick(sid)
         return
 
     rec_segs = [s for s in event.message if getattr(s, "type", "") == "record"]
     if rec_segs:
         await _collect_voice(sid, rec_segs[0], text, meta=meta)
-        _kick(sid)
         return
 
     img_segs = [s for s in event.message if getattr(s, "type", "") == "image"]
     if img_segs:
         await _collect_images(sid, img_segs, text, meta=meta)
-        _kick(sid)
         return
 
     if not text or text.startswith("/"):
         return
 
     _add(sid, text=text, meta=meta)
-    _kick(sid)

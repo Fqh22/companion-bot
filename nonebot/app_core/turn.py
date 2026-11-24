@@ -1,12 +1,4 @@
-"""[domain] 一轮对话的输入聚合：把「图片/文件 + 补充的一句话」并成同一轮。
-
-为什么单独一层：什么时候算一轮、哪些内容该并进来、给模型的正文怎么拼——
-这些是纯状态操作。放在插件里就只能靠真实 QQ 消息验证，而插件又不许 import
-nonebot 以外的东西。抽出来之后能离线回归。
-
-对应线上踩到的坑：图片和文件原来走「立即处理并 return」的近路，绕过防抖，
-于是「发张图 + 补一句『这是昨天的报错』」被拆成两条互不知情的回复。
-"""
+"""[domain] 合并并渲染同一轮里的文本、图片、文件和平台元数据。"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,7 +22,11 @@ class Turn:
         if other.file and not self.file:
             self.file = other.file
         if other.meta:
+            reply_to = self.meta.get("reply_to")
+            quote_text = self.meta.get("quote_text")
             self.meta.update(other.meta)
+            if not other.meta.get("reply_to") and reply_to:
+                self.meta.update(reply_to=reply_to, quote_text=quote_text)
         return self
 
     def compose(self) -> tuple[str, str | None]:
@@ -62,58 +58,3 @@ class Turn:
         if not parts:
             parts.append("[发了图片]")
         return "\n".join(parts), stored
-
-
-class TurnQueue:
-    """按会话隔离的待处理输入。
-
-    `hits` 是「这个会话收到过多少条输入」的计数器，用来判断在某个短窗口内
-    有没有新的东西进来（图片/文件之后等他补一句话）。
-
-    **当前没有接线**（2026-11-15 确认：全仓只有定义，无使用点）。
-    输入合并没有实现（config 注释也写了「实测合并率 0，防抖已移除」），
-    并发执行由 runner 的会话锁兜住。保留此类是因为它实现的是「合并」
-    而不是「串行」——将来要恢复防抖时从这里接，别重新写一份。
-    """
-
-    def __init__(self) -> None:
-        self._pending: dict[str, Turn] = {}
-        self._hits: dict[str, int] = {}
-
-    def add(self, sid: str, *, text: str | None = None,
-            images: list[str] | None = None,
-            file: tuple[str, str, str] | None = None,
-            meta: dict | None = None) -> None:
-        turn = self._pending.setdefault(sid, Turn())
-        if text:
-            turn.texts.append(text)
-        if images:
-            turn.images.extend(images)
-        if file:
-            turn.file = file
-        if meta:
-            received = turn.meta.get("received_at", meta.get("received_at"))
-            turn.meta.update(meta)
-            if received is not None and meta.get("received_at") is not None:
-                turn.meta["received_at"] = min(received, meta["received_at"])
-        self._hits[sid] = self._hits.get(sid, 0) + 1
-
-    def peek(self, sid: str) -> Turn | None:
-        return self._pending.get(sid)
-
-    def has(self, sid: str) -> bool:
-        turn = self._pending.get(sid)
-        return bool(turn and not turn.empty())
-
-    def take(self, sid: str) -> Turn:
-        """取走这一轮并清空待处理区。"""
-        turn = self._pending.get(sid) or Turn()
-        self._pending[sid] = Turn()
-        return turn
-
-    def hits(self, sid: str) -> int:
-        return self._hits.get(sid, 0)
-
-    def drop(self, sid: str) -> None:
-        self._pending.pop(sid, None)
-        self._hits.pop(sid, None)

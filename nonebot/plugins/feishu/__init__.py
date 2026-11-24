@@ -34,6 +34,8 @@ from lark_oapi.api.im.v1 import (
 from nonebot import get_driver, logger
 
 from app_core import asr, config, paths, tts
+from app_core.inbound_turns import InboundTurns
+from app_core.turn import Turn
 from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
 from app_core.seen import BoundedSeen
 from app_core.runner import TurnRunner, TurnTiming
@@ -402,7 +404,6 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
 async def _handle(data) -> None:
     """处理一条飞书事件（3 秒内返回由 _on_event 保证，这里是后台任务）。"""
     received = time.monotonic()
-    timing = None
     try:
         event = data.event
         msg = event.message
@@ -418,7 +419,6 @@ async def _handle(data) -> None:
         if mid and not _seen.add(mid):
             return
 
-        timing = TurnTiming("feishu", received=received)
         parsed = parse_content(msg.message_type, msg.content)
         text = str(parsed["text"] or "")
         images: list[str] = []
@@ -438,10 +438,6 @@ async def _handle(data) -> None:
                 wav.unlink(missing_ok=True)
             if not text:
                 logger.info(f"[feishu] 语音转写为空：{str(res.get('error') or '')[:80]}")
-        if voice and text:
-            # 和 QQ 的历史格式保持一致：让模型知道「这句是语音转写」，
-            # 否则它会说「我拿到手的分不出是打字还是转的」。入库也带这个标记。
-            text = "[语音] " + text
         if not text and not images:
             await asyncio.to_thread(
                 _send_message, msg.chat_id, "text",
@@ -459,18 +455,36 @@ async def _handle(data) -> None:
         _chat_of[f"feishu:{open_id}"] = str(msg.chat_id)
         # 主动消息要靠这份映射；落盘，重启后仍然找得到
         _save_chat_map()
-        reply_to = getattr(msg, "parent_id", None)
-        timing.mark("input_ready")
+        _turns.submit((session, str(msg.chat_id)), Turn(
+            texts=[text] if text else [], images=images,
+            meta={"received_at": received, "event_id": mid, "user_id": open_id,
+                  "reply_to": getattr(msg, "parent_id", None), "voice": voice}))
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"[feishu] 接收失败：{e!r}")
+
+
+async def _run_turn(key: tuple[str, str], turn: Turn) -> None:
+    session, chat_id = key
+    timing = TurnTiming("feishu", received=turn.meta["received_at"])
+    timing.input_count = turn.meta["input_count"]
+    timing.mark("batch_start")
+    timing.marks["input_ready"] = turn.meta["ready_at"]
+    text, _ = turn.compose()
+    raw = "\n".join(turn.texts)
+    images = turn.images
+    voice = bool(turn.meta.get("voice"))
+    reply_to = turn.meta.get("reply_to")
+    try:
         timing.mark("intent_start")
         decision = await core.interpret_intent(
-            session, text, voice=voice, reply_to=f"feishu:{reply_to}" if reply_to else None)
+            session, raw, voice=voice, reply_to=f"feishu:{reply_to}" if reply_to else None)
         timing.mark("intent_finish")
         timing.reply_form = "voice" if decision.voice else "text"
         model_text = READ_ALOUD_DIRECTIVE + text if decision.read_aloud else text
-        ch = FeishuChannel(session=session, chat_id=str(msg.chat_id),
+        ch = FeishuChannel(session=session, chat_id=chat_id,
                            defer_text=decision.voice and VOICE_REPLY_MODE != "text_then_voice")
-        inbound = to_inbound(open_id=open_id, chat_id=str(msg.chat_id),
-                             text=model_text, images=images, event_id=mid,
+        inbound = to_inbound(open_id=turn.meta["user_id"], chat_id=chat_id,
+                             text=model_text, images=images, event_id=turn.meta["event_id"],
                              voice=voice, session=session, store_text=text,
                              reply_to=reply_to, intent=decision)
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
@@ -484,7 +498,7 @@ async def _handle(data) -> None:
             if not ch.sent_text:
                 _miss = "这次想太久了，先没说出来。"
                 sent_ok = await asyncio.to_thread(
-                    _send_message, msg.chat_id, "text", {"text": _miss})
+                    _send_message, chat_id, "text", {"text": _miss})
                 if sent_ok:
                     try:
                         await core.record_assistant(session, _miss, kind="text")
@@ -495,7 +509,7 @@ async def _handle(data) -> None:
                 # 先发再记：发送失败时不能把这句写进历史。已发出的正文由
                 # runner 在超时路径上按确认结果写回，这里只补收尾。
                 sent_ok = await asyncio.to_thread(
-                    _send_message, msg.chat_id, "text", {"text": _tail})
+                    _send_message, chat_id, "text", {"text": _tail})
                 if sent_ok:
                     try:
                         await core.record_assistant(session, _tail, kind="text")
@@ -514,18 +528,21 @@ async def _handle(data) -> None:
             await _deliver_voice_reply(session, ch, rewrite=not decision.read_aloud, timing=timing)
         elif decision.voice and ch.sent_text:
             asyncio.create_task(
-                _speak_later(session, str(msg.chat_id), "".join(ch.sent_text),
+                _speak_later(session, chat_id, "".join(ch.sent_text),
                              rewrite=not decision.read_aloud))
         # 画画：只在他明确要求时画（和 QQ 同一策略）
         if decision.draw:
-            asyncio.create_task(_draw_later(session, str(msg.chat_id), text))
+            asyncio.create_task(_draw_later(session, chat_id, text))
     except Exception as e:  # noqa: BLE001
-        if timing:
-            timing.status = "error"
+        timing.status = "error"
         logger.warning(f"[feishu] 处理失败：{e!r}")
     finally:
-        if timing:
-            timing.emit()
+        timing.emit()
+
+
+_turns = InboundTurns(_run_turn,
+                     text_gap=float(_CHAT_CFG.get("text_settle_seconds", 2.0)),
+                     media_gap=float(_CHAT_CFG.get("media_settle_seconds", 1.5)))
 
 
 def _on_event(data) -> None:

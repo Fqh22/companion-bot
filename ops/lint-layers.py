@@ -200,7 +200,7 @@ def check_kernel(mods: dict[Path, str], core: Path) -> None:
 PLUGIN_ALLOWED = frozenset({
     "chat", "group",                      # 宿主插件自己实例化 ChatCore / GroupCore
     "config", "paths", "pacing", "delivery", "message", "outbound",
-    "engine", "runner", "turn", "files", "asr", "tts", "image_provider",
+    "engine", "runner", "turn", "inbound_turns", "files", "asr", "tts", "image_provider",
     "kernel", "adapters", "seen",       # seen：无 IO 的有界去重，事件入口共用
 })
 
