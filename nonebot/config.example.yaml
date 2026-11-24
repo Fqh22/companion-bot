@@ -40,6 +40,9 @@ feishu:
   max_text_chars: 4000
 
 llm:
+  # 留空沿用旧配置；openai_compatible 需要独立 key_ref 和完整 API 地址。
+  protocol: ""
+  key_ref: ""
   api: https://api.deepseek.com/v1/chat/completions
   # 2026-11-12 A/B：chat 在判断/澄清上明显更稳（编数据两者一样）。
   model: deepseek-chat
@@ -76,6 +79,9 @@ llm:
   thinking_casual: false
 
 summary:
+  api: ""
+  protocol: ""
+  key_ref: ""
   # 记忆总结 / 复盘 / 周报 / 日记 / 间隔重复
   # 用 chat 而不是 flash：flash 在长 JSON 输出上约 1/3 会截断，导致记忆静默丢失
   # （真正原因是思考模式吃掉了输出预算，关掉思考后截断率会明显下降，
@@ -84,6 +90,17 @@ summary:
   max_tokens: 700
   retry_model: deepseek-chat
   thinking: false
+
+# 各能力可单独覆盖 HTTPS 端点和凭证引用。留空沿用原服务。
+provider_routes:
+  search: {api: "", key_ref: ""}
+  search_model: {api: "", key_ref: ""}
+  ocr: {api: "", key_ref: ""}
+  asr: {api: "", key_ref: ""}
+  tts_deepseek: {api: "", key_ref: ""}
+  tts_zhipu: {api: "", key_ref: ""}
+  tts_breeze: {api: "", key_ref: ""}
+  speech_rewrite: {api: "", key_ref: "", protocol: "", model: ""}
 
 embedding:
   # provider 只用来取默认 api/model/dim；显式写 api/model 会覆盖它。

@@ -13,19 +13,13 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from app_core.provider_routes import service_route
 import httpx
 
 # 2026-11-15 换到 DeepSeek 全家桶：/v1/tools/asr（multipart，16-bit PCM WAV 或 Ogg Opus）。
 # 换的理由不只是「文字更准」——智谱是单点，它欠费那晚语音和记忆一起挂过。
-ASR_API = "https://api.deepseek.com/v1/tools/asr"
 MAX_SECONDS = 30.0          # 智谱限制：≤30 秒、≤25MB
 MAX_BYTES = 25 * 1024 * 1024
-
-
-def _key() -> str:
-    from app_core.kernel import keys
-
-    return keys.get("deepseek")
 
 
 def duration(path: Path) -> float:
@@ -93,9 +87,10 @@ def to_wav(src: Path) -> Path | None:
 
 async def transcribe(wav: Path) -> dict:
     """返回 {text, error}。text 为空时 error 说明原因，调用方据此兜底。"""
-    key = _key()
+    route = service_route("asr")
+    key = route.key()
     if not key:
-        return {"text": "", "error": "没有智谱 key"}
+        return {"text": "", "error": "语音转写凭证未配置"}
     sec = duration(wav)
     if sec and sec > MAX_SECONDS + 0.5:
         return {"text": "", "error": f"太长（{sec:.0f}s > {MAX_SECONDS:.0f}s）"}
@@ -108,7 +103,7 @@ async def transcribe(wav: Path) -> dict:
             with wav.open("rb") as f:
                 async with httpx.AsyncClient(timeout=30) as c:
                     r = await c.post(
-                        ASR_API,
+                        route.api,
                         headers={"Authorization": "Bearer " + key},
                         files={"file": (wav.name, f, "audio/wav")},
                     )

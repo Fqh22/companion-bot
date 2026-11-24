@@ -63,6 +63,7 @@ COOKIE = "cui"
 GROUP_META = {
     "admin": ("管理员", "主人身份；留空会让所有人被当成本人。"),
     "llm": ("对话模型", "回复用的模型、温度、工具轮数与 45 秒硬线。"),
+    "provider_routes": ("供应商入口", "为搜索、识别与语音设置独立端点和凭证引用。"),
     "summary": ("总结模型", "记忆总结 / 复盘 / 周报 / 日记；长 JSON 建议用 chat。"),
     "embedding": ("向量模型", "记忆召回用的 embedding 服务。"),
     "tools": ("工具", "单次工具调用与整轮工具预算。"),
@@ -81,6 +82,29 @@ GROUP_META = {
 # id -> (label, description, extra)
 F = {
     "admin.user_id": ("管理员 QQ", "你的 QQ 号。留空或 0 会让所有人被当成本人；启动自检会报警。", {"required": False}),
+    "llm.protocol": ("对话协议", "留空沿用旧配置，或选择 deepseek、openai_compatible。", {"required": False}),
+    "llm.key_ref": ("对话凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "summary.api": ("总结 API", "单独配置总结端点。", {"required": False}),
+    "summary.protocol": ("总结协议", "deepseek 或 openai_compatible。", {"required": False}),
+    "summary.key_ref": ("总结凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.search.api": ("搜索 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.search.key_ref": ("搜索凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.search_model.api": ("模型联网搜索 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.search_model.key_ref": ("模型联网搜索凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.ocr.api": ("图片文字识别 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.ocr.key_ref": ("图片文字识别凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.asr.api": ("语音转写 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.asr.key_ref": ("语音转写凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.tts_deepseek.api": ("DeepSeek 合成 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.tts_deepseek.key_ref": ("DeepSeek 合成凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.tts_zhipu.api": ("智谱合成 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.tts_zhipu.key_ref": ("智谱合成凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.tts_breeze.api": ("Breeze 合成 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.tts_breeze.key_ref": ("Breeze 合成凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.speech_rewrite.api": ("语音文案改写 API", "HTTPS 端点，留空用默认服务。", {"required": False}),
+    "provider_routes.speech_rewrite.key_ref": ("语音文案改写凭证引用", "keys.json 中的字段名。", {"required": False}),
+    "provider_routes.speech_rewrite.protocol": ("语音改写协议", "deepseek 或 openai_compatible。", {"required": False}),
+    "provider_routes.speech_rewrite.model": ("语音改写模型", "留空用默认模型。", {"required": False}),
     "llm.api": ("对话 API", "OpenAI 兼容的 chat completions 地址。", {}),
     "llm.model": ("对话模型", "默认 deepseek-flash。", {}),
     "llm.temperature": ("温度", "0–2；思考模式下不生效，切回非思考时恢复。", {"min": 0, "max": 2, "step": 0.05}),
@@ -370,7 +394,7 @@ def validate_payload(values: dict) -> tuple[dict, list[str]]:
                 if not re.match(r"^https?://", v):
                     errors.append(_err(fid, "需要 http(s) 地址"))
                     continue
-            elif fid not in ("admin.user_id",) and not v:
+            elif f.get("required", True) and not v:
                 errors.append(_err(fid, "不能为空"))
                 continue
         elif t == "list":

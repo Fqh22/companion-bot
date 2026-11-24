@@ -59,6 +59,8 @@ DEFAULTS = {
         "max_text_chars": 4000,
     },
     "llm": {
+        "protocol": "",
+        "key_ref": "",
         "api": "https://api.deepseek.com/v1/chat/completions",
         # 2026-11-12 A/B：chat 在判断/澄清/承认不知道上明显更稳；编数据两者一样。
         # deepseek-chat 的单价与 flash 同级（见 PRICES），代价是首字慢约 0.5–1 秒。
@@ -88,11 +90,24 @@ DEFAULTS = {
         "prepare_parallel": {"search": False, "weather": False},
     },
     "summary": {
+        "api": "",
+        "protocol": "",
+        "key_ref": "",
         "model": "deepseek-chat",
         "max_tokens": 700,
         "retry_model": "deepseek-chat",
         # 结构化 JSON 输出不需要思维链，关掉更稳更快，也不会被推理吃掉输出预算
         "thinking": False,
+    },
+    "provider_routes": {
+        "search": {"api": "", "key_ref": ""},
+        "search_model": {"api": "", "key_ref": ""},
+        "ocr": {"api": "", "key_ref": ""},
+        "asr": {"api": "", "key_ref": ""},
+        "tts_deepseek": {"api": "", "key_ref": ""},
+        "tts_zhipu": {"api": "", "key_ref": ""},
+        "tts_breeze": {"api": "", "key_ref": ""},
+        "speech_rewrite": {"api": "", "key_ref": "", "protocol": "", "model": ""},
     },
     "embedding": {
         # provider 只用于取默认 api/model/dim；显式写这三个人会覆盖它。

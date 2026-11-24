@@ -13,14 +13,13 @@ import logging
 import time
 from pathlib import Path
 
-from app_core import paths as _paths
+from app_core.kernel import keys
+from app_core.provider_routes import ModelRoute
 
 import aiosqlite
 import httpx
 
 log = logging.getLogger("qqbot.llm")
-
-KEYS = _paths.KEYS
 
 # 这些状态码值得重试；其它 4xx 重试只是把同样的错误再犯三次
 RETRY_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -29,34 +28,10 @@ LLM_RETRIES = 2
 _HTTP_TIMEOUT = None
 _http_client = None
 _http_cls = None
-_key_cache: tuple[float, str] | None = None
-_key_warned = False
-
 
 def deepseek_key() -> str:
-    """读 API key，按文件 mtime 缓存。
-
-    每次请求都读盘不止浪费，关键是：文件损坏时它会安静地返回空串，
-    然后在服务端 401 重试三次——日志里看不出是 key 的问题。
-    """
-    global _key_cache
-    try:
-        mtime = KEYS.stat().st_mtime
-        if _key_cache and _key_cache[0] == mtime:
-            return _key_cache[1]
-        key = json.loads(KEYS.read_text(encoding="utf-8")).get("deepseek", "") or ""
-    except Exception as e:  # noqa: BLE001
-        global _key_warned
-        if not _key_warned:
-            log.error("[llm] 读取 keys.json 失败：%s", e)
-            _key_warned = True
-        return ""
-    if not key:
-        if not _key_warned:
-            log.error("[llm] keys.json 里没有 deepseek key，所有请求都会 401")
-            _key_warned = True
-    _key_cache = (mtime, key)
-    return key
+    """旧运维探针的凭证入口。"""
+    return keys.get("deepseek")
 
 
 def _http():
@@ -103,9 +78,12 @@ def _err_text(err: Exception) -> str:
 class LLM:
     def __init__(self, db: Path, *, api: str, model: str, temperature: float,
                  max_tokens: int, thinking: bool, summary_model: str,
-                 summary_max: int, summary_retry: str, summary_thinking: bool):
+                 summary_max: int, summary_retry: str, summary_thinking: bool,
+                 route: ModelRoute | None = None, summary_route: ModelRoute | None = None):
         self.db = db
-        self.api = api
+        self.route = route or ModelRoute(api)
+        self.summary_route = summary_route
+        self.api = self.route.api
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -115,7 +93,13 @@ class LLM:
         self.summary_retry = summary_retry
         self.summary_thinking = summary_thinking
         # 可替换，测试里不必真读 /opt 下的 keys.json
-        self.key_fn = deepseek_key
+        self.key_fn = lambda: keys.get(self.route.key_ref)
+
+    def _key_for(self, route: ModelRoute) -> str:
+        key = self.key_fn() if route.key_ref == self.route.key_ref else keys.get(route.key_ref)
+        if not key:
+            raise RuntimeError(f"模型凭证 {route.key_ref} 未配置")
+        return key
 
     # ---------- 非流式 ----------
     async def complete(self, messages: list[dict], tools_arg=None,
@@ -123,30 +107,29 @@ class LLM:
                        retries: int = LLM_RETRIES, thinking: bool | None = None,
                        purpose: str = "chat",
                        temperature: float | None = None,
-                       response_format: dict | None = None) -> dict:
+                       response_format: dict | None = None,
+                       route: ModelRoute | None = None) -> dict:
         """temperature=None 用客户端默认（聊天档）；只有批处理类脚本会显式压低，
         用来让「同一段输入重跑两次结果一致」——线上路径一律不传。"""
         think = self.thinking if thinking is None else thinking
-        payload = {"model": model or self.model, "messages": messages,
+        active = route or self.route
+        payload = {"model": model or self.model,
                    "temperature": self.temperature if temperature is None else temperature,
                    "max_tokens": max_tokens or self.max_tokens,
-                   "thinking": {"type": "enabled" if think else "disabled"}}
+                   **active.request_fields(messages, thinking=think)}
         if tools_arg:
             payload["tools"] = tools_arg
         if response_format:
             # 结构化输出：服务端约束成合法 JSON，减少「长 JSON 半截截断」
             payload["response_format"] = response_format
-        key = self.key_fn()
-        if not key:
-            # 没有 key 时发出去的请求连 header 都不合法，报错还看不懂
-            raise RuntimeError("deepseek key 未配置（/opt/qqbot-data/keys.json）")
+        key = self._key_for(active)
         headers = {"Authorization": f"Bearer {key}"}
         last_err: Exception | None = None
         n429 = 0
         for attempt in range(retries + 1):
             try:
                 t0 = time.perf_counter()
-                r = await _http().post(self.api, headers=headers, json=payload)
+                r = await _http().post(active.api, headers=headers, json=payload)
                 r.raise_for_status()
                 data = r.json()
                 latency = int((time.perf_counter() - t0) * 1000)
@@ -201,13 +184,10 @@ class LLM:
         天然产出「总—分—总」，还会让 temperature 失效。
         """
         think = self.thinking if thinking is None else bool(thinking)
-        payload = {"model": self.model, "messages": messages,
+        payload = {"model": self.model,
                    "temperature": self.temperature,
                    "max_tokens": max_tokens or self.max_tokens,
-                   "thinking": {"type": "enabled" if think else "disabled"},
-                   "stream": True,
-                   # 流式默认不回 usage，不要求的话 /usage 里就只剩非流式调用的账
-                   "stream_options": {"include_usage": True}}
+                   "stream": True, **self.route.request_fields(messages, thinking=think, stream=True)}
         if tools_arg:
             payload["tools"] = tools_arg
 
@@ -218,12 +198,10 @@ class LLM:
         usage: dict | None = None
         t0 = time.perf_counter()
 
-        key = self.key_fn()
-        if not key:
-            raise RuntimeError("deepseek key 未配置（/opt/qqbot-data/keys.json）")
+        key = self._key_for(self.route)
         client = _http()
         async with client.stream(
-                "POST", self.api,
+                "POST", self.route.api,
                 headers={"Authorization": f"Bearer {key}",
                          "Content-Type": "application/json"},
                 json=payload) as r:
@@ -317,7 +295,8 @@ class LLM:
                     messages, None, mt, model=model, thinking=self.summary_thinking,
                     retries=1 if i == 0 else 0, purpose="summary",
                     temperature=temperature,
-                    response_format=({"type": "json_object"} if json_mode else None))
+                    response_format=({"type": "json_object"} if json_mode else None),
+                    route=self.summary_route)
                 text = (msg.get("content") or "").strip()
                 if text:
                     return text

@@ -572,7 +572,8 @@ async def main() -> None:
         async def _ret(v):
             return v
 
-        from app_core import inbound_turns
+        from app_core import inbound_turns, provider_routes
+        check("原语音合成路由有效", provider_routes.service_route("tts_deepseek").key_ref == "deepseek")
         check("私聊入站聚合已加载", callable(inbound_turns.InboundTurns))
         _t = turn_mod.Turn(images=["/tmp/a.jpg"])
         check("turn.compose 出正文", isinstance(_t.compose()[0], str))
@@ -648,7 +649,7 @@ async def main() -> None:
         check("message: 空 form 会被拒", _empty_form_rejected)
         check("ocr: 布局标记被清掉",
               ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "hello")
-        check("ocr: 接口地址", ocr_mod.OCR_API.endswith("/v1/tools/ocr"))
+        check("ocr: 接口地址", provider_routes.service_route("ocr").api.endswith("/v1/tools/ocr"))
         from app_core import alerts as alerts_mod
         check("alerts: 计数函数不抛", isinstance(alerts_mod.recent(1.0), dict))
         check("alerts: 记录不抛", alerts_mod.record("info", "smoke_test", "自检") is None)

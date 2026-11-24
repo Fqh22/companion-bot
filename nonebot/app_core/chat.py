@@ -12,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app_core.provider_routes import chat_routes, validate_services
 from app_core import paths as _paths
 
 import aiosqlite
@@ -35,7 +36,6 @@ PERSONA = DATA / "persona.json"
 # 给外人看到会莫名其妙（它会把陌生人当成他）。
 STRANGER_PERSONA = DATA / "persona-stranger.json"
 
-DEFAULT_API = "https://api.deepseek.com/v1/chat/completions"
 MAX_TOKENS = 1000            # 兜底默认值，与 config.py 的 DEFAULTS 保持一致
 SUMMARY_EVERY = 8
 MAX_TOOL_ROUNDS = 6          # 兜底默认值，实际取 config.yaml 的 llm.max_tool_rounds
@@ -171,7 +171,9 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         cfg = config.load()
         llm = cfg["llm"]
         summ = cfg["summary"]
-        self.api = llm.get("api") or DEFAULT_API
+        route, summary_route = chat_routes(llm, summ)
+        validate_services(cfg.get("provider_routes") or {})
+        self.api = route.api
         self.model = llm.get("model") or "deepseek-flash"
         self.temperature = float(llm.get("temperature", 1.15))
         self.max_tokens = int(llm.get("max_tokens", MAX_TOKENS))
@@ -190,7 +192,8 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
             DB, api=self.api, model=self.model, temperature=self.temperature,
             max_tokens=self.max_tokens, thinking=self.llm_thinking,
             summary_model=self.summary_model, summary_max=self.summary_max,
-            summary_retry=self.summary_retry, summary_thinking=self.summary_thinking)
+            summary_retry=self.summary_retry, summary_thinking=self.summary_thinking,
+            route=route, summary_route=summary_route)
         ctx = cfg.get("context") or {}
         self.history_max_chars = int(ctx.get("history_max_chars", 6000))
         self.history_max_items = int(ctx.get("history_max_items", 40))

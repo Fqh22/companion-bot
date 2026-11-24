@@ -45,7 +45,14 @@ class Application:
         settings = config.load()
         llm = settings.get("llm") or {}
         parallel = llm.get("prepare_parallel") or {}
+        client = getattr(self.core, "llm", None)
+        route = getattr(client, "route", None)
+        summary_route = getattr(client, "summary_route", None) or route
         round_timing.bind_release(version, {
+            "chat_protocol": getattr(route, "protocol", "unknown"),
+            "summary_protocol": getattr(summary_route, "protocol", "unknown"),
+            "chat_model": getattr(client, "model", ""),
+            "summary_model": getattr(client, "summary_model", ""),
             "reply_deadline_seconds": self.core.reply_deadline,
             "first_token_budget_seconds": self.core.first_token_budget,
             "prepare_parallel": {key: bool(parallel.get(key)) for key in ("search", "weather")},

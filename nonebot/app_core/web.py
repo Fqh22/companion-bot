@@ -11,13 +11,12 @@ from pathlib import Path
 from app_core import paths as _paths
 from urllib.parse import urljoin, urlparse
 
+from app_core.provider_routes import service_route
 import httpx
 
 from app_core.files import sanitize
 
-SEARCH_API = "https://api.deepseek.com/v1/tools/search"
 # 全家桶能力挂在 chat/completions 上（tools 里声明 deepseek_web_search）
-CHAT_API = "https://api.deepseek.com/chat/completions"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 MAX_CHARS = 4000     # 返回给用户的正文上限
@@ -34,12 +33,6 @@ SYSTEM = (
     "用中文 Markdown 输出，最多 6 条要点，每条一句话，总长 400 字以内。"
     "如果整篇没有值得长期保留的内容，只输出两个字：无。"
 )
-
-
-def _deepseek_key() -> str:
-    from app_core.kernel import keys
-
-    return keys.get("deepseek")
 
 
 _client = None
@@ -106,10 +99,11 @@ async def search_via_model(query: str, timeout: float = 30.0) -> str:
     if not q:
         return ""
     try:
+        route = service_route("search_model")
         async with httpx.AsyncClient(timeout=timeout) as c:
             r = await c.post(
-                CHAT_API,
-                headers={"Authorization": "Bearer " + _deepseek_key(),
+                route.api,
+                headers={"Authorization": "Bearer " + route.key(),
                          "Content-Type": "application/json"},
                 json={"model": "deepseek-flash",
                       "messages": [{"role": "user", "content": q}],
@@ -142,10 +136,11 @@ async def search(query: str, count: int = 5) -> str:
         return "搜索词为空"
     count = max(1, min(int(count or 5), 10))
     try:
+        route = service_route("search")
         async with httpx.AsyncClient(timeout=25) as c:
             r = await c.post(
-                SEARCH_API,
-                headers={"Authorization": "Bearer " + _deepseek_key(),
+                route.api,
+                headers={"Authorization": "Bearer " + route.key(),
                          "Content-Type": "application/json"},
                 json={"query": q, "count": count, "need_content": False},
             )

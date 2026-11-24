@@ -23,6 +23,7 @@ import time
 from collections import deque
 from pathlib import Path
 
+from app_core.provider_routes import chat_routes
 from app_core import paths as _paths
 
 from app_core import config
@@ -83,7 +84,8 @@ class GroupCore:
         llm = cfg.get("llm") or {}
         summ = cfg.get("summary") or {}
         self.model = llm.get("model") or "deepseek-flash"
-        self.api = llm.get("api") or "https://api.deepseek.com/v1/chat/completions"
+        route, summary_route = chat_routes(llm, summ)
+        self.api = route.api
         self.temperature = float(llm.get("temperature", 1.0))
         self.llm = llm_mod.LLM(
             DB, api=self.api, model=self.model, temperature=self.temperature,
@@ -91,7 +93,7 @@ class GroupCore:
             summary_model=summ.get("model") or "deepseek-chat",
             summary_max=int(summ.get("max_tokens", 700)),
             summary_retry=summ.get("retry_model") or "",
-            summary_thinking=False)
+            summary_thinking=False, route=route, summary_route=summary_route)
 
         self.persona = self._load_persona()
         self._ctx: dict[str, deque] = {}

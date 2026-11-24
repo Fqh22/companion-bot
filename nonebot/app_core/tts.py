@@ -21,24 +21,22 @@ from pathlib import Path
 
 import httpx
 
+from app_core.provider_routes import model_route, service_route
+from app_core.kernel import keys
 from app_core import config
 
 # ---- 两家 provider -------------------------------------------------------
-ZHIPU_API = "https://open.bigmodel.cn/api/paas/v4/audio/speech"
 ZHIPU_MODEL = "cogtts"
 ZHIPU_VOICES = ("tongtong", "female", "xiaochen", "chuichui", "male",
                 "jam", "kazi", "douji", "luodo")
-DEEPSEEK_API = "https://api.deepseek.com/v1/tools/tts"
 DEEPSEEK_VOICES = ("stella", "tide")
 # BreezBlue / Breeze TTS 2：支持音色设计、用自然语言"导演"语气；
 # 直接请求 pcm_24000，省掉解码，和智谱/DeepSeek 的 PCM 链路一致。
-BREEZE_API = "https://api.breeze.blue/v1/text-to-speech"
 BREEZE_MODEL = "breeze-tts-2"
 PCM_RATE = 24000          # 三家都是 24k mono 16bit，pilk.encode 不用改
 MAX_CHARS = 300           # 一条语音别太长（约 30 秒）
 
 # ---- 口语化改写 ----------------------------------------------------------
-REWRITE_API = "https://api.deepseek.com/v1/chat/completions"
 REWRITE_MODEL = "deepseek-chat"
 REWRITE_SYSTEM = (
     "把这句话改写成适合念出来的口语：保留意思和情绪，不要书面词，"
@@ -65,12 +63,6 @@ if PROVIDER not in PROVIDERS:
     PROVIDER = "zhipu"
 
 
-def _key(name: str) -> str:
-    from app_core.kernel import keys
-
-    return keys.get(name).strip()
-
-
 def voice_for(provider: str) -> str:
     """各 provider 用各自的音色配置；兜底那家用默认音色。"""
     if provider == "breeze":
@@ -85,18 +77,18 @@ async def spoken_script(text: str) -> str:
     t = (text or "").strip()
     if not t or not REWRITE:
         return t
-    key = _key("deepseek")
-    if not key:
-        return t
     try:
+        rewrite = ((config.load().get("provider_routes") or {}).get("speech_rewrite") or {})
+        route = model_route(rewrite)
+        key = keys.get(route.key_ref)
+        if not key:
+            return t
+        messages = [{"role": "system", "content": REWRITE_SYSTEM}, {"role": "user", "content": t}]
         async with httpx.AsyncClient(timeout=20) as c:
             r = await c.post(
-                REWRITE_API,
-                headers={"Authorization": "Bearer " + key},
-                json={"model": REWRITE_MODEL,
-                      "thinking": {"type": "disabled"},
-                      "messages": [{"role": "system", "content": REWRITE_SYSTEM},
-                                   {"role": "user", "content": t}],
+                route.api, headers={"Authorization": "Bearer " + key},
+                json={"model": rewrite.get("model") or REWRITE_MODEL,
+                      **route.request_fields(messages, thinking=False),
                       "temperature": 1.0, "max_tokens": 200})
         r.raise_for_status()
         out = (r.json()["choices"][0]["message"]["content"] or "").strip()
@@ -107,13 +99,14 @@ async def spoken_script(text: str) -> str:
 
 async def _pcm_zhipu(text: str, retries: int = 2,
                       mood: dict | None = None) -> bytes | None:
-    key = _key("zhipu")
+    route = service_route("tts_zhipu")
+    key = route.key()
     if not key:
         return None
     payload = {"model": ZHIPU_MODEL, "input": text, "voice": voice_for("zhipu")}
     if SPEED != 1.0:
         payload["speed"] = max(0.5, min(2.0, SPEED))
-    return await _post_pcm(ZHIPU_API, key, payload, retries)
+    return await _post_pcm(route.api, key, payload, retries)
 
 
 def mood_instructions(mood: dict | None, hour: int | None = None) -> str:
@@ -163,7 +156,8 @@ def _breeze_instructions(mood: dict | None = None) -> str:
 
 async def _breeze_request(text: str, output_format: str, retries: int = 2,
                          mood: dict | None = None) -> bytes | None:
-    key = _key("breeze")
+    route = service_route("tts_breeze")
+    key = route.key()
     voice = voice_for("breeze")
     if not key or not voice:
         return None
@@ -183,7 +177,7 @@ async def _breeze_request(text: str, output_format: str, retries: int = 2,
         try:
             async with httpx.AsyncClient(timeout=60) as c:
                 r = await c.post(
-                    f"{BREEZE_API}/{voice}",
+                    f"{route.api}/{voice}",
                     headers={"xi-api-key": key},
                     params={"output_format": output_format},
                     json=payload)
@@ -208,12 +202,13 @@ async def _pcm_breeze(text: str, retries: int = 2,
 
 async def _pcm_deepseek(text: str, retries: int = 2,
                           mood: dict | None = None) -> bytes | None:
-    key = _key("deepseek")
+    route = service_route("tts_deepseek")
+    key = route.key()
     if not key:
         return None
     payload = {"text": text, "voice_id": voice_for("deepseek"),
                "format": "pcm", "filter_markdown": True}
-    return await _post_pcm(DEEPSEEK_API, key, payload, retries)
+    return await _post_pcm(route.api, key, payload, retries)
 
 
 async def _post_pcm(api: str, key: str, payload: dict, retries: int) -> bytes | None:

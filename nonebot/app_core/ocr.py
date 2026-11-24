@@ -12,16 +12,10 @@ import mimetypes
 import re
 from pathlib import Path
 
+from app_core.provider_routes import service_route
 import httpx
 
-OCR_API = "https://api.deepseek.com/v1/tools/ocr"
 MAX_BYTES = 20 * 1024 * 1024
-
-
-def _key() -> str:
-    from app_core.kernel import keys
-
-    return keys.get("deepseek")
 
 
 def _collect(node, out: list[str], depth: int = 0) -> None:
@@ -55,7 +49,8 @@ async def ocr_text(path: Path, purpose: str = "rich_layout_recognition",
     # rich_layout_recognition 逐页识别，图片走这条。代价是返回体带布局标记，
     # 由 _RE_MARKUP 清掉。
     """识别一张图的文字；失败返回空串。"""
-    key = _key()
+    route = service_route("ocr")
+    key = route.key()
     if not key or not path or not Path(path).exists():
         return ""
     p = Path(path)
@@ -66,7 +61,7 @@ async def ocr_text(path: Path, purpose: str = "rich_layout_recognition",
         with p.open("rb") as f:
             async with httpx.AsyncClient(timeout=timeout) as c:
                 r = await c.post(
-                    OCR_API,
+                    route.api,
                     headers={"Authorization": "Bearer " + key},
                     data={"purpose": purpose},
                     files={"file": (p.name, f, mime)},
