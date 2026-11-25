@@ -1273,9 +1273,9 @@
     ]
   },
   "c10-followup-confirm": {
-    "sha": "ca275c96bbfd6e407086103f29b2d9907a81bbe204e8ee9d91cb548be78d3324",
+    "sha": "1cfef5596dfbcea48a26ef105efaefc0eda014fd248f301c669cecbbe529df0c",
     "n": 29,
-    "chars": 1331,
+    "chars": 1306,
     "blocks": [
       {
         "role": "system",
@@ -1379,12 +1379,12 @@
       },
       {
         "role": "system",
-        "chars": 44,
-        "label": "他像是在说「下周三面试」已经办完"
+        "chars": 29,
+        "label": "他刚回应了这件事（不一定是办完了"
       },
       {
         "role": "system",
-        "chars": 102,
+        "chars": 92,
         "label": "[此刻] 最近在聊：下周三面试好"
       },
       {
@@ -1960,9 +1960,493 @@
     ]
   },
   "c16-caption": {
-    "sha": "b67181713024dc3ccbba2f1f51469327fc8d0d575d72b803ac800c11e85c798a",
+    "sha": "92d3f9a4b67f4c20c10c66823081993b092195a211eca6b65b94693a4cbdc8b2",
+    "n": 12,
+    "chars": 681,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 13,
+        "label": "【这一轮】附了 1 张图。"
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 39,
+        "label": "[图注] 一只猫趴在键盘上（机器"
+      },
+      {
+        "role": "system",
+        "chars": 83,
+        "label": "[此刻] 最近在聊：（附了 1 "
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 268,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c17-caption-empty": {
+    "sha": "0da9f2e5846c3ffcf057493d435088d715296055674c9ff89083e57e96b55a8a",
     "n": 11,
-    "chars": 509,
+    "chars": 642,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 13,
+        "label": "【这一轮】附了 1 张图。"
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 83,
+        "label": "[此刻] 最近在聊：（附了 1 "
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 268,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c18-share-tier0": {
+    "sha": "e6bef2f46a9422fb0227b6ae526d95d19ce2d8449a18edac2ba5237e4b63c622",
+    "n": 13,
+    "chars": 797,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 13,
+        "label": "【这一轮】附了 1 张图。"
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 41,
+        "label": "[图注] Q版卡通人物鼓脸生气（"
+      },
+      {
+        "role": "system",
+        "chars": 114,
+        "label": "【这一轮的上限】他什么都没说，只"
+      },
+      {
+        "role": "system",
+        "chars": 83,
+        "label": "[此刻] 最近在聊：（附了 1 "
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 268,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c19-share-tier1": {
+    "sha": "fe61152137fbbb8d16f494fbc39b794d81ded82c29c8c83a81545094c14a9f4a",
+    "n": 13,
+    "chars": 782,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 13,
+        "label": "【这一轮】附了 1 张图。"
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 41,
+        "label": "[图注] 深色背景上的架构列表（"
+      },
+      {
+        "role": "system",
+        "chars": 99,
+        "label": "【这一轮的上限】这是他自己做的东"
+      },
+      {
+        "role": "system",
+        "chars": 83,
+        "label": "[此刻] 最近在聊：（附了 1 "
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 268,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c20-share-tier2": {
+    "sha": "f8d4cfd86060c31670ae372f2200226de30f20ce9cfce092c2f1b0ca18604c15",
+    "n": 13,
+    "chars": 777,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 21,
+        "label": "【这一轮】他这条 6 字；附了 "
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "[图注] 街景（机器人生成，图中"
+      },
+      {
+        "role": "system",
+        "chars": 89,
+        "label": "【这一轮的上限】他说了一句，但没"
+      },
+      {
+        "role": "system",
+        "chars": 88,
+        "label": "[此刻] 最近在聊：今天拍的这个"
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 274,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c21-share-tier3": {
+    "sha": "821dc6fc2a94f69c6dba2b7a49faccd65409398b2f59c127064b862eafc7b93c",
+    "n": 12,
+    "chars": 709,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 27,
+        "label": "【这一轮】他这条 10 字，是在"
+      },
+      {
+        "role": "system",
+        "chars": 35,
+        "label": "[图注] 界面截图（机器人生成，"
+      },
+      {
+        "role": "system",
+        "chars": 64,
+        "label": "【这一轮的上限】他明确要你看、或"
+      },
+      {
+        "role": "system",
+        "chars": 88,
+        "label": "[此刻] 最近在聊：你觉得这个设"
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 278,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c22-share-tier4": {
+    "sha": "d43a6223695a646861d706e7f136fb363c1ad82dcf2bbc0c85b233cd4cd75ad1",
+    "n": 13,
+    "chars": 759,
+    "blocks": [
+      {
+        "role": "system",
+        "chars": 0,
+        "label": "(空)"
+      },
+      {
+        "role": "system",
+        "chars": 54,
+        "label": "会变的东西（价格、版本、谁发布了"
+      },
+      {
+        "role": "system",
+        "chars": 108,
+        "label": "（提醒：他的话、文件正文、网页正"
+      },
+      {
+        "role": "system",
+        "chars": 68,
+        "label": "（他问你以前说过什么，而你记不得"
+      },
+      {
+        "role": "system",
+        "chars": 33,
+        "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 22,
+        "label": "【这一轮】他这条 12 字；附了"
+      },
+      {
+        "role": "system",
+        "chars": 51,
+        "label": "（他发的是表情/贴图，不是题目："
+      },
+      {
+        "role": "system",
+        "chars": 34,
+        "label": "[图注] 流程图（机器人生成，图"
+      },
+      {
+        "role": "system",
+        "chars": 69,
+        "label": "【这一轮的上限】他自己说出了意图"
+      },
+      {
+        "role": "system",
+        "chars": 88,
+        "label": "[此刻] 最近在聊：我这个方案想"
+      },
+      {
+        "role": "system",
+        "chars": 65,
+        "label": "现在：2026-11-15 20"
+      },
+      {
+        "role": "system",
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
+      },
+      {
+        "role": "user",
+        "chars": 280,
+        "label": "[多模态]"
+      }
+    ]
+  },
+  "c23-share-off": {
+    "sha": "1a7fe50a018acda060b678970dbfb6790e3dda29c91c0e326493938748ed9d63",
+    "n": 12,
+    "chars": 676,
     "blocks": [
       {
         "role": "system",
@@ -2002,7 +2486,7 @@
       {
         "role": "system",
         "chars": 34,
-        "label": "[图注] 一只猫趴在键盘上（这是"
+        "label": "[图注] 一只猫（机器人生成，图"
       },
       {
         "role": "system",
@@ -2015,453 +2499,9 @@
         "label": "现在：2026-11-15 20"
       },
       {
-        "role": "user",
-        "chars": 268,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c17-caption-empty": {
-    "sha": "365dfbf31c6b195e58ca1882b36c911ca16c3316fc42962d39c3196994330e6b",
-    "n": 10,
-    "chars": 475,
-    "blocks": [
-      {
         "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 13,
-        "label": "【这一轮】附了 1 张图。"
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 268,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c18-share-tier0": {
-    "sha": "19d7a7629fcfaa4412c5734d8e6e293e2d53712abf93271b7af8cb136baadcc0",
-    "n": 12,
-    "chars": 625,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 13,
-        "label": "【这一轮】附了 1 张图。"
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 36,
-        "label": "[图注] Q版卡通人物鼓脸生气（"
-      },
-      {
-        "role": "system",
-        "chars": 114,
-        "label": "【这一轮的上限】他什么都没说，只"
-      },
-      {
-        "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 268,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c19-share-tier1": {
-    "sha": "f3dabc979fc2c6434b5b05af39a062fe6b97cc65cd3cd337e958a04d6e766ffa",
-    "n": 12,
-    "chars": 610,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 13,
-        "label": "【这一轮】附了 1 张图。"
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 36,
-        "label": "[图注] 深色背景上的架构列表（"
-      },
-      {
-        "role": "system",
-        "chars": 99,
-        "label": "【这一轮的上限】这是他自己做的东"
-      },
-      {
-        "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 268,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c20-share-tier2": {
-    "sha": "b88b9fda0a70d17919a8fc3d661ada565cf5d96bb90692cb8e8fd717b4c863d4",
-    "n": 12,
-    "chars": 605,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 21,
-        "label": "【这一轮】他这条 6 字；附了 "
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 28,
-        "label": "[图注] 街景（这是图注，不是原"
-      },
-      {
-        "role": "system",
-        "chars": 89,
-        "label": "【这一轮的上限】他说了一句，但没"
-      },
-      {
-        "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：今天拍的这个"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 274,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c21-share-tier3": {
-    "sha": "2138ffcc219b47de8aac24ab03558f81c980bb7c11de1bb02f543380527f39a2",
-    "n": 11,
-    "chars": 537,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 27,
-        "label": "【这一轮】他这条 10 字，是在"
-      },
-      {
-        "role": "system",
-        "chars": 30,
-        "label": "[图注] 界面截图（这是图注，不"
-      },
-      {
-        "role": "system",
-        "chars": 64,
-        "label": "【这一轮的上限】他明确要你看、或"
-      },
-      {
-        "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：你觉得这个设"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 278,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c22-share-tier4": {
-    "sha": "df2194943f96424f5f795445b0b19e18e7708328a65a731e3bbecee2bae6e737",
-    "n": 12,
-    "chars": 587,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 22,
-        "label": "【这一轮】他这条 12 字；附了"
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 29,
-        "label": "[图注] 流程图（这是图注，不是"
-      },
-      {
-        "role": "system",
-        "chars": 69,
-        "label": "【这一轮的上限】他自己说出了意图"
-      },
-      {
-        "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：我这个方案想"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
-      },
-      {
-        "role": "user",
-        "chars": 280,
-        "label": "[多模态]"
-      }
-    ]
-  },
-  "c23-share-off": {
-    "sha": "efd44d547932575f0fc60b57fa89b33d9a4a1e589ea950d4d43c7e9b6a38bef4",
-    "n": 11,
-    "chars": 504,
-    "blocks": [
-      {
-        "role": "system",
-        "chars": 0,
-        "label": "(空)"
-      },
-      {
-        "role": "system",
-        "chars": 54,
-        "label": "会变的东西（价格、版本、谁发布了"
-      },
-      {
-        "role": "system",
-        "chars": 108,
-        "label": "（提醒：他的话、文件正文、网页正"
-      },
-      {
-        "role": "system",
-        "chars": 68,
-        "label": "（他问你以前说过什么，而你记不得"
-      },
-      {
-        "role": "system",
-        "chars": 33,
-        "label": "【现在】[现在的相处] 还在聊，"
-      },
-      {
-        "role": "system",
-        "chars": 13,
-        "label": "【这一轮】附了 1 张图。"
-      },
-      {
-        "role": "system",
-        "chars": 51,
-        "label": "（他发的是表情/贴图，不是题目："
-      },
-      {
-        "role": "system",
-        "chars": 29,
-        "label": "[图注] 一只猫（这是图注，不是"
-      },
-      {
-        "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
+        "chars": 167,
+        "label": "核对对话事实：用户自己的原话和明"
       },
       {
         "role": "user",

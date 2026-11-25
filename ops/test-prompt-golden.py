@@ -382,7 +382,7 @@ def summarize(msgs, with_raw=False):
 SLOT_MATCH = {
     "weather": ("【天气】",),
     "search": ("【本轮搜索",),
-    "followup": ("他刚说", "他像是在说", "他刚把"),
+    "followup": ("他刚说", "他刚回应了", "他像是在说", "他刚把"),
     "style": ("【这次的形式】", "【这一轮】"),
     "reaction": ("（他发的是表情",),
     "caption": ("[图注]",),
@@ -397,7 +397,7 @@ SLOT_MATCH = {
 MATRIX = {
     "weather":   {"hit": "nonempty", "fail": "nonempty", "none": "empty"},
     "search":    {"hit": "nonempty", "empty": "empty", "error": "empty", "none": "empty"},
-    "followup":  {"done": "nonempty", "confirm": "nonempty", "drop": "nonempty", "none": "empty"},
+    "followup":  {"done": "nonempty", "acknowledged": "nonempty", "drop": "nonempty", "none": "empty"},
     # model 模式不走 style_block（build_messages 用 MODEL_FIRST_* 承担），style 槽必须为空
     "style":     {"rules": "nonempty", "model": "empty"},
     "reaction":  {"hit": "nonempty", "none": "empty"},
