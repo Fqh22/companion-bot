@@ -285,23 +285,21 @@ def save_profile(fields: dict, conf: dict, evidence: dict,
         return {"dropped": []}
     json_path = PROFILE.parent / "profile.json"
     now = time.time()
+    previous_fields = profile_mod.load(json_path)
     state = profile_mod.update_state(
-        profile_mod.load(json_path), profile_mod.load_conf(json_path),
+        previous_fields, profile_mod.load_conf(json_path),
         profile_mod.load_seen(json_path), profile_mod.load_previous(json_path),
         fields, conf, evidence, changed or {}, now,
         require_evidence=evidence_ids is not None)
     merged = state["fields"]
-    sources = {}
-    try:
-        saved_sources = json.loads(json_path.read_text(encoding="utf-8")).get("source_msg_ids")
-        if isinstance(saved_sources, dict):
-            sources = saved_sources
-    except (OSError, ValueError, AttributeError):
-        pass
-    sources = {k: v for k, v in {**sources, **(evidence_ids or {})}.items() if k in merged}
+    sources = {k: v for k, v in profile_mod.load_source_ids(json_path).items()
+               if k in merged and merged[k] == previous_fields.get(k)}
+    sources.update({k: v for k, v in (evidence_ids or {}).items() if k in merged})
+    extra = {"updated_at": now, "day": day}
+    if sources:
+        extra["source_msg_ids"] = sources
     profile_mod.save(json_path, merged, state["confidence"], state["seen"],
-                     state["previous"],
-                     extra={"updated_at": now, "day": day, "source_msg_ids": sources})
+                     state["previous"], extra=extra)
     PROFILE.write_text(profile_mod.render_md(merged), encoding="utf-8")
     return state
 

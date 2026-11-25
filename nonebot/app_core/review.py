@@ -178,10 +178,10 @@ async def review(core) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
     session = _session_of(core)
     memories = _documents_since(1, session)
-    if not memories:
-        return f"{today} 没有新记忆，跳过复盘"
-    profile = _profile_block_for_review()
     sources = {row_id: text for row_id, text in _recent_user_sources(session).items() if text}
+    if not (memories or sources):
+        return f"{today} 没有新的对话材料，跳过复盘"
+    profile = _profile_block_for_review()
     verified_context = "\n".join(f"- [{row_id}] " + (text if len(text) <= 500 else text[:220] + " … " + text[-260:])
                                  for row_id, text in sources.items())
     curious_now = learn.read_list(learn.CURIOUS)

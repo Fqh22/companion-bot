@@ -173,6 +173,16 @@ def load_conf(path: Path) -> dict[str, float]:
             if k in FIELDS}
 
 
+def load_source_ids(path: Path) -> dict[str, int]:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")).get("source_msg_ids")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {k: v for k, v in raw.items() if k in FIELDS and type(v) is int and v > 0}
+
+
 def parse_evidence(raw) -> dict[str, str]:
     """每个字段的证据：今天对话里的原话片段。空 = 今天没提到，不算新证据。"""
     data = raw
@@ -388,8 +398,11 @@ def forget(path: Path, key: str) -> bool:
     conf.pop(key, None)
     seen.pop(key, None)
     prev.pop(key, None)
-    save(path, fields, conf, seen, prev,
-         extra={"updated_at": time.time(), "cleared": key})
+    sources = {k: v for k, v in load_source_ids(path).items() if k in fields}
+    extra = {"updated_at": time.time(), "cleared": key}
+    if sources:
+        extra["source_msg_ids"] = sources
+    save(path, fields, conf, seen, prev, extra=extra)
     return True
 
 

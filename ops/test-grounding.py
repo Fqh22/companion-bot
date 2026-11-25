@@ -218,6 +218,9 @@ async def main() -> int:
     check("自动复盘仅采信可回查的用户原话",
           not denied_profile["profile"] and not denied_partial["profile"] and verified_profile["profile"]
           and learn_store.profile_fields().get("职业与求职") == "已入职")
+    from app_core import profile as profile_mod
+    check("画像来源指向真实用户消息",
+          profile_mod.load_source_ids(learn_store.PROFILE_JSON).get("职业与求职") == 7)
 
     pledge = "我会准备手写材料和面试文件。"
     unverified = ("下午提交简历", "我会下午提交简历。")
