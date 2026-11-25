@@ -264,7 +264,7 @@ class ChatTurnMixin(CommitMixin):
         # 会把本人的待办直接置 done。和 650 行 due_for_asking 的写法保持一致。
         if not turn.owner:
             return
-        text = grounding.user_words(user_text)
+        text = grounding.direct_words(user_text)
         if not text or grounding.reported_speech(text):
             return
         quoted = (turn.quote_text or "").strip() or None
@@ -374,7 +374,8 @@ class ChatTurnMixin(CommitMixin):
                     items = []
                     log.info("[门控] 判不需要回忆（%s），本轮跳过 fact 召回", _why)
                 else:
-                    items = await port.recall(turn.query, ("fact",), 5, qv=turn.qv,
+                    query = turn.query if turn.qv else user_text
+                    items = await port.recall(query, ("fact",), 5, qv=turn.qv,
                                               trace=turn.memory_trace)
                 turn.memories = [{
                     "doc_id": i.ref,

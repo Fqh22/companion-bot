@@ -95,9 +95,10 @@ class CoreMemoryPort:
                     last_used=float(meta.get("last_access_time") or 0.0),
                     age_days=r.get("age_days"),
                     confidence=float(meta.get("importance") or 0.0),
-                    payload={"score": r.get("score")},
+                    payload={"score": r.get("score"), "recall_kind": r.get("recall_kind", "vector")},
                 ))
-            tr.append({"type": "fact", "n": len(rows), "limit": limit})
+            tr.append({"type": "fact", "n": len(rows), "limit": limit,
+                       "lexical": sum(r.get("recall_kind") == "lexical" for r in rows)})
 
         if "knowledge" in types:
             try:

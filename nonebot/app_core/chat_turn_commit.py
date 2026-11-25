@@ -78,17 +78,22 @@ class CommitMixin:
                 _alerts.record("warn", "caption_writeback_failed", str(e)[:200], turn.session)
 
     async def _commit_memory(self, turn: Turn) -> None:
-        """2/4 记忆：用户否定推翻洞察、即时记忆落库。"""
+        """2/4 记忆：撤回能定位的旧断言，记录用户自述。"""
         # 用户否定：把本轮注入的洞察标成被推翻。
         # 这是 insight 唯一的纠错入口——没有它，一个错的理解会一直影响后续对话，
         # 而且用户否定了也没人知道（和欠费那晚同类：错了但不响）。
-        own_words = grounding.user_words(turn.stored)
-        if grounding.reported_speech(own_words):
+        own_words = grounding.direct_words(turn.stored)
+        if not own_words:
             return
-        targets = [m["doc_id"] for m in turn.memories if m.get("doc_id") in turn.injected_insights
-                   and (claim := (m.get("text") or "").strip("。！! ")) and claim in own_words]
+        prev = next((m.get("content") or "" for m in reversed(turn.history)
+                     if m.get("role") == "assistant"), "")
+        denied = correction.denied_claim(own_words, prev) if turn.owner else ""
+        targets = {m["doc_id"] for m in turn.memories if m.get("doc_id") and (
+            (denied and correction.claim_key(m.get("text") or "") == denied) or
+            (m["doc_id"] in turn.injected_insights and correction.looks_like_correction(own_words)
+             and (claim := (m.get("text") or "").strip("。！! ")) and claim in own_words))}
         _cport = self._memory_port() if targets else None
-        if _cport and correction.looks_like_correction(own_words):
+        if _cport:
             _n = 0
             for _did in targets:
                 try:
@@ -97,7 +102,7 @@ class CommitMixin:
                 except Exception as e:  # noqa: BLE001
                     log.debug("推翻洞察失败：%s", e)
             if _n:
-                log.info("用户否定，推翻 %d 条洞察", _n)
+                log.info("用户否定，撤回 %d 条记忆", _n)
                 from app_core import alerts as _alerts2
                 _alerts2.record("info", "insight_corrected", "用户否定 %d 条" % _n, turn.session)
         # 即时记忆：明确自述立刻落库，不等批量总结。
@@ -290,7 +295,8 @@ class CommitMixin:
                           if m.get("role") == "assistant"), "")
             # 只认本人的纠正：写入的是全局 corrections 和本人的 fact 记忆，
             # 让外人触发等于让别人替你改记忆（见 510 行「里面写满了他的私事」）。
-            if turn.owner and _prev and correction.looks_like_correction(turn.user_text):
+            words = grounding.direct_words(turn.store_text if turn.store_text is not None else turn.user_text)
+            if turn.owner and _prev and correction.looks_like_correction(words):
                 try:
                     from app_core import config as _cfg_mod
                     if str((_cfg_mod.load().get("persona") or {}).get("self_learn", "off")) == "shadow":
@@ -298,7 +304,7 @@ class CommitMixin:
                 except Exception:  # noqa: BLE001
                     pass
                 asyncio.create_task(correction.adjudicate(
-                    self, turn.user_text, _prev, turn.rid, turn.session))
+                    self, words, _prev, turn.rid, turn.session, source_msg_id=turn.user_msg_id))
         except Exception:  # noqa: BLE001
             pass
         # 用统一的主人会话解析：只配飞书主人时也要触发总结，不能只看 QQ 号。

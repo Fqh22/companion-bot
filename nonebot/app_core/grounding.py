@@ -9,12 +9,15 @@ CAPTION_MARK = "｜图注："
 _IMAGE_COUNT = re.compile(r"（附了 \d+ 张图）")
 _IMAGE_MARK = re.compile(r"\[发了图片\]|" + _IMAGE_COUNT.pattern)
 _REPORTED = re.compile(
-    r"^(?:[“「『\"]|(?:他|她|他们|别人|对方|朋友|同事)(?:说|问|写|[：:])|"
+    r"^(?:[>＞“「『\"]|(?:他|她|他们|别人|对方|(?:我的?)?(?:朋友|同事))(?:说|问|写|[：:])|"
     r"(?:图里|截图(?:里|上)?|视频(?:里|中)?|原文|引文|转发)(?:说|写|显示|[：:])|引用|\[发来文件[：:]|"
     r"(?:刚才|之前|昨天)(?:你|他|她)说|例子[：:]|假如|如果|假设)"
 )
+_SENTENCES = re.compile(r"(?<=[。！？!?；;])")
+_QUOTES = {"“": "”", "「": "」", "『": "』", '"': '"'}
+_OWN_RESUME = re.compile(r"^(?:我这边|我自己|至于我|说回我)(?:[：:，,]|\s|$)")
 _CORRECTION = re.compile(
-    r"^(?:不对|说反了|我(?:刚才|之前)说错了|你(?:刚才)?(?:看错|说错|理解错)了|"
+    r"^(?:不对|说反了|我(?:刚才|之前)说错了|我(?:没说过|没有说过|没这么说)|你(?:刚才)?(?:看错|说错|理解错)了|"
     r"(?:那[个张条]|这[个张条])?(?:图片|图|截图|视频|消息|聊天记录).{0,20}(?:别人|不是我的|不是我说的)|"
     r"(?:其实|不是).{0,30}(?:而是|才是)|.{1,28}不是排第.{1,5}[吗么？?])"
 )
@@ -35,6 +38,50 @@ def reported_speech(text: str) -> bool:
     return bool(_REPORTED.match(user_words(text)))
 
 
+def source_segments(text: str) -> list[tuple[str, bool]]:
+    """按行和句保留原文。带引号的转述可跨行，无主语的引文续行从严处理。"""
+    segments = []
+    closing = ""
+    block = False
+    for line in user_words(text).splitlines():
+        if not line.strip():
+            block = False
+            continue
+        quoted_line = False
+        for sentence in _SENTENCES.split(line):
+            part = sentence.strip()
+            if not part:
+                continue
+            if _OWN_RESUME.match(part) and not closing:
+                block = False
+                quoted_line = False
+            # “你看，对方说：…” 仍是转述，逗号前的寒暄不赋予所有权。
+            reported = bool(closing or block or quoted_line or _REPORTED.match(part) or
+                            any(_REPORTED.match(piece.strip()) for piece in re.split(r"[，,]", part)[1:]))
+            if closing:
+                if closing in part:
+                    closing = ""
+            elif reported:
+                quoted_line = True
+                for mark, end in _QUOTES.items():
+                    _, found, rest = part.partition(mark)
+                    if found and end not in rest:
+                        closing = end
+                        break
+                if part.endswith(("：", ":")):
+                    block = True
+            segments.append((part, reported))
+    return segments
+
+
+def direct_words(text: str) -> str:
+    """状态变更和长期记忆只读取可辨认的用户原话。"""
+    parts = source_segments(text)
+    if not any(reported for _, reported in parts):
+        return user_words(text)
+    return "\n".join(part for part, reported in parts if not reported)
+
+
 def has_image_marker(text: str) -> bool:
     return bool(_IMAGE_MARK.search(text) or CAPTION_MARK in text)
 
@@ -47,7 +94,11 @@ def add_image_count(text: str, count: int) -> str:
 
 def history_text(text: str, normalize: Callable[[str], str] | None = None) -> str:
     original, marker, caption = text.partition(CAPTION_MARK)
-    if normalize and not reported_speech(original):
+    parts = source_segments(original)
+    if any(reported for _, reported in parts):
+        original = "\n".join("[转述，发言人另有其人] " + part if reported else
+                             (normalize(part) if normalize else part) for part, reported in parts)
+    elif normalize:
         original = normalize(original)
     if not marker:
         return original
@@ -101,13 +152,13 @@ def evidence(history: list[dict], user_text: str, *, quote: str = "", images: bo
              now: float) -> list[dict]:
     """只在相关轮次附加引用和核对结果，用户原文始终另以末条消息送出。"""
     recent = [m for m in history[-22:] if not m.get("ts") or now - m["ts"] <= 3600]
-    current = user_words(user_text)
+    current = direct_words(user_text)
     lines: list[str] = []
     for message in recent:
         text = message.get("content")
-        if message.get("role") != "user" or not isinstance(text, str) or reported_speech(text):
+        if message.get("role") != "user" or not isinstance(text, str):
             continue
-        line = user_words(text)
+        line = direct_words(text)
         if _TOPIC_SWITCH.match(line):
             lines.clear()
         lines.append(line)
@@ -121,7 +172,7 @@ def evidence(history: list[dict], user_text: str, *, quote: str = "", images: bo
         checked["平台引用内容（发言人未核实）"] = quote[:240]
     recent_image = any(m.get("role") == "user" and isinstance(m.get("content"), str)
                        and has_image_marker(m["content"]) for m in recent[-12:])
-    if not (checked or images or recent_image or reported_speech(current)):
+    if not (checked or images or recent_image or any(reported for _, reported in source_segments(user_text))):
         return []
     output = [{"role": "system", "content": (
         "核对对话事实：用户自己的原话和明确纠正优先。图片、转发、引用、图注只证明出现了该内容，"

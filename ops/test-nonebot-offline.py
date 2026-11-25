@@ -1770,7 +1770,7 @@ async def main() -> None:
 
     async def _fake_fact(msgs, tools_arg=None, **kw):
         return {"content": json.dumps({"is_correction": True, "kind": "fact",
-                                       "claim": "他生日是3月", "confidence": 0.9})}
+                                       "claim": "他生日是3月", "evidence": "不是2月，是3月", "confidence": 0.9})}
 
     _old_raw = core.complete_raw
     core.complete_raw = _fake_fact
@@ -1782,7 +1782,7 @@ async def main() -> None:
 
     async def _fake_beh(msgs, tools_arg=None, **kw):
         return {"content": json.dumps({"is_correction": True, "kind": "behavior",
-                                       "claim": "[文字] 别只顺着说", "confidence": 0.9})}
+                                       "claim": "[文字] 别只顺着说", "evidence": "你别只顺着我说", "confidence": 0.9})}
 
     core.complete_raw = _fake_beh
     try:
@@ -1806,7 +1806,7 @@ async def main() -> None:
     check("pending 不进行为清单", "我在深圳" not in _corr_txt)
     async def _fake_fact2(msgs, tools_arg=None, **kw):
         return {"content": json.dumps({"is_correction": True, "kind": "fact",
-                                       "claim": "他生日是3月", "confidence": 0.9})}
+                                       "claim": "他生日是3月", "evidence": "不是2月，是3月", "confidence": 0.9})}
 
     core.complete_raw = _fake_fact2
     try:
@@ -1833,7 +1833,7 @@ async def main() -> None:
 
     async def _fake_pending_ok(msgs, tools_arg=None, **kw):
         return {"content": json.dumps({"is_correction": True, "kind": "fact",
-                                       "claim": "他在深圳", "confidence": 0.9})}
+                                       "claim": "他在深圳", "evidence": "我都说了我在深圳", "confidence": 0.9})}
 
     core.complete_raw = _fake_pending_ok
     try:

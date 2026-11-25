@@ -157,6 +157,21 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         c.execute("PRAGMA journal_mode=WAL")
         return c
 
+    def _lexical_recall(self, query: str, top_k: int, *, touch: bool) -> list[dict]:
+        terms = memory_score.lexical_terms((query or "")[-400:])
+        if not terms or top_k <= 0:
+            return []
+        matched = []
+        for doc in self.recent(256, touch=False):
+            hits = terms & memory_score.lexical_terms(doc.get("text") or "")
+            if hits:
+                matched.append((sum(len(term) for term in hits), doc))
+        out = [dict(doc, recall_kind="lexical")
+               for _, doc in sorted(matched, key=lambda item: -item[0])[:top_k]]
+        if touch and out:
+            self.touch([doc["doc_id"] for doc in out])
+        return out
+
     async def recall(self, query: str, top_k: int = 5,
                      qv: list[float] | None = None,
                      touch: bool = True) -> list[dict]:
@@ -166,20 +181,22 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         touch=False 给影子用：只想知道"会捞到什么"，不该改变"被想起过"的记账，
         否则影子里那一次会把访问时间推高，污染清理和重复召回降权。
         """
+        if qv is not None and len(qv) == 0:
+            return self._lexical_recall(query, top_k, touch=touch)
         mat, ids = self._matrix()
         if mat is None:
-            return self.recent(top_k, touch=touch)
+            return self._lexical_recall(query, top_k, touch=touch)
         if qv is None:
             qv = (await self.embed([query]))[0]
         if not qv:
-            return self.recent(top_k, touch=touch)
+            return self._lexical_recall(query, top_k, touch=touch)
 
         import numpy as np
 
         q = np.asarray(qv, dtype=np.float32)
         nq = float(np.linalg.norm(q))
-        if nq == 0:
-            return self.recent(top_k, touch=touch)
+        if not math.isfinite(nq) or nq == 0:
+            return self._lexical_recall(query, top_k, touch=touch)
         # 维度不一致 = 换过 embedding 模型却没重建向量。以前这里直接 recent()，
         # 用户只看到「它记不住了」，日志里什么都没有。现在降级仍然保留（服务不能挂），
         # 但必须留下 error 日志 + 一条告警，让静默失败变成可数的失败。
@@ -195,7 +212,7 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
                 alerts.record("error", "embed_dim_mismatch", why)
             except Exception:  # noqa: BLE001
                 pass
-            return self.recent(top_k, touch=touch)
+            return self._lexical_recall(query, top_k, touch=touch)
         scores = mat @ (q / nq)          # 矩阵已归一化，点积即余弦
 
         # 时间 + 重要性 + 重复召回降权：纯函数在 memory_score，改排序不用读整个 Memory。

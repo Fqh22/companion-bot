@@ -5,6 +5,21 @@
 """
 from __future__ import annotations
 
+import re
+
+
+_FILLERS = re.compile(r"记不记得|还记得|你记得|帮我|你知道|查一下|想知道|有没有|告诉我|是什么|怎么样|"
+                      r"在哪里|上次|之前|最近|那件事|这件事|叫什么|说过|什么时候")
+
+
+def lexical_terms(text: str) -> set[str]:
+    """只比较具体词和连续中文字，避免短应答或问句套话匹配最近记录。"""
+    clean = _FILLERS.sub(" ", (text or "").lower())
+    terms = set(re.findall(r"[a-z0-9][a-z0-9_.-]{2,}", clean))
+    for word in re.findall(r"[\u4e00-\u9fff]{3,}", clean):
+        terms.update(word[i:i + 3] for i in range(len(word) - 2))
+    return terms
+
 
 def rank(scores, importance=None, ctime=None, last=None, now: float = 0.0,
          tau_days: float = 30.0, time_weight: float = 0.3,

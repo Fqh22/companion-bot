@@ -125,29 +125,38 @@ async def lookups():
           turn.fetch_metrics)
 
     streamed = []
-    calls = []
+    requested = []
 
     async def stream(msgs, tools, on_text):
-        calls.append(tools)
-        if tools:
-            return {"tool_calls": [{"id": "t", "function": {"name": "web_search", "arguments": "{}"}}]}
-        await on_text("查到了。")
-        return {"content": "查到了。"}
+        allowed = {t["function"]["name"] for t in tools}
+        assert {"web_search", "web_open"} <= allowed
+        if not requested:
+            name = "web_search"
+        elif requested == ["web_search"]:
+            await on_text("还没核实的中间结论。")
+            name = "web_open"
+        else:
+            await on_text("原网页已经核实。")
+            return {"content": "原网页已经核实。"}
+        return {"tool_calls": [{"id": name, "function": {"name": name, "arguments": "{}"}}]}
 
     async def complete(*args):
-        raise AssertionError("查到证据后应流式回复")
+        raise AssertionError("查证轮应沿用流式通道")
 
-    async def execute(*args):
-        return "[1] 查到测试证据"
+    async def execute(_, name, args, images):
+        requested.append(name)
+        return "只有搜索摘要" if name == "web_search" else "原网页正文"
 
     async def on_text(text):
         streamed.append(text)
 
-    tools_mod = SimpleNamespace(TOOLS=[{"function": {"name": "web_search"}}], execute=execute)
+    tools_mod = SimpleNamespace(TOOLS=[{"function": {"name": n}} for n in ("web_search", "web_open")],
+                                execute=execute)
     output = await tool_loop.run(None, [], complete=complete, stream=stream, tools_mod=tools_mod,
                                  tools_banned=set(), max_rounds=3, tool_timeout=1,
                                  total_timeout=3, on_text=on_text)
-    check("单次搜索成功后正文继续流式", calls[-1] is None and streamed == [output], streamed)
+    check("搜索摘要后可开原网页，中间结论不提前发", requested == ["web_search", "web_open"]
+          and streamed == [output] and output == "原网页已经核实。", streamed)
 
 
 async def progress():

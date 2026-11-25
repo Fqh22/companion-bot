@@ -101,6 +101,7 @@ async def run(core, msgs: list[dict], *,
     allowed.discard("")
     work = [dict(m) for m in msgs]
     first = True
+    checking_web = False
     done: dict[str, str] = {}
     started = time.perf_counter()
 
@@ -108,9 +109,15 @@ async def run(core, msgs: list[dict], *,
         if time.perf_counter() - started > total_timeout:
             log.warning("工具总预算 %.0fs 用尽，提前收尾", total_timeout)
             break
-        if first and on_text:
-            # 第一轮流式：首字能早 1 秒左右出来。若这轮其实要调工具，
-            # 正文通常为空，on_text 不会被触发，不影响后续。
+        web_text: list[str] = []
+
+        async def collect_text(text: str) -> None:
+            web_text.append(text)
+
+        if on_text and checking_web:
+            # 查证续轮可能还有工具调用。等确认这是正文再发，避免先发未核实的结论。
+            msg = await stream(work, tools_arg, collect_text)
+        elif first and on_text:
             msg = await stream(work, tools_arg, on_text)
         else:
             msg = await complete(work, tools_arg)
@@ -118,6 +125,9 @@ async def run(core, msgs: list[dict], *,
         st["rounds"] += 1
         calls = msg.get("tool_calls") or []
         if not calls:
+            if on_text:
+                for part in web_text:
+                    await on_text(part)
             return (msg.get("content") or "").strip()
         work.append({"role": "assistant",
                      "content": msg.get("content") or "",
@@ -181,13 +191,7 @@ async def run(core, msgs: list[dict], *,
         for i, tc in enumerate(calls):
             work.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                          "content": results[i]})
-        # 查询已给出可用证据时直接流式整理正文。缺证据或其他工具仍可继续调用。
-        if (on_text and len(pending) == 1 and pending[0][1] == "web_search"
-                and len(calls) == 1 and results[0]
-                and not results[0].startswith(("工具", "搜索失败", "没搜到", "没有搜到"))):
-            final = await stream(work, None, on_text)
-            st["rounds"] += 1
-            return (final.get("content") or "").strip()
+        checking_web |= any(name in {"web_search", "web_open"} for _, name, _, _ in pending)
 
     # 轮数用尽时模型可能还在调工具。这时去掉 tools 再问一次，逼它给正文，
     # 否则用户会收到一句莫名其妙的兜底「在」。

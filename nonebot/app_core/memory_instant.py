@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import re
 
+from app_core.grounding import direct_words
+
 # 只认「明确自述」。宁可漏，不可把「我觉得」「我在想」这类当事实。
 _PATTERNS = (
     r"我(?:现在)?(?:住在|住|家在|老家在|搬到了|搬到)",
@@ -30,10 +32,10 @@ _RE = [re.compile(p) for p in _PATTERNS]
 
 def pick(text: str) -> str:
     """挑出一句明确自述；没有返回空串。"""
-    for s in re.split(r"[。！？!?\n；;]", text or ""):
+    for s in re.split(r"[。！？!?\n；;]", direct_words(text)):
         s = s.strip()
         if not (5 <= len(s) <= 120):
             continue
-        if any(r.search(s) for r in _RE):
+        if any(r.match(s) for r in _RE):
             return s
     return ""

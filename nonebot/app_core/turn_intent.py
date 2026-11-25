@@ -8,7 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 
-from app_core.grounding import reported_speech
+from app_core.grounding import direct_words
 from app_core.followup_domain import QuietControl, control_target, quiet_control, snooze_deadline
 from app_core.outbound import DRAW_TRIGGERS, READ_ALOUD_KEYS
 
@@ -51,8 +51,8 @@ class TurnIntent:
 
 async def interpret(core, session: str, text: str, *, voice: bool = False,
                     quote_text: str | None = None, reply_to: str | None = None) -> TurnIntent:
-    raw = (text or "").strip().removeprefix("[语音]").strip()
-    if not raw or raw.startswith(("[", "“", "「", '"')) or reported_speech(raw):
+    raw = direct_words(text)
+    if not raw or raw.startswith(("[", "“", "「", '"')):
         return TurnIntent(voice=voice)
     explicit_text = bool(_TEXT.search(raw))
     no_draw = bool(_NO_DRAW.search(raw))
