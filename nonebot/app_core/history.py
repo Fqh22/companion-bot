@@ -15,6 +15,7 @@ import time
 import aiosqlite
 
 from app_core import paths as _paths
+from app_core.grounding import CAPTION_MARK
 from app_core import prompt as prompt_mod
 
 log = logging.getLogger("qqbot.chat")
@@ -230,19 +231,13 @@ class HistoryMixin:
             return False
         try:
             async with aiosqlite.connect(DB, timeout=15) as db:
+                # 并发的同步与后台图注即使措辞不同，也只保留先成功写入的一份。
+                marker = CAPTION_MARK if suffix.startswith(CAPTION_MARK) else suffix
                 cur = await db.execute(
-                    "SELECT content FROM messages WHERE id=?", (int(row_id),))
-                row = await cur.fetchone()
-                if row is None:
-                    return False
-                # 幂等：图片轮已经同步补过，后台任务再补一次不该出现两个「｜图注」
-                if suffix in (row[0] or ""):
-                    return False
-                await db.execute(
-                    "UPDATE messages SET content = content || ? WHERE id = ?",
-                    (suffix, int(row_id)))
+                    "UPDATE messages SET content = content || ? WHERE id = ? AND instr(content, ?) = 0",
+                    (suffix, int(row_id), marker))
                 await db.commit()
-            return True
+            return cur.rowcount > 0
         except Exception as e:  # noqa: BLE001
             log.warning("补写消息失败：%s", e)
             return False

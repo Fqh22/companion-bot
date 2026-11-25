@@ -572,7 +572,8 @@ async def main() -> None:
         async def _ret(v):
             return v
 
-        from app_core import inbound_turns, provider_routes
+        from app_core import grounding, inbound_turns, provider_routes
+        check("图注从用户原话独立标注", grounding.user_words("问一句｜图注：他人文字") == "问一句")
         check("原语音合成路由有效", provider_routes.service_route("tts_deepseek").key_ref == "deepseek")
         check("私聊入站聚合已加载", callable(inbound_turns.InboundTurns))
         _t = turn_mod.Turn(images=["/tmp/a.jpg"])

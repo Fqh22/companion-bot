@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from app_core import timenorm
+from app_core import grounding, timenorm
 
 
 def clip(text: str, n: int) -> str:
@@ -621,11 +621,11 @@ def dated_history(history: list[dict] | None) -> list[dict]:
             out.append({"role": role, "content": text})
             continue
         d = timenorm.anchor(h.get("ts"))
-        if d is None:
-            out.append({"role": role, "content": text})
-            continue
-        out.append({"role": role,
-                    "content": STAMP_FMT.format(d) + timenorm.normalize(text, now=d)})
+        if role == "user":
+            text = grounding.history_text(text, (lambda raw: timenorm.normalize(raw, now=d)) if d else None)
+        elif d is not None:
+            text = timenorm.normalize(text, now=d)
+        out.append({"role": role, "content": STAMP_FMT.format(d) + text if d else text})
     return out
 
 
@@ -708,10 +708,14 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
         if mood_text:
             msgs.append({"role": "system", "content": mood_text})
         if memories:
-            block = "\n".join(f"- {age_label(m.get('age_days'))}{clip(m['text'], 220)}"
-                              for m in memories if m.get("text"))
+            facts = [m for m in memories if m.get("text") and m.get("type") != "insight"]
+            insights = [m for m in memories if m.get("text") and m.get("type") == "insight"]
+            block = "\n".join(f"- {age_label(m.get('age_days'))}{clip(m['text'], 220)}" for m in facts)
             if block:
                 msgs.append({"role": "system", "content": f"[你记得的事]\n{block}"})
+            if insights:
+                block = "\n".join("- " + clip(m["text"], 220) for m in insights)
+                msgs.append({"role": "system", "content": "[你的推断，仅供参考，不是用户说过的话]\n" + block})
         if knowledge:
             msgs.append({"role": "system", "content": (
                 f"[你的知识索引]\n{clip(knowledge, 1000)}\n"

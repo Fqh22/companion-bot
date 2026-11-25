@@ -114,6 +114,8 @@ jobs:
         run: python ops/test-turn-intent.py
       - name: 响应流程
         run: python ops/test-response-flow.py
+      - name: 对话事实核对
+        run: python ops/test-grounding.py
       - name: 供应商路由
         run: python ops/test-provider-routes.py
       # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04-评测与实验.md 的矩阵）

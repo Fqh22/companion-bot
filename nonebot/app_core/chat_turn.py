@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app_core.round_timing import current as current_timing
-from app_core import (attention, config, correction, followup, intent, kb, memory_instant,
+from app_core import (attention, config, correction, followup, grounding, intent, kb, memory_instant,
                       learn, mood, perception, relational, shadow, wiki)
 from app_core import profile as profile_mod
 from app_core import prompt as prompt_mod
@@ -116,7 +116,8 @@ class ChatTurnMixin(CommitMixin):
         no_search = any(term in text for term in ("别查", "别搜", "不用查", "不用搜", "别帮我查", "不要搜索"))
         return (not no_search and turn.owner and len(text.strip()) >= 4
                 and bool((config.load().get("chat") or {}).get("force_search", True))
-                and (self._explicit_lookup(text) or intent.looks_analytical(text)))
+                and (self._explicit_lookup(text) or
+                     (not intent.asks_personal_guess(text) and intent.looks_analytical(text))))
 
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None,
@@ -137,10 +138,10 @@ class ChatTurnMixin(CommitMixin):
 
         if store_text is not None:
             turn.stored = store_text
-        elif turn.images:
-            turn.stored = f"{user_text}（附了 {len(turn.images)} 张图）"
         else:
             turn.stored = user_text
+
+        turn.stored = grounding.add_image_count(turn.stored, len(turn.images))
 
         try:
             turn.digest = await self.get_digest(session)
@@ -263,8 +264,8 @@ class ChatTurnMixin(CommitMixin):
         # 会把本人的待办直接置 done。和 650 行 due_for_asking 的写法保持一致。
         if not turn.owner:
             return
-        text = (user_text or "").strip()
-        if not text:
+        text = grounding.user_words(user_text)
+        if not text or grounding.reported_speech(text):
             return
         quoted = (turn.quote_text or "").strip() or None
         try:
@@ -568,7 +569,7 @@ class ChatTurnMixin(CommitMixin):
                 _cap = await self.caption_images(turn.images)
                 if _cap:
                     turn.set_slot("caption",
-                                  "[图注] " + _cap + "（这是图注，不是原图；细节不确定就别硬说）")
+                                  "[图注] " + _cap + "（机器人生成，图中发言人未核实；细节不确定就别硬说）")
                     # 只生成文本。**写回历史留到 POST_WRITE**：RENDER_SLOTS 不许写库，
                     # 否则「POST_WRITE 唯一写库」这条不变量在 S1a 之后一直是被违反的。
                     turn.caption_text = _cap
@@ -637,6 +638,9 @@ class ChatTurnMixin(CommitMixin):
                                         style_mode=self._style_mode(),
                                         context_format=self._context_format(),
                                         gap_hours=turn.gap)
+        turn.msgs[-1:-1] = grounding.evidence(
+            turn.history, turn.store_text if turn.store_text is not None else turn.user_text,
+            quote=turn.quote_text, images=bool(turn.images), now=time.time())
         if timing := current_timing.get():
             timing.mark("prepare_finish")
         turn.prepare_ms = (time.perf_counter() - turn.t0) * 1000.0

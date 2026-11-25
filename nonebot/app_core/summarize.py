@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 
-from app_core import parse_log, timenorm
+from app_core import grounding, parse_log, timenorm
 
 SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 JSON，不要解释：
 {
@@ -34,6 +34,7 @@ progress：只看「他的问题解决了没有」，不要猜他满不满意—
   switch  = 他开了个新话题（上一个问题多半已经解决）。
 digest：承接【旧纪要】，保留「在做什么、已定的结论、悬而未决的问题、他的偏好和约定」，
   删掉寒暄、重复和已过时的细节；陈述句，不用第一人称，不要 Markdown 和标题。
+有明确纠正时采用纠正后的说法。截图、转述和机器人生成的图注只记作参考，助手的推断不写成用户事实、偏好或承诺。
 不要编造，不确定的不写。"""
 
 
@@ -70,15 +71,18 @@ def format_dialog(rows: list[tuple]) -> str:
         content = row[1]
         ts = float(row[2]) if len(row) > 2 and row[2] else 0.0
         who = "他" if role == "user" else "我"
-        text = (content or "").strip().replace("\n", " ")[:400]
-        if not text:
-            continue
-        if ts:
-            d = timenorm.from_ts(ts)
-            lines.append(f"[{d:%Y-%m-%d %H:%M}][{who}] "
-                         + timenorm.normalize(text, now=d))
-        else:
-            lines.append(f"[{who}] {text}")
+        d = timenorm.from_ts(ts) if ts else None
+        raw = content or ""
+        if role == "user":
+            if grounding.reported_speech(raw):
+                who = "他转述"
+            raw = grounding.history_text(raw, (lambda text: timenorm.normalize(text, now=d)) if d else None)
+        elif d:
+            raw = timenorm.normalize(raw, now=d)
+        text = raw.strip().replace("\n", " ")[:400]
+        if text:
+            stamp = f"[{d:%Y-%m-%d %H:%M}]" if d else ""
+            lines.append(f"{stamp}[{who}] {text}")
     return "\n".join(lines)
 
 

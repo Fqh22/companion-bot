@@ -8,12 +8,12 @@ import re
 import time
 from dataclasses import dataclass
 
+from app_core.grounding import reported_speech
 from app_core.followup_domain import QuietControl, control_target, quiet_control, snooze_deadline
 from app_core.outbound import DRAW_TRIGGERS, READ_ALOUD_KEYS
 
 log = logging.getLogger("qqbot.turn_intent")
 
-_REPORTED = re.compile(r"^(?:他说|她说|别人说|对方说|(?:刚才|之前|昨天)(?:你|他|她)说|引用|例子[：:]|假如|如果|假设)")
 _TEXT = re.compile(r"(?:别|不用|不要|不必|不想)(?:再)?(?:用|发|回|听)?(?:语音|念|读|朗读)|(?:用|回|发)?文字(?:回|说|就行|就好)|打字(?:回|就行|就好)")
 _NO_DRAW = re.compile(r"(?:别|不用|不要|不必|不想|不需要)(?:你)?(?:再)?(?:帮我|给我)?(?:画|生成(?:一张)?图|配图)")
 _VOICE = ("用语音", "语音说", "发语音", "语音回", "亲口说", "读给我听", "念给我听")
@@ -52,7 +52,7 @@ class TurnIntent:
 async def interpret(core, session: str, text: str, *, voice: bool = False,
                     quote_text: str | None = None, reply_to: str | None = None) -> TurnIntent:
     raw = (text or "").strip().removeprefix("[语音]").strip()
-    if not raw or raw.startswith(("[", "“", "「", '"')) or _REPORTED.match(raw):
+    if not raw or raw.startswith(("[", "“", "「", '"')) or reported_speech(raw):
         return TurnIntent(voice=voice)
     explicit_text = bool(_TEXT.search(raw))
     no_draw = bool(_NO_DRAW.search(raw))

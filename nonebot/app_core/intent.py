@@ -78,6 +78,12 @@ def looks_analytical(text: str) -> bool:
     return any(k in t for k in _Q_FORM) and any(k in t for k in _ANALYTIC)
 
 
+def asks_personal_guess(text: str) -> bool:
+    """猜用户自己的选择或类型，外部搜索不能补出答案。"""
+    return bool(re.search(r"猜(?:猜|一下)?(?:看)?我.{0,12}(?:怎么选|怎么排|会选|会排|什么类型|什么MBTI)",
+                          text, re.I))
+
+
 def keywords(text: str, limit: int = 6) -> list[str]:
     """粗提主题词，用来做「相关记忆」的检索 query。
 

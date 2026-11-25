@@ -10,7 +10,7 @@ import asyncio
 import json
 import time
 
-from app_core import correction, memory_instant, shadow
+from app_core import correction, grounding, memory_instant, shadow
 from app_core import prompt as prompt_mod
 from app_core import self_check as self_check_mod
 from app_core.chat_turn_base import POST_WRITE, log
@@ -82,10 +82,15 @@ class CommitMixin:
         # 用户否定：把本轮注入的洞察标成被推翻。
         # 这是 insight 唯一的纠错入口——没有它，一个错的理解会一直影响后续对话，
         # 而且用户否定了也没人知道（和欠费那晚同类：错了但不响）。
-        _cport = self._memory_port() if turn.injected_insights else None
-        if _cport and correction.looks_like_correction(turn.stored or ""):
+        own_words = grounding.user_words(turn.stored)
+        if grounding.reported_speech(own_words):
+            return
+        targets = [m["doc_id"] for m in turn.memories if m.get("doc_id") in turn.injected_insights
+                   and (claim := (m.get("text") or "").strip("。！! ")) and claim in own_words]
+        _cport = self._memory_port() if targets else None
+        if _cport and correction.looks_like_correction(own_words):
             _n = 0
-            for _did in turn.injected_insights:
+            for _did in targets:
                 try:
                     if await _cport.supersede(_did, "user_correction", "用户否定"):
                         _n += 1
@@ -101,7 +106,7 @@ class CommitMixin:
         # 只写最窄的一类（memory_instant 里那几条模式），importance 0.35 可被 cleanup 清。
         if turn.owner and turn.stored and turn.user_msg_id:
             try:
-                _inst = memory_instant.pick(turn.stored)
+                _inst = memory_instant.pick(own_words)
                 _port = self._memory_port() if _inst else None
                 if _port:
                     from app_core.memory_port import MemoryItem
