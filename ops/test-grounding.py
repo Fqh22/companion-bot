@@ -237,6 +237,22 @@ async def main() -> int:
     duplicate = followup.add("准备面试文件", source_ts=ts, source_msg_id=message, source_key=source_key)
     check("同一条承诺换摘录重放保留已完成状态", inserted and not duplicate and bool(existing_id))
 
+    from app_core import wiki
+    pages = [
+        {"title": "图像识别校验", "summary": "核对截图文字", "project": "图文工程", "status": "active",
+         "source": "自撰", "verified_ts": 0, "mtime": now, "last_open_ts": 0, "stale_days": 0},
+        {"title": "宽带套餐", "summary": "套餐价格", "project": "生活事项", "status": "active",
+         "source": "自撰", "verified_ts": 0, "mtime": now, "last_open_ts": 0, "stale_days": 0},
+    ]
+    with patch.object(wiki, "pages", return_value=pages):
+        found = wiki.index_text(query="图像识别校验怎么做")
+        none = wiki.index_text(query="今天下雨怎么办")
+        turn = Turn(session, "今天下雨怎么办", [], None, True, "knowledge", time.perf_counter())
+        turn.query = "刚才提过图像识别校验 今天下雨怎么办"
+        await core._prepare_knowledge(turn, turn.user_text)
+    check("知识目录按当前话题筛选，上一轮的无关标题不进入本轮",
+          "图像识别校验" in found and "宽带套餐" not in found and not none and not turn.knowledge)
+
     await app.stop()
     return report()
 

@@ -104,7 +104,7 @@ class CoreMemoryPort:
             try:
                 from app_core import wiki
 
-                idx = wiki.index_text()
+                idx = wiki.index_text(query=query)
                 if idx:
                     out.append(MemoryItem(type="knowledge", text=idx,
                                           ref="wiki:index", source="wiki"))

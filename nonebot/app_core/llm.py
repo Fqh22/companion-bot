@@ -259,7 +259,7 @@ class LLM:
                 # 记账失败不该打断回复，但要留痕：否则 /usage 会悄悄少计，排障时找不到原因
                 log.warning("usage 记账失败：%s", e)
 
-        msg = {"content": content}
+        msg = {"content": content, "stream_finished": finished}
         if reasoning:
             msg["reasoning_content"] = reasoning
         if calls:

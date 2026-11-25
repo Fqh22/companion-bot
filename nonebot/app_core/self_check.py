@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 
 # 标签可能以换行结尾，也可能直接跟正文（中间两个空格、甚至没有空格）。
@@ -108,3 +109,86 @@ def is_meta(text: str) -> bool:
     if not s or len(s) > 600:      # 长文里的「正文：」多半是真的在写东西
         return False
     return sum(m in s for m in _META_MARKERS) >= 2
+
+
+# Some providers expose DSML or XML tool calls as ordinary content instead of tool_calls.
+_PROTOCOL = r"(?:function_calls?|tool_calls?|tool_results?|function_results?)"
+_PROTOCOL_OPEN = r"<\s*(?:[|｜]?\s*DSML\s*[|｜]?\s*|[|｜]\s*)?"
+_PROTOCOL_CLOSE = r"<\s*/\s*(?:[|｜]?\s*DSML\s*[|｜]?\s*|[|｜]\s*)?"
+_TOOL_BLOCK = re.compile(_PROTOCOL_OPEN + r"(?P<tag>" + _PROTOCOL + r")\b[^>]*>.*?"
+                         + _PROTOCOL_CLOSE + r"(?P=tag)\s*[|｜]?\s*>", re.I | re.S)
+_TOKEN_BLOCK = re.compile(
+    r"<[|｜]tool▁calls▁begin[|｜]>.*?<[|｜]tool▁calls▁end[|｜]>", re.I | re.S)
+_TOOL_FRAGMENT = re.compile(_PROTOCOL_OPEN + _PROTOCOL + r"\b|"
+                            + r"<[|｜](?:tool▁?calls?▁?(?:begin|end)|tool_call)|"
+                            + r"<\s*[|｜]?\s*DSML\s*[|｜]?\s*(?:invoke|parameter)\b", re.I)
+_FENCE = re.compile(r"(?m)^[ \t]*`{3,}[^\n]*\n.*?(?:^[ \t]*`{3,}[ \t]*(?:\n|\Z)|\Z)", re.S)
+_INTERNAL = re.compile(
+    r"(?m)^[ \t]*(?:#{1,6}[ \t]+)?(?:\[你的知识索引\]|\[相关知识资料\]|【本轮搜索[^】]*】|"
+    r"\[本会话历史图片证据\]|\[本轮引用与核对资料[^]]*\]|\[你记得的事\]|\[你以前总结的做法\]|"
+    r"【工具调用(?:参数|结果)?】|\[工具调用(?:参数|结果)?\]|"
+    r"笔记索引（细节用 kb_search）：|【背景】（只在相关时用，别硬提）)"
+    r"[^\n]*(?:\n(?![ \t]*\n)[^\n]+)*"
+)
+
+
+def clean_reply(text: str, tool_names, *, show_tool_examples: bool = False) -> str:
+    """Remove provider protocol and internal prompt blocks before any text is delivered."""
+    names = {name for name in tool_names if isinstance(name, str) and name}
+    escaped = "|".join(re.escape(name) for name in sorted(names)) or r"(?!)"
+    call_line = re.compile(r"(?m)^[ \t]*(?:[-*][ \t]+)?(?:`{1,3})?(?:functions\.)?(?:"
+                           + escaped + r")\s*\([^\n]*(?:\n[ \t]+[^\n]*)*")
+    decoder = json.JSONDecoder()
+
+    def tool_payload(value) -> bool:
+        if isinstance(value, list):
+            return bool(value) and all(tool_payload(item) for item in value)
+        if not isinstance(value, dict):
+            return False
+        if "tool_calls" in value or "tool_call_id" in value:
+            return True
+        fn = value.get("function", value)
+        if not isinstance(fn, dict):
+            return False
+        name = fn.get("name") or fn.get("recipient_name")
+        return (isinstance(name, str) and name.removeprefix("functions.") in names
+                and any(key in fn for key in ("arguments", "parameters", "args")))
+
+    def remove_json(payload: str) -> str:
+        offset = 0
+        while match := re.search(r"(?m)^[ \t]*(?=[{\[])", payload[offset:]):
+            begin = offset + match.end()
+            try:
+                value, end = decoder.raw_decode(payload, begin)
+            except (ValueError, RecursionError):
+                fragment = payload[begin:]
+                if (re.match(r'\{\s*"(?:tool_calls|tool_call_id)"\s*:', fragment)
+                        or re.match(r'\{\s*"name"\s*:\s*"(?:' + escaped
+                                    + r')"\s*,\s*"(?:arguments|parameters|args)"\s*:', fragment)):
+                    return payload[:begin]
+                offset = begin + 1
+                continue
+            if tool_payload(value):
+                payload = payload[:begin] + payload[end:]
+                offset = begin
+            else:
+                offset = end
+        return payload
+
+    fences = []
+
+    def fence(match: re.Match) -> str:
+        block = match[0]
+        if not show_tool_examples and (_TOOL_FRAGMENT.search(block) or call_line.search(block)
+                                       or remove_json(block) != block):
+            return ""
+        fences.append(block)
+        return f"\x00{len(fences) - 1}\x00"
+
+    s = _FENCE.sub(fence, text or "")
+    s = _TOOL_BLOCK.sub("", _TOKEN_BLOCK.sub("", s))
+    if fragment := _TOOL_FRAGMENT.search(s):
+        s = s[:fragment.start()]
+    s = call_line.sub("", remove_json(s))
+    s = _INTERNAL.sub("", s)
+    return re.sub(r"\x00(\d+)\x00", lambda m: fences[int(m[1])] if int(m[1]) < len(fences) else "", s).strip()

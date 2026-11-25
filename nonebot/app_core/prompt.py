@@ -345,7 +345,7 @@ def _compact_background(memories, knowledge: str, skills, lessons: str,
 
     if knowledge:
         sections.append(("knowledge",
-                         "笔记索引（细节用 kb_search）：\n" + clip(knowledge, 500)))
+                         "[相关知识资料]\n" + clip(knowledge, 500)))
 
     if skills:
         one = next((s for s in skills if s and s.strip()), "")
@@ -718,8 +718,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
                 msgs.append({"role": "system", "content": "[你的推断，仅供参考，不是用户说过的话]\n" + block})
         if knowledge:
             msgs.append({"role": "system", "content": (
-                f"[你的知识索引]\n{clip(knowledge, 1000)}\n"
-                "（要细节就挑一个标题用 kb_read 打开；索引里没有再用 kb_search 搜）\n"
+                f"[相关知识资料]\n{clip(knowledge, 1000)}\n"
+                "（只使用与当前问题有关的内容。需要时读取原文，回复里省略内部目录、工具名与调用格式。）\n"
                 "标着「未验证 / 久未复核」的是你自己以前记的，可能过时、也可能当时就记错了："
                 "当参考，别当事实断言；拿不准就直接说不确定，或者问他一句。")})
         if skills:

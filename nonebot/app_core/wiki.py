@@ -335,7 +335,8 @@ def weekly_text(sample: int = 2) -> str:
     return "\n".join(lines)
 
 
-def index_text(max_pages: int = INDEX_MAX_PAGES, max_chars: int = INDEX_MAX_CHARS) -> str:
+def index_text(max_pages: int = INDEX_MAX_PAGES, max_chars: int = INDEX_MAX_CHARS, *,
+               query: str | None = None) -> str:
     """给 prompt 用的目录。空索引返回空串，调用方会退回向量检索。
 
     每行带可信度标签（【自撰·未验证】等）：模型据此决定是当事实讲还是先核实。
@@ -345,6 +346,28 @@ def index_text(max_pages: int = INDEX_MAX_PAGES, max_chars: int = INDEX_MAX_CHAR
     截掉的才是常年没人碰的页；按固定顺序截断，越新的页越容易被挤掉——正好反了。
     """
     ps = [p for p in pages() if p["status"] != "已废弃"]
+    if query is not None:
+        from app_core import textsim
+
+        query_key = textsim.norm(query)
+        if not query_key:
+            return ""
+        max_pages = min(max_pages, 3)
+
+        def related(page: dict) -> bool:
+            title = textsim.norm(page["title"])
+            if len(title) >= 2 and title in query_key:
+                return True
+            subject = re.sub(r"(?:要点|笔记|指南|手册|清单|流程|教程|速查)$", "", title)
+            if title != subject and len(subject) >= 2 and subject in query_key:
+                return True
+            project = textsim.norm(page.get("project") or "")
+            if len(project) >= 4 and project in query_key:
+                return True
+            # 连续命中标题的三个字，比单个通用词或相似的问句更可靠。
+            return any(term in query_key for term in re.findall(r"(?=([\u4e00-\u9fff]{3}))", title))
+
+        ps = [page for page in ps if related(page)]
     if not ps:
         return ""
 
@@ -391,7 +414,7 @@ def index_text(max_pages: int = INDEX_MAX_PAGES, max_chars: int = INDEX_MAX_CHAR
             lines.append(line)
             used += len(line)
             shown += 1
-    if len(ps) > shown:
+    if query is None and len(ps) > shown:
         lines.append(f"（还有 {len(ps) - shown} 页放不下，用 kb_search 找）")
     return "\n".join(lines)
 

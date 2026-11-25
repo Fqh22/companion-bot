@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import sqlite3
 import sys
 import time
@@ -481,13 +482,16 @@ class ChatTurnMixin(CommitMixin):
 
     async def _prepare_knowledge(self, turn: Turn, user_text: str) -> None:
         """知识、技能、纠正清单——只有本人才注入。"""
-        # 知识：优先注入索引（省 token、短查询更准）；索引还没建好时退回向量检索。
-        # 不是本人就整段跳过——知识库里全是他自己的笔记和文档。
+        # 使用本轮主题；只有明确回问笔记时才从相邻对话补齐指代。
         if turn.owner:
+            query = grounding.direct_words(user_text)
+            knowledge_request = bool(re.search(r"知识库|笔记里|我(?:写|记|存)过|翻.{0,5}笔记", query))
+            if knowledge_request and intent.refers_to_previous(query):
+                query = turn.query
             port = self._memory_port()
             if port is not None:
                 try:
-                    items = await port.recall(turn.query, ("knowledge",),
+                    items = await port.recall(query, ("knowledge",),
                                               trace=turn.memory_trace)
                     turn.knowledge = next(
                         (i.text for i in items if i.type == "knowledge"), "")
@@ -496,12 +500,13 @@ class ChatTurnMixin(CommitMixin):
                     turn.knowledge = ""
             else:
                 try:
-                    turn.knowledge = wiki.index_text()
+                    turn.knowledge = wiki.index_text(query=query)
                 except Exception:
                     turn.knowledge = ""
-            if not turn.knowledge:
+            if not turn.knowledge and knowledge_request:
                 try:
-                    turn.knowledge = "\n\n".join(await kb.recall(turn.query, 3, qv=turn.qv))
+                    turn.knowledge = "\n\n".join(await kb.recall(
+                        query, 2, min_score=0.55, qv=(turn.qv if query == turn.query else turn.mvec) or []))
                 except Exception:
                     turn.knowledge = ""
             turn.skills = learn.skill_match(user_text, 2)
@@ -754,20 +759,27 @@ class ChatTurnMixin(CommitMixin):
 
         turn.img_budget = max(self.max_tokens, _chat().REPLY_MAX_TOKENS)
         turn.think = self._thinking_for(turn.user_text, turn.images)
-        allow_web = not grounding.forbids_web(turn.store_text or turn.user_text)
+        own_text = grounding.direct_words(turn.store_text or turn.user_text)
+        allow_web = not grounding.forbids_web(own_text)
+        show_tool_examples = bool(re.search(
+            r"(?:示例|示范|样例|格式|代码|调试|解释).{0,24}(?:tool_calls?|function.call|DSML|工具调用)|"
+            r"(?:tool_calls?|function.call|DSML|工具调用).{0,24}(?:示例|示范|样例|格式|代码|调试|解释)",
+            own_text, re.I))
         try:
             turn.text = await self._run_tools(
                 turn.msgs, turn.allow_meme, turn.ai_images,
                 on_text=sink if on_sentence else None,
                 budget=turn.img_budget, stats=turn.task_stats,
-                thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
+                thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
+                show_tool_examples=show_tool_examples)
             if not turn.text:
                 # 重试也要守住白名单：漏传 allow_tools 会默认 True，
                 # 等于给外人一次「首次回复为空」的机会拿回全部工具（能读笔记和记忆）。
                 turn.text = await self._run_tools(
                     turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                     budget=turn.img_budget, stats=turn.task_stats,
-                    thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
+                    thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
+                    show_tool_examples=show_tool_examples)
         except Exception as e:  # noqa: BLE001
             log.warning("生成回复失败：%s", e)
             turn.degraded += 1
@@ -779,7 +791,8 @@ class ChatTurnMixin(CommitMixin):
                     turn.text = await self._run_tools(
                         turn.msgs, turn.allow_meme, turn.ai_images,
                         budget=turn.img_budget, stats=turn.task_stats,
-                        thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
+                        thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
+                        show_tool_examples=show_tool_examples)
                     log.info("流式失败，回退非流式成功")
                 except Exception as e2:  # noqa: BLE001
                     log.warning("回退非流式也失败：%s", e2)
@@ -799,7 +812,8 @@ class ChatTurnMixin(CommitMixin):
                     turn.text = await self._run_tools(
                         turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                         budget=turn.img_budget, stats=turn.task_stats,
-                        thinking=False, allow_tools=turn.owner, allow_web=allow_web)
+                        thinking=False, allow_tools=turn.owner, allow_web=allow_web,
+                        show_tool_examples=show_tool_examples)
                     turn.streamed = False      # 重试是非流式，交回给 reply 发
                 except Exception as e:  # noqa: BLE001
                     log.warning("元叙述重试失败：%s", e)

@@ -153,6 +153,8 @@ async def lookups():
         allowed = {t["function"]["name"] for t in tools}
         assert {"web_search", "web_open"} <= allowed
         if not requested:
+            await on_text("functions.web_search(")
+            await on_text('{"query":"待核对的问题"})\n')
             name = "web_search"
         elif requested == ["web_search"]:
             await on_text("还没核实的中间结论。")
@@ -177,7 +179,7 @@ async def lookups():
     output = await tool_loop.run(None, [], complete=complete, stream=stream, tools_mod=tools_mod,
                                  tools_banned=set(), max_rounds=3, tool_timeout=1,
                                  total_timeout=3, on_text=on_text)
-    check("搜索摘要后可开原网页，中间结论不提前发", requested == ["web_search", "web_open"]
+    check("首轮工具参数和续轮中间结论均不外发", requested == ["web_search", "web_open"]
           and streamed == [output] and output == "原网页已经核实。", streamed)
 
 
@@ -355,6 +357,64 @@ async def inbound_images():
           and "未能读取" in mixed.image_status("看这两张图"))
 
 
+async def visible_reply():
+    from app_core.self_check import clean_reply
+
+    names = {"kb_search", "web_search"}
+    dsml = "<｜DSML｜function_calls><｜DSML｜invoke name=\"kb_search\">私有参数</｜DSML｜invoke></｜DSML｜function_calls>"
+    payload = '{"name":"kb_search","arguments":{"query":"模拟私有参数"}}'
+    fence = chr(96) * 3
+    answer = "第一句。\n" + dsml + "\n" + fence + "json\n" + payload + "\n" + fence + "\n"
+    answer += "[相关知识资料]\n旧笔记目录\n\n最后一句。"
+    clean = clean_reply(answer, names)
+    check("工具协议、机器调用 JSON 和内部知识块均不进入最终答复",
+          clean.split() == ["第一句。", "最后一句。"], clean)
+    check("原生工具标记和截断的调用 JSON 都被拦住",
+          clean_reply("正文。<｜tool▁calls▁begin｜>参数<｜tool▁calls▁end｜>后半句。", names) == "正文。后半句。"
+          and clean_reply('正文。\n{"tool_calls":[{"name":"kb_search"', names) == "正文。")
+    ordinary_code = fence + 'json\n{"name":"Alice","count":2}\n' + fence
+    shown_code = fence + "json\n" + payload + "\n" + fence
+    check("保留正常 JSON 与用户明确索取的工具示例",
+          clean_reply(ordinary_code, names) == ordinary_code
+          and clean_reply(shown_code, names, show_tool_examples=True) == shown_code
+          and clean_reply("<parameter>轨道编号</parameter>", names) == "<parameter>轨道编号</parameter>")
+
+    calls = {"n": 0}
+    streamed = []
+
+    async def final_after_budget(msgs, tools, on_text):
+        calls["n"] += 1
+        if tools:
+            await on_text("这行不能发。")
+            return {"content": "这行不能发。", "tool_calls": [
+                {"id": "again", "function": {"name": "kb_search", "arguments": "{}"}}]}
+        await on_text(payload)
+        return {"content": payload + "\n最终回复。"}
+
+    async def execute(*args):
+        return "资料"
+
+    async def send(text):
+        streamed.append(text)
+
+    tools_mod = SimpleNamespace(TOOLS=[{"function": {"name": "kb_search"}}], execute=execute)
+    result = await tool_loop.run(None, [], complete=None, stream=final_after_budget, tools_mod=tools_mod,
+                                 tools_banned=set(), max_rounds=1, tool_timeout=1,
+                                 total_timeout=2, on_text=send)
+    check("工具轮数触顶后的最终回复也检查正文", calls["n"] == 2 and result == "最终回复。"
+          and streamed == [result], streamed)
+
+    async def broken(msgs, tools, on_text):
+        await on_text("这行可能还会变。")
+        return {"content": "这行可能还会变。", "stream_finished": False}
+
+    streamed.clear()
+    result = await tool_loop.run(None, [], complete=None, stream=broken, tools_mod=tools_mod,
+                                 tools_banned=set(), max_rounds=1, tool_timeout=1,
+                                 total_timeout=2, on_text=send)
+    check("流未正常结束不会投递候选正文", not result and not streamed)
+
+
 async def inbound_voice():
     seen = []
 
@@ -390,6 +450,7 @@ async def main() -> int:
     await inbound_images()
     await delivery()
     await lookups()
+    await visible_reply()
     await progress()
     await pooled_embedding()
     return report()

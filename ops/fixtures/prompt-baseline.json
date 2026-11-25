@@ -2927,9 +2927,9 @@
     ]
   },
   "c27-knowledge": {
-    "sha": "0297ca939877a242ee0d9fe933c0481e699fc3d1f48f8975198c5e18b87672a5",
+    "sha": "786ee49a5db22611c69fc00526adbef30f0461ec7bac3923cd0551cc5134c2b9",
     "n": 27,
-    "chars": 1263,
+    "chars": 1251,
     "blocks": [
       {
         "role": "system",
@@ -3023,7 +3023,7 @@
       },
       {
         "role": "system",
-        "chars": 65,
+        "chars": 53,
         "label": "【背景】（只在相关时用，别硬提）"
       },
       {
@@ -3069,9 +3069,9 @@
     ]
   },
   "c28-knowledge-multi": {
-    "sha": "85786e5eb2a4e811972dac4c2757a28817eb19a1516728d12bc071ca8d3e9335",
+    "sha": "103b7f9a9c32fc1eeba9b53fc2978ddbbdb371df37ee9e9af0f8e6bcbeefd507",
     "n": 27,
-    "chars": 1281,
+    "chars": 1249,
     "blocks": [
       {
         "role": "system",
@@ -3165,7 +3165,7 @@
       },
       {
         "role": "system",
-        "chars": 85,
+        "chars": 53,
         "label": "【背景】（只在相关时用，别硬提）"
       },
       {

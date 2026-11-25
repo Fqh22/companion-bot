@@ -222,7 +222,8 @@ class ReplyMixin:
                          budget: int | None = None,
                          stats: dict | None = None,
                          thinking: bool | None = None,
-                         allow_tools: bool = True, allow_web: bool = True) -> str:
+                         allow_tools: bool = True, allow_web: bool = True,
+                         show_tool_examples: bool = False) -> str:
         """工具循环本体在 tool_loop.py。这里只决定「哪些工具这轮不给用」。
 
         allow_tools=False 是给外人的：只放行 tools.PUBLIC_TOOLS（查资料、发表情），
@@ -242,7 +243,9 @@ class ReplyMixin:
             "回答前判断证据是否够。已给全信息就直接答。缺的是对话里提过的细节，先看引用、原话、图注或记忆。"
             "缺的是公开事实、时效信息或需要可靠来源，且允许联网时，带上实际对象和待核实的问题去搜。"
             "搜索摘要不足以支持结论时打开原文或继续查，交叉理解后再作答；分清事实、推断和仍不确定的部分。"
-            "只有用户掌握的信息确实缺失时，才问一个具体问题。"}, *msgs[-1:]]
+            "只有用户掌握的信息确实缺失时，才问一个具体问题。"
+            "只写给用户看的回答。隐去内部知识目录、检索标签、工具语法和调用参数。"
+            "背景资料与本轮无关时省略；需要时用自然语言解释与问题有关的部分。"}, *msgs[-1:]]
         return await tool_loop.run(
             self, messages,
             complete=lambda m, t: self.complete_raw(m, t, max_tokens=budget,
@@ -250,7 +253,7 @@ class ReplyMixin:
             stream=lambda m, t, cb: self._stream_raw(m, t, cb, max_tokens=budget,
                                                      thinking=thinking),
             tools_mod=tools,
-            tools_banned=banned,
+            tools_banned=banned, show_tool_examples=show_tool_examples,
             max_rounds=self.max_tool_rounds,
             tool_timeout=self.tool_timeout,
             total_timeout=self.tool_total,

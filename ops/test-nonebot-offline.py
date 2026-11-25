@@ -1550,7 +1550,7 @@ async def main() -> None:
 
     msgs_w = core.build_messages([{"role": "user", "content": "x"}], "y",
                                  knowledge=idx_txt)
-    check("索引被注入 prompt", any("[你的知识索引]" in (m.get("content") or "")
+    check("相关索引进入 prompt", any("[相关知识资料]" in (m.get("content") or "")
                                    for m in msgs_w))
 
     # 同名笔记应该更新同一页，而不是每天新建
@@ -1692,7 +1692,7 @@ async def main() -> None:
     check("流式：正文照常发出", any("好的" in x for x in got),
           f"got={got} calls={acalls['n']}")
 
-    # 流式：中途断流，已发出的句子必须写回历史（否则下一轮断片）
+    # 未完成的工具轮候选正文不投递；断流转完整回复。
     async def cut_stream(msgs, tools_arg=None, cb=None, **kw):
         await cb("第一句。")
         raise httpx.ConnectError("断流")
@@ -1703,13 +1703,14 @@ async def main() -> None:
     async def collect2(s):
         got2.append(s)
 
-    await core.reply("private:cut", "在吗", on_sentence=collect2)
+    after_cut, _ = await core.reply("private:cut", "在吗", on_sentence=collect2)
     con2 = sqlite3.connect(TMP / "chat.db")
     last = con2.execute(
         "SELECT content FROM messages WHERE session='private:cut' AND role='assistant' "
         "ORDER BY id DESC LIMIT 1").fetchone()
     con2.close()
-    check("断流：已发出的片段写回历史", bool(last) and "第一句" in last[0],
+    check("断流：候选片段未发送，回退正文进入历史",
+          not got2 and "回退成功" in "".join(after_cut) and bool(last) and "回退成功" in last[0],
           (last[0] if last else "none")[:40])
 
     core.__dict__.pop("_stream_raw", None)
@@ -2613,7 +2614,7 @@ async def main() -> None:
     check("compact 合并成单背景块", bool(_bg), str(_sys[-2:])[:80])
     check("compact 不再分块注入",
           not any("[你记得的事]" in s or "[你的知识索引]" in s for s in _sys))
-    check("compact 背景有来源标签", "[记忆]" in _bg and "笔记索引" in _bg, _bg[:80])
+    check("compact 背景有来源标签", "[记忆]" in _bg and "[相关知识资料]" in _bg, _bg[:80])
     check("compact 有尾部锚点", any("【这轮】" in s for s in _sys))
     check("尾部锚点足够短", all(len(s) < 120 for s in _sys if "【这轮】" in s))
     check("尾部锚点在背景之后", _sys.index(_bg) < next(

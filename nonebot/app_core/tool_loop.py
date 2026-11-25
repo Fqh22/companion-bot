@@ -13,6 +13,7 @@ import json
 import logging
 import time
 
+from app_core import self_check
 from app_core.round_timing import current as current_timing
 
 log = logging.getLogger("qqbot.tool_loop")
@@ -78,7 +79,7 @@ async def run(core, msgs: list[dict], *,
               complete, stream, tools_mod, tools_banned: set[str],
               max_rounds: int, tool_timeout: float, total_timeout: float,
               images: list[str] | None = None,
-              on_text=None, stats: dict | None = None) -> str:
+              on_text=None, stats: dict | None = None, show_tool_examples: bool = False) -> str:
     """跑工具循环，返回最终正文（可能为空串，表示模型没给出正文）。
 
     complete(msgs, tools_arg) -> dict
@@ -100,35 +101,43 @@ async def run(core, msgs: list[dict], *,
     }
     allowed.discard("")
     work = [dict(m) for m in msgs]
-    first = True
-    checking_web = False
+    tool_names = {(t.get("function") or {}).get("name", "") for t in tools_mod.TOOLS}
     done: dict[str, str] = {}
     started = time.perf_counter()
+
+    candidate: list[str] = []
+
+    async def hold_text(delta: str) -> None:
+        # 工具 JSON 可能在正文增量之后才到。该轮结束之前正文只能是候选。
+        if not candidate and (timing := current_timing.get()):
+            timing.mark("model_first")
+        candidate.append(delta)
+
+    async def publish(message: dict) -> str:
+        if message.get("tool_calls") or message.get("stream_finished") is False:
+            return ""
+        raw = message.get("content") or ""
+        text = self_check.clean_reply(raw, tool_names, show_tool_examples=show_tool_examples)
+        if raw.strip() != text:
+            log.info("回复投递前过滤了内部格式")
+        if on_text and text:
+            parts = candidate if candidate and "".join(candidate).strip() == text else [text]
+            for part in parts:
+                await on_text(part)
+        return text
 
     for _ in range(max_rounds):
         if time.perf_counter() - started > total_timeout:
             log.warning("工具总预算 %.0fs 用尽，提前收尾", total_timeout)
             break
-        web_text: list[str] = []
-
-        async def collect_text(text: str) -> None:
-            web_text.append(text)
-
-        if on_text and checking_web:
-            # 查证续轮可能还有工具调用。等确认这是正文再发，避免先发未核实的结论。
-            msg = await stream(work, tools_arg, collect_text)
-        elif first and on_text:
-            msg = await stream(work, tools_arg, on_text)
-        else:
-            msg = await complete(work, tools_arg)
-        first = False
+        candidate.clear()
+        msg = await stream(work, tools_arg, hold_text) if on_text else await complete(work, tools_arg)
+        if msg.get("stream_finished") is False:
+            return ""
         st["rounds"] += 1
         calls = msg.get("tool_calls") or []
         if not calls:
-            if on_text:
-                for part in web_text:
-                    await on_text(part)
-            return (msg.get("content") or "").strip()
+            return await publish(msg)
         work.append({"role": "assistant",
                      "content": msg.get("content") or "",
                      "tool_calls": calls})
@@ -191,13 +200,13 @@ async def run(core, msgs: list[dict], *,
         for i, tc in enumerate(calls):
             work.append({"role": "tool", "tool_call_id": tc.get("id", ""),
                          "content": results[i]})
-        checking_web |= any(name in {"web_search", "web_open"} for _, name, _, _ in pending)
 
     # 轮数用尽时模型可能还在调工具。这时去掉 tools 再问一次，逼它给正文，
     # 否则用户会收到一句莫名其妙的兜底「在」。
     try:
-        final = await stream(work, None, on_text) if on_text else await complete(work, None)
-        return (final.get("content") or "").strip()
+        candidate.clear()
+        final = await stream(work, None, hold_text) if on_text else await complete(work, None)
+        return await publish(final)
     except Exception as e:  # noqa: BLE001
         log.warning("工具轮数用尽后补问失败：%s", e)
         return ""
