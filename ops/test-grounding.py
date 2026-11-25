@@ -139,6 +139,101 @@ async def main() -> int:
                                   core.append_to_message(row, "｜图注：另一份"))
     saved = (await core.history(session, max_items=1))[0]["content"]
     check("两路并发图注只写一份", sum(writes) == 1 and saved.count("｜图注：") == 1)
+    from app_core import learn_store, ocr, tool_loop
+    from app_core.summary import SummaryMixin
+
+    async def no_data(*args, **kwargs):
+        return None
+
+    async def save_over_window():
+        await core.remember(session, "user", "[发了图片]（附了 1 张图）｜图注：右侧编号 B-527")
+        for _ in range(6):
+            await core.remember(session, "user", "换个话题，" + "背景信息" * 350)
+
+    await save_over_window()
+    with (patch.object(core, "_prepare_fetches", no_data),
+          patch.object(core, "_prepare_vectors", no_data),
+          patch.object(core, "_prepare_recall", no_data),
+          patch.object(core, "_prepare_knowledge", no_data)):
+        past = await core._turn_prepare(session, "还是回到刚才那张截图，右侧编号是什么？", [], None)
+        await core._turn_compose(past)
+    check("图注超出近期窗口后仍能按本会话回查并交给主模型",
+          all("B-527" not in h["content"] for h in past.history)
+          and any("历史图片证据" in m["content"] and "B-527" in m["content"] for m in past.msgs))
+    check("其他会话拿不到本会话的图注", not await core.image_history("private:other"))
+    from app_core import files
+
+    files.SAVE_DIR.mkdir(parents=True, exist_ok=True)
+    img = files.SAVE_DIR / "sample.png"
+    img.write_bytes(b"fixture")
+    msg_id = await core.remember(session, "user", "[发了图片]｜图注：原图引用测试")
+    await core.save_image_references(session, msg_id, {"qq:42": [str(img)]})
+    found = await core.recalled_image(session, "qq:42")
+    check("持久图片引用命中同一会话和平台消息",
+          found and found["id"] == msg_id and found["paths"] == [str(img)]
+          and not await core.recalled_image(session, "feishu:42")
+          and not await core.recalled_image("private:other", "qq:42"))
+
+    async def fake_ocr(*args, **kwargs):
+        return "RIGHT B-527"
+
+    async def no_vision(*args, **kwargs):
+        raise AssertionError("完整 OCR 无须再发一次图注请求")
+
+    with patch.object(ocr, "ocr_text", fake_ocr), patch.object(core, "complete_raw", no_vision):
+        caption = await core.caption_images(["fake.png"], text_first=True)
+    check("OCR 文字进入共享图注，完整识别跳过视觉图注模型", "RIGHT B-527" in caption)
+
+    long_query = "我在写作，" + "无关背景很多。" * 85 + "帮我查一下 DeepSeek-R1 的首次发布日期。"
+    queries = []
+
+    async def fetch(_turn, query):
+        queries.append(query)
+        return "来源与答案"
+
+    with patch.object(core, "_fetch_search", fetch):
+        await core._prepare_search(Turn(session, long_query, [], None, True, "lookup", time.perf_counter()), long_query)
+    check("预搜索保留长问题末尾的检索目标", len(queries) == 1 and "DeepSeek-R1" in queries[0])
+    check("可由已给信息解决的比较不预搜索", not core._wants_search(turn, "我给了两个数字，哪个更高？"))
+
+    async def tool_gate(_core, messages, *, tools_banned, **kwargs):
+        blocked = {"web_search", "web_open"} <= tools_banned
+        routed = any("判断证据是否够" in msg["content"] for msg in messages)
+        return "blocked" if blocked and routed else ""
+
+    with patch.object(tool_loop, "run", tool_gate):
+        result = await core._run_tools([{"role": "user", "content": "不用搜"}], allow_web=False, retry=True)
+    check("禁搜约束覆盖主回复工具和重试", result == "blocked"
+          and grounding.forbids_web("不要联网，按我发的图回答")
+          and not grounding.forbids_web("他对我说：不用查这个。"))
+
+    dialog = "前面是背景。" + "背景" * 230 + "。更正，日期改到周三。" + "背景" * 230 + "。最后地点定在东门。"
+    rendered = summarize.format_dialog([("user", dialog, now)])
+    check("总结保留长输入中间纠正和末尾决定", "日期改到周三" in rendered and "地点定在东门" in rendered)
+
+    profile = {"职业与求职": {"text": "已入职", "changed": True, "evidence": "我已经入职了", "confidence": 0.9}}
+    denied_profile = learn_store.apply_review({"profile": profile}, evidence_sources={6: "他说：我已经入职了。"})
+    denied_partial = learn_store.apply_review({"profile": profile}, evidence_sources={6: "并不是我已经入职了。"})
+    verified_profile = learn_store.apply_review({"profile": profile}, evidence_sources={7: "我已经入职了。"})
+    check("自动复盘仅采信可回查的用户原话",
+          not denied_profile["profile"] and not denied_partial["profile"] and verified_profile["profile"]
+          and learn_store.profile_fields().get("职业与求职") == "已入职")
+
+    pledge = "我会准备手写材料和面试文件。"
+    unverified = ("下午提交简历", "我会下午提交简历。")
+    candidates = [("准备手写材料", pledge), unverified]
+    verified = SummaryMixin._verified_followups(candidates, [
+        (128, "user", "朋友说：" + unverified[1], now), (129, "user", pledge, now)])
+    check("总结里的跟进需有用户承诺，转述不会创建事项", len(verified) == 1 and verified[0][1] == 129)
+    topic, message, ts, source_key = verified[0]
+    inserted = followup.add(topic, source_ts=ts, source_msg_id=message, source_key=source_key)
+    from app_core import followup_store
+    existing_id = followup_store.id_for_text(topic)
+    if existing_id:
+        followup.mark_done([existing_id])
+    duplicate = followup.add("准备面试文件", source_ts=ts, source_msg_id=message, source_key=source_key)
+    check("同一条承诺换摘录重放保留已完成状态", inserted and not duplicate and bool(existing_id))
+
     await app.stop()
     return report()
 

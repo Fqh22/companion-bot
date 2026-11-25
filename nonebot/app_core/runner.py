@@ -30,7 +30,8 @@ from datetime import datetime
 from typing import Protocol
 
 from app_core import mood, pacing
-from app_core.delivery import BUFFERED, Capability, DeliveryPolicy, DeliveryResult, Receipt, is_buffered
+from app_core.delivery import (BUFFERED, DELIVERY_UNKNOWN, Capability, DeliveryPolicy,
+                               DeliveryResult, Receipt, is_buffered, is_delivered)
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.message import Part as _Part
 from app_core.round_timing import TurnTiming, current
@@ -106,13 +107,13 @@ class TurnRunner:
                         self.channel.send_part(session, part), timeout=timeout)
             except asyncio.TimeoutError:
                 log.warning("[runner] 发送 %s 超时（>%.1fs）", part.form, timeout or 0)
-                result = False
+                return DELIVERY_UNKNOWN
             except Exception as e:  # noqa: BLE001
                 log.warning("[runner] 发送 %s 失败：%s", part.form, e)
-                result = False
+                return DELIVERY_UNKNOWN
             # 已缓冲 ≠ 已送达，也不能当成失败再发一遍。
-            if is_buffered(result):
-                return BUFFERED
+            if result is DELIVERY_UNKNOWN or is_buffered(result):
+                return result
             ok = bool(result)
             if not ok and part.form == "voice":
                 # 声明支持 != 发得出去：合成/上传失败时也要有文字兜底
@@ -260,6 +261,7 @@ class TurnRunner:
         typing.add_done_callback(forget_typing)
 
         async def sender() -> None:
+            interrupted = False
             while (entry := await pending.get()) is not None:
                 part, progress = entry
                 if progress:
@@ -275,9 +277,22 @@ class TurnRunner:
                         if sent and not is_buffered(sent):
                             timing.mark("progress_sent")
                     continue
-                status = await self._pace_and_send(msg.session, part, len(confirmed), started)
-                if not status or is_buffered(status):
+                if interrupted:
                     continue
+                status = await self._pace_and_send(msg.session, part, len(confirmed), started)
+                if status is False and self._remaining(started) > 0:
+                    status = await self._send_part(
+                        msg.session, _Part("text", part), timeout=self._remaining(started))
+                if is_buffered(status):
+                    continue
+                if not status:
+                    interrupted = True
+                    timing.status = "delivery_unknown" if status is DELIVERY_UNKNOWN else "delivery_failed"
+                    part = "刚才的回复发送中断了，我可以接着说。"
+                    status = await self._send_part(
+                        msg.session, _Part("text", part), timeout=min(2.0, self._remaining(started)))
+                    if not is_delivered(status):
+                        continue
                 text = status.text if isinstance(status, Receipt) and status.text is not None else part
                 confirmed.append(text)
                 if isinstance(status, Receipt) and status.reference:
@@ -318,6 +333,8 @@ class TurnRunner:
                 await enqueue(part)
             await asyncio.wait_for(pending.put(None), timeout=self._remaining(started))
             await asyncio.wait_for(worker, timeout=self._remaining(started))
+            if timing.status in ("delivery_failed", "delivery_unknown"):
+                return out
             for target, form, sent in ((out.images, "image", out.images_sent),
                                        (out.audio, "voice", out.audio_sent)):
                 for path in target:

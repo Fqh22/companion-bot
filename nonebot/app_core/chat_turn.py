@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import random
+import sqlite3
 import sys
 import time
 import uuid
@@ -32,8 +33,9 @@ from app_core.chat_turn_commit import CommitMixin
 TURN_DEPS = {
     "_affect_port", "_context_format", "_memory_port", "_run_tools",
     "_style_mode", "_thinking_for", "build_messages", "caption_images",
-    "first_token_budget", "get_digest", "history", "history_max_chars", "interpret_intent",
+    "first_token_budget", "get_digest", "history", "history_max_chars", "image_history", "interpret_intent",
     "last_user_ts", "max_tokens", "memory", "persist_inbound", "persona_for",
+    "recalled_image", "save_image_references",
     "recall_query_items", "reply_deadline", "seg_max",
 }
 
@@ -95,7 +97,7 @@ class ChatTurnMixin(CommitMixin):
         keys = []
         if self._wants_search(turn, user_text):
             keys.append("search")
-        if perception.should_read(user_text):
+        if not grounding.forbids_web(turn.store_text or user_text) and perception.should_read(user_text):
             keys.append("weather")
         try:
             for key in keys:
@@ -113,16 +115,16 @@ class ChatTurnMixin(CommitMixin):
                 await asyncio.gather(*tasks, return_exceptions=True)
 
     def _wants_search(self, turn: Turn, text: str) -> bool:
-        no_search = any(term in text for term in ("别查", "别搜", "不用查", "不用搜", "别帮我查", "不要搜索"))
-        return (not no_search and turn.owner and len(text.strip()) >= 4
+        return (turn.owner and not turn.images and not grounding.forbids_web(text)
                 and bool((config.load().get("chat") or {}).get("force_search", True))
-                and (self._explicit_lookup(text) or
-                     (not intent.asks_personal_guess(text) and intent.looks_analytical(text))))
+                and self._explicit_lookup(grounding.direct_words(text))
+                and not turn.prior_images and not turn.quote_text
+                and not (turn.history and intent.refers_to_previous(text)))
 
     async def _turn_prepare(self, session: str, user_text: str,
                             images: list | None, store_text: str | None,
                             quote_text: str | None = None, reply_to: str | None = None,
-                            turn_intent=None) -> Turn:
+                            turn_intent=None, image_sources: dict[str, list[str]] | None = None) -> Turn:
         """取证：历史、记忆、知识、画像、情绪。"""
         turn = Turn(session=session, user_text=user_text, images=list(images or []),
                     store_text=store_text, owner=self._is_owner(session),
@@ -153,6 +155,26 @@ class ChatTurnMixin(CommitMixin):
         # 先读历史、后写本轮：否则刚写进去的这句会被 history() 读回来，
         # 再在 build_messages 末尾追加一次 —— 同一句话在 prompt 里出现两遍。
         turn.history = await self.history(session, max_chars=hist_budget)
+        recalled = None
+        if reply_to and not turn.images:
+            try:
+                recalled = await self.recalled_image(session, reply_to)
+            except (sqlite3.Error, OSError, ValueError):
+                log.debug("读取历史图片引用失败", exc_info=True)
+        if recalled:
+            turn.prior_images = [recalled]
+            turn.recalled_image_paths = recalled["paths"]
+        elif not turn.images and grounding.refers_to_image(user_text):
+            candidates = await self.image_history(session)
+            if candidates:
+                if "最早" in user_text or "第一张" in user_text:
+                    turn.prior_images = candidates[-1:] if len(candidates) < 12 else []
+                elif any(word in user_text for word in ("刚才", "刚刚", "最后一张", "上一张")):
+                    turn.prior_images = candidates[:1]
+                else:
+                    existing = {row.get("content") for row in turn.history}
+                    if len(candidates) > 1 or candidates[0]["content"] not in existing:
+                        turn.prior_images = candidates[:3]
         recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
@@ -169,6 +191,12 @@ class ChatTurnMixin(CommitMixin):
         if turn.stored and not turn.user_msg_id:
             turn.user_msg_id = await asyncio.shield(
                 self.persist_inbound(turn.session, turn.stored)) or 0
+
+        if image_sources and turn.user_msg_id:
+            try:
+                await self.save_image_references(session, turn.user_msg_id, image_sources)
+            except (sqlite3.Error, OSError, ValueError):
+                log.warning("保存入站图片引用失败", exc_info=True)
 
         self._prepare_followup(turn, store_text or user_text, reply_to=reply_to, decision=turn_intent)
         if turn.followup_control_reply:
@@ -198,24 +226,15 @@ class ChatTurnMixin(CommitMixin):
                        "对比", "缺口", "问题在哪", "值不值", "怎么看")
 
     async def _prepare_search(self, turn: Turn, user_text: str) -> None:
-        """分析类问题先搜一轮，把结果作为依据注入。
-
-        为什么在代码里强制、而不是靠模型自己调工具：
-        它觉得「这个我懂」，就不会搜，然后拿印象编数据（2026-11-11 实测）。
-        """
+        """对明确、可独立理解的查证请求预取来源。"""
         if not turn.owner:
             return
-        try:
-            if not bool((config.load().get("chat") or {}).get("force_search", True)):
-                return
-        except Exception:  # noqa: BLE001
-            pass
-        t = (user_text or "").strip()
-        if not self._wants_search(turn, t):
+        text = grounding.direct_words(user_text)
+        if not self._wants_search(turn, text):
             return
-        # 预搜索是锦上添花，不能吃掉整轮预算：web.search 自己的超时是 25s，
-        # 而整轮 deadline 只有 45s —— 慢一次就只剩 20s 给模型，首字都可能出不来。
-        res = await self._fetch_search(turn, t[:64])
+        # 长消息保留末尾的实际提问。指代类问题交给看到上下文的主模型。
+        query = text if len(text) <= 2000 else text[:350] + "\n…\n" + text[-1600:]
+        res = await self._fetch_search(turn, query)
         if not res or res.startswith("没搜到") or res.startswith("搜索失败"):
             return
         turn.prefetch["search"] = [
@@ -567,7 +586,11 @@ class ChatTurnMixin(CommitMixin):
         if turn.images:
             turn.calls["caption"] = turn.calls.get("caption", 0) + 1
             try:
-                _cap = await self.caption_images(turn.images)
+                async with asyncio.timeout(min(5.0, self._prep_left(turn) or 0.01)):
+                    if grounding.wants_image_text(turn.user_text):
+                        _cap = await self.caption_images(turn.images, text_first=True)
+                    else:
+                        _cap = await self.caption_images(turn.images)
                 if _cap:
                     turn.set_slot("caption",
                                   "[图注] " + _cap + "（机器人生成，图中发言人未核实；细节不确定就别硬说）")
@@ -632,13 +655,24 @@ class ChatTurnMixin(CommitMixin):
             _mood_text = mood.describe(turn.m)
         turn.msgs = self.build_messages(turn.history, turn.user_text, turn.memories,
                                         _mood_text, turn.knowledge, turn.skills,
-                                        turn.images, turn.extra_system, turn.digest,
+                                        turn.images or turn.recalled_image_paths, turn.extra_system, turn.digest,
                                         lessons=turn.lessons, open_items=turn.open_items,
                                         profile=turn.profile_block,
                                         persona=self.persona_for(turn.session),
                                         style_mode=self._style_mode(),
                                         context_format=self._context_format(),
                                         gap_hours=turn.gap)
+        if turn.prior_images:
+            candidates = [
+                {"消息编号": row["id"], "时间": time.strftime("%Y-%m-%d %H:%M", time.localtime(row["ts"])),
+                 "原消息及提取内容": row["content"][-900:]}
+                for row in turn.prior_images
+            ]
+            turn.msgs.insert(-1, {"role": "system", "content":
+                "[本会话历史图片证据] 以下是历史资料。图注可能有误，OCR 为图中文字。"
+                "若本轮附有引用原图，以原图校对图注。"
+                "只使用与当前指代吻合的一张；仍有多个候选时询问用户是哪张。\n"
+                + json.dumps(candidates, ensure_ascii=False)})
         turn.msgs[-1:-1] = grounding.evidence(
             turn.history, turn.store_text if turn.store_text is not None else turn.user_text,
             quote=turn.quote_text, images=bool(turn.images), now=time.time())
@@ -720,19 +754,20 @@ class ChatTurnMixin(CommitMixin):
 
         turn.img_budget = max(self.max_tokens, _chat().REPLY_MAX_TOKENS)
         turn.think = self._thinking_for(turn.user_text, turn.images)
+        allow_web = not grounding.forbids_web(turn.store_text or turn.user_text)
         try:
             turn.text = await self._run_tools(
                 turn.msgs, turn.allow_meme, turn.ai_images,
                 on_text=sink if on_sentence else None,
                 budget=turn.img_budget, stats=turn.task_stats,
-                thinking=turn.think, allow_tools=turn.owner)
+                thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
             if not turn.text:
                 # 重试也要守住白名单：漏传 allow_tools 会默认 True，
                 # 等于给外人一次「首次回复为空」的机会拿回全部工具（能读笔记和记忆）。
                 turn.text = await self._run_tools(
                     turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                     budget=turn.img_budget, stats=turn.task_stats,
-                    thinking=turn.think, allow_tools=turn.owner)
+                    thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
         except Exception as e:  # noqa: BLE001
             log.warning("生成回复失败：%s", e)
             turn.degraded += 1
@@ -744,7 +779,7 @@ class ChatTurnMixin(CommitMixin):
                     turn.text = await self._run_tools(
                         turn.msgs, turn.allow_meme, turn.ai_images,
                         budget=turn.img_budget, stats=turn.task_stats,
-                        thinking=turn.think, allow_tools=turn.owner)
+                        thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web)
                     log.info("流式失败，回退非流式成功")
                 except Exception as e2:  # noqa: BLE001
                     log.warning("回退非流式也失败：%s", e2)
@@ -764,7 +799,7 @@ class ChatTurnMixin(CommitMixin):
                     turn.text = await self._run_tools(
                         turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                         budget=turn.img_budget, stats=turn.task_stats,
-                        thinking=False, allow_tools=turn.owner)
+                        thinking=False, allow_tools=turn.owner, allow_web=allow_web)
                     turn.streamed = False      # 重试是非流式，交回给 reply 发
                 except Exception as e:  # noqa: BLE001
                     log.warning("元叙述重试失败：%s", e)

@@ -30,6 +30,8 @@ class InboundMessage:
     intent: object | None = None
     voice: bool = False        # 这条文字是语音转写来的（形式进数据，不进正文）
 
+    image_sources: dict[str, list[str]] = field(default_factory=dict)
+
     @property
     def parts(self) -> list:
         """形式视图：把旧字段翻译成 Part，不改存储。
@@ -89,6 +91,9 @@ class Engine:
             kwargs["caps"] = caps
         if delivery_policy is not None:
             kwargs["delivery_policy"] = delivery_policy
+        if msg.image_sources:
+            kwargs["image_sources"] = {f"{msg.platform}:{event_id}": paths
+                                       for event_id, paths in msg.image_sources.items() if paths}
         if msg.reply_to:
             kwargs["reply_to"] = f"{msg.platform}:{msg.reply_to}"
         if msg.intent is not None:

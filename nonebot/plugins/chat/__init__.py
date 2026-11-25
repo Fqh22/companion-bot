@@ -13,6 +13,7 @@ import httpx
 
 from nonebot import get_bots, get_driver, logger, on_message
 from nonebot.exception import FinishedException
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     MessageEvent,
@@ -22,8 +23,8 @@ from nonebot.adapters.onebot.v11 import (
 
 from app_core import asr, config, pacing
 from app_core import turn as turn_mod
-from app_core.inbound_turns import ImageLoad, InboundTurns
-from app_core.delivery import BUFFERED, Capability, DeliveryResult, Receipt
+from app_core.inbound_turns import ImageLoad, InboundTurns, VoiceLoad
+from app_core.delivery import BUFFERED, DELIVERY_UNKNOWN, Capability, DeliveryResult, Receipt
 from app_core.runner import TurnRunner, TurnTiming
 from app_core.outbound import READ_ALOUD_DIRECTIVE
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
@@ -101,9 +102,10 @@ async def _deliver_voice_reply(sid: str, ch: QQChannel,
 
 def _add(sid: str, *, text: str | None = None, image_loaders: tuple[ImageLoad, ...] = (),
          file: tuple[str, str, str] | None = None,
-         meta: dict | None = None) -> None:
+         meta: dict | None = None, voice_loader: VoiceLoad | None = None) -> None:
     _turns.submit(sid, turn_mod.Turn(texts=[text] if text else [],
-                                    file=file, meta=dict(meta or {})), image_loaders=image_loaders)
+                                    file=file, meta=dict(meta or {})), image_loaders=image_loaders,
+                  voice_loader=voice_loader)
     try:
         core.note_user_active(sid)
     except Exception:  # noqa: BLE001
@@ -146,7 +148,7 @@ class QQChannel:
             return BUFFERED
         # 只有第一段带引用：后面几段接在它自己那条后面才对
         reply_id = self.reply_to if (QUOTE_REPLY and not self.sent) else None
-        ok = await _send_text(text, reply_id=reply_id)
+        ok = await _send_text(text, tries=1, reply_id=reply_id)
         if ok:
             self.sent.append(text)
         return ok
@@ -207,9 +209,11 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
     logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
                 f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
     try:
-        if turn.empty() and turn.meta.get("image_unavailable"):
-            timing.status = "image_unavailable"
-            if await ch.send_text(sid, turn_mod.IMAGE_UNAVAILABLE):
+        if turn.empty() and (turn.meta.get("image_unavailable") or turn.meta.get("voice_unavailable")):
+            voice_failed = turn.meta.get("voice_unavailable")
+            timing.status = "voice_unavailable" if voice_failed else "image_unavailable"
+            message = "这段语音没转出来，可以重发或打字补一下。" if voice_failed else turn_mod.IMAGE_UNAVAILABLE
+            if await ch.send_text(sid, message):
                 timing.mark("first_sent")
             return
         if turn.meta.get("image_unavailable") and stored is None:
@@ -233,10 +237,8 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
             reply_to=reply_to,
             quote_text=quoted,
             store_text=stored,
-            voice=voice, intent=decision)
+            voice=voice, intent=decision, image_sources=turn.meta.get("image_sources"))
         out = await runner.run(msg)
-        # 行号要在锁内取：出了锁，下一轮可能已经把它覆盖
-        msg_id = int(getattr(core, "user_msg_id", 0) or 0)
         logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
         if getattr(out, "images_sent", None):
             # 只看**实际发成功**的图；发送失败时不能写「另外发了一张图」。
@@ -253,9 +255,6 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
         # 画画同理：只在他明确要求时画，不做「氛围到了就画」
         if decision.draw:
             asyncio.create_task(_draw_later(sid, raw))
-        if turn.images and msg_id:
-            # 图注放后台：它只影响「之后的轮次」，晚一两秒不影响这一条回复
-            asyncio.create_task(_caption_later(msg_id, list(turn.images)))
     except asyncio.TimeoutError:
         timing.status = "timeout"
         logger.error(f"[chat] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） "
@@ -291,21 +290,6 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
 _turns = InboundTurns(_run_turn,
                      text_gap=float(_SETTLE_CFG.get("text_settle_seconds", 2.0)),
                      media_gap=float(_SETTLE_CFG.get("media_settle_seconds", 1.5)))
-
-
-async def _caption_later(msg_id: int, paths: list[str]) -> None:
-    """后台给图片补一句图注，追加到那条用户消息上。
-
-    为什么值得多花一次小调用：历史里原来只写「（附了 1 张图）」，隔天问
-    「昨天那张图」它完全不记得。图注把「图」变成可检索的文字，也让复盘时
-    能看见「当时我看到的是 X，他说不是这意思」。
-    """
-    try:
-        cap = await core.caption_images(paths)
-        if cap and await core.append_to_message(msg_id, f"｜图注：{cap}"):
-            logger.info(f"[chat] 图注已补：{cap[:30]}")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] 补图注失败：{type(e).__name__}: {e}")
 
 
 def _bot():
@@ -380,9 +364,13 @@ async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> 
             response = await chat.send(msg)
             mid = response.get("message_id") if isinstance(response, dict) else None
             return Receipt("qq", str(mid or ""), part)
+        except ActionFailed as e:
+            logger.warning(f"[chat] 平台拒绝发送（{attempt}/{tries}）：{e}")
+            if attempt < tries:
+                await asyncio.sleep(0.5 * attempt)
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"[chat] 发送失败（{attempt}/{tries}）：{type(e).__name__}: {e}")
-            await asyncio.sleep(0.5 * attempt)
+            logger.warning(f"[chat] 发送结果未知：{type(e).__name__}: {e}")
+            return DELIVERY_UNKNOWN
     return False
 
 
@@ -440,54 +428,30 @@ async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",
     _add(sid, text=caption.strip() or None, file=(name, body, note), meta=meta)
 
 
-async def _collect_voice(sid: str, seg, text: str,
-                         meta: dict | None = None) -> None:
-    """语音：下载 → 转码 → 智谱转写 → 当文本进对话（docs/01-定义与决策.md）。
-
-    转不出来就明说，不猜内容——一条语音听不清，不该变成一段编出来的话。
-    """
-    url = str(seg.data.get("url") or seg.data.get("file") or "")
+async def _load_voice(segment) -> str:
+    """先由入站队列占位，再下载并转写。"""
+    url = str(segment.data.get("url") or segment.data.get("file") or "")
     if not url.startswith("http"):
-        await chat.finish("语音没拿到链接，打字说吧")
-        return
-    tmp = None
+        return ""
+    tmp = wav = None
     try:
         async with httpx.AsyncClient(
-                timeout=60, follow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0 (Linux; Android 13) QQ/9.0"}) as c:
-            r = await c.get(url)
-        if r.status_code != 200:
-            logger.warning(f"[chat] voice 下载失败 {r.status_code} {url[:60]}")
-            await chat.finish("语音下载失败，打字吧")
-            return
-        tmp = Path(tempfile.mkstemp(prefix="voice-")[1])
-        tmp.write_bytes(r.content)
+                timeout=10, follow_redirects=True,
+                headers={"User-Agent": "Mozilla/5.0 (Linux; Android 13) QQ/9.0"}) as client:
+            response = await client.get(url)
+        response.raise_for_status()
+        with tempfile.NamedTemporaryFile(prefix="voice-", delete=False) as stream:
+            tmp = Path(stream.name)
+            stream.write(response.content)
         wav = await asyncio.to_thread(asr.to_wav, tmp)
-        if wav is None:
-            logger.warning(f"[chat] voice 转码失败 {len(r.content)} 字节")
-            await chat.finish("这段语音我转不了，打字吧")
-            return
-        res = await asr.transcribe(wav)
-        wav.unlink(missing_ok=True)
-        heard = str(res.get("text") or "").strip()
-        if not heard:
-            logger.warning(f"[chat] voice 空转写：{res.get('error')}")
-            await chat.finish("没听清，再说一遍？")
-            return
-        logger.info(f"[chat] voice {sid}: {len(heard)} 字")
-        # 形式进 meta，不再塞进正文：前缀是渲染细节，不该变成数据。
-        # 渲染层（Turn.compose）仍然会加「[语音] 」，模型看到的没变。
-        _m = dict(meta or {})
-        _m["voice"] = True
-        _add(sid, text=(text + " " + heard).strip() if text else heard, meta=_m)
-    except FinishedException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"[chat] voice failed: {type(e).__name__}: {e}")
-        await chat.finish("语音没听清，打字吧")
+        if not wav:
+            return ""
+        result = await asr.transcribe(wav)
+        return str(result.get("text") or "").strip()
     finally:
-        if tmp:
-            tmp.unlink(missing_ok=True)
+        for path in (tmp, wav):
+            if path:
+                path.unlink(missing_ok=True)
 
 
 async def _load_image(bot, segment) -> str | None:
@@ -540,7 +504,7 @@ async def _handle(event: MessageEvent):
 
     rec_segs = [s for s in event.message if getattr(s, "type", "") == "record"]
     if rec_segs:
-        await _collect_voice(sid, rec_segs[0], text, meta=meta)
+        _add(sid, text=text, meta=meta, voice_loader=partial(_load_voice, rec_segs[0]))
         return
 
     img_segs = [s for s in event.message if getattr(s, "type", "") == "image"]

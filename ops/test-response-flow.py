@@ -12,7 +12,7 @@ import os
 os.environ["QQBOT_ROOT"] = str(temp_root("reply-flow-"))
 bootstrap()
 from app_core import chat_turn, embed_provider, pacing, tool_loop
-from app_core.delivery import BUFFERED
+from app_core.delivery import BUFFERED, DELIVERY_UNKNOWN
 from app_core.engine import InboundMessage, OutboundMessage
 from app_core.inbound_turns import InboundTurns
 from app_core.turn import Turn
@@ -41,6 +41,7 @@ async def delivery():
     class Channel:
         forms = {"text"}
         defer_text = False
+        failed_once = False
 
         async def typing(self, session, on):
             if on:
@@ -50,7 +51,10 @@ async def delivery():
             if part.content == "第一段。":
                 first_attempt.set()
                 await release.wait()
-            return part.content != "第二段。"
+            if part.content == "第二段。" and not self.failed_once:
+                self.failed_once = True
+                return False
+            return True
 
     timing = TurnTiming("test")
     with patch.object(pacing, "pace_seconds", return_value=0), patch.object(pacing, "gap_seconds", return_value=0):
@@ -63,8 +67,25 @@ async def delivery():
         finally:
             release.set()
             await run
-    check("历史只写实际送达，顺序保留", history == ["第一段。尾段。"], history)
+    check("明确失败的中段补发后按原顺序记账", history == ["第一段。第二段。尾段。"], history)
     check("端到端计时落到实际首段确认", timing.marks["first_sent"] >= timing.marks["runner_start"])
+
+    class UnknownChannel(Channel):
+        def __init__(self):
+            self.attempts = []
+
+        async def send_part(self, session, part):
+            self.attempts.append(part.content)
+            return DELIVERY_UNKNOWN if part.content == "第二段。" else True
+
+    unknown = UnknownChannel()
+    problem = TurnTiming("test")
+    with patch.object(pacing, "pace_seconds", return_value=0), patch.object(pacing, "gap_seconds", return_value=0):
+        await TurnRunner(Engine(), unknown, deadline=3, timing=problem).run(InboundMessage("unknown", "测试"))
+    check("送达未知不重发，拦住后续正文并标注中断",
+          unknown.attempts[:2] == ["第一段。", "第二段。"] and len(unknown.attempts) == 3
+          and "发送中断" in unknown.attempts[-1] and problem.status == "delivery_unknown"
+          and "第二段" not in history[-1] and "尾段" not in history[-1], unknown.attempts)
 
     release.clear()
     first_attempt.clear()
@@ -115,9 +136,10 @@ async def lookups():
             return [(0, "天气测试")]
 
     text = "现在天气情况怎么样？"
-    turn = SimpleNamespace(owner=True, user_text=text, t0=time.perf_counter(), prefetch={},
+    turn = SimpleNamespace(owner=True, user_text=text, store_text=None, t0=time.perf_counter(), prefetch={},
                            fetch_metrics={}, budget_exhausted=False, parallel=False)
-    with patch.object(chat_turn.config, "load", return_value={"llm": {"prepare_parallel": {"weather": True}}}):
+    with (patch.object(Core, "_wants_search", return_value=True),
+          patch.object(chat_turn.config, "load", return_value={"llm": {"prepare_parallel": {"weather": True}}})):
         await Core()._prepare_fetches(turn, text)
     check("只开启天气并发时预搜索继续执行", set(steps) == {"weather", "search"}, steps)
     check("慢预搜索按共享预算降级，天气结果保留",
@@ -333,8 +355,38 @@ async def inbound_images():
           and "未能读取" in mixed.image_status("看这两张图"))
 
 
+async def inbound_voice():
+    seen = []
+
+    async def handle(key, turn):
+        seen.append(turn)
+
+    async def slow_voice():
+        await asyncio.sleep(0.045)
+        return "补充的转写"
+
+    async def unreadable():
+        return ""
+
+    queue = InboundTurns(handle, text_gap=0.025, media_gap=0.025)
+    task = queue.submit("voice", Turn(texts=["先说这件事"]))
+    queue.submit("voice", Turn(), voice_loader=slow_voice)
+    queue.submit("voice", Turn(texts=["最后一句"]))
+    await task
+    check("文字、慢转写、文字合为一轮并保留收件顺序",
+          len(seen) == 1 and seen[0].texts == ["先说这件事", "补充的转写", "最后一句"]
+          and seen[0].meta["voice"], seen)
+    task = queue.submit("voice", Turn(), voice_loader=unreadable)
+    queue.submit("voice", Turn(texts=["还有这句"]))
+    await task
+    check("语音失败时保留同轮文字并标出缺失",
+          seen[-1].texts == ["还有这句"] and seen[-1].meta["voice_unavailable"]
+          and not seen[-1].meta["voice"], seen[-1])
+
+
 async def main() -> int:
     await inbound_bursts()
+    await inbound_voice()
     await inbound_images()
     await delivery()
     await lookups()

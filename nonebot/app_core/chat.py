@@ -290,6 +290,14 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
                 "session TEXT NOT NULL, role TEXT NOT NULL,"
                 "content TEXT NOT NULL, ts REAL NOT NULL)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_session ON messages(session, id)")
+            await db.execute(
+                "CREATE TABLE IF NOT EXISTS inbound_image_refs (session TEXT NOT NULL, "
+                "platform_ref TEXT NOT NULL, message_id INTEGER NOT NULL, paths TEXT NOT NULL, "
+                "PRIMARY KEY(session, platform_ref))")
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_inbound_image_message ON inbound_image_refs(message_id)")
+            await db.execute(
+                "CREATE TRIGGER IF NOT EXISTS delete_inbound_image_refs AFTER DELETE ON messages "
+                "BEGIN DELETE FROM inbound_image_refs WHERE message_id=OLD.id; END")
             # 按角色扫时间的查询（主动消息的「他上次说话是什么时候」）现在走全表扫。
             # 行数还小，但这是纯增量成本为零的一行。
             await db.execute(
@@ -359,26 +367,22 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         remind.init()
         followup.init()
 
-    async def caption_images(self, paths: list, limit: int = 2) -> str:
-        """给图片生成一句图注，用于写进历史。
-
-        为什么要做：历史里原来只有「（附了 1 张图）」，隔天问「昨天那张图」它完全不记得。
-        图注让"图"变成可检索的文字，代价是每张图多一次很小的模型调用（后台跑，不挡回复）。
-        """
+    async def caption_images(self, paths: list, limit: int = 2, *, text_first: bool = False) -> str:
+        """提取当前图片的文字或描述，并复用到历史。"""
         from app_core.files import to_data_url
         from app_core import ocr as ocr_mod
 
-        # OCR 先跑：图里的字由专门接口提，比让视觉模型「顺带读」准得多
-        # （实测截图 3 行报错：视觉只读到 2-3 行，OCR 全读对）。
-        # 失败返回空串 → 退回「视觉自己读」，不影响图注本身。
-        # 2026-11-15 踩过的坑：这里只加了下面对 ocr_text 的拼接、没加这个赋值，
-        # NameError 被 except 吞掉，图注直接变空（CI 报「图注生成走通」失败）。
-        ocr_text = ""
-        if paths:
-            try:
-                ocr_text = await ocr_mod.ocr_text(paths[0])
-            except Exception:  # noqa: BLE001
-                ocr_text = ""
+        # 需要逐字读取时先用 OCR；布局/画面类问题直接走视觉。
+        reads = []
+        if text_first:
+            reads = await asyncio.gather(
+                *(ocr_mod.ocr_text(path, timeout=3.0) for path in paths[:limit]),
+                return_exceptions=True)
+        readable = [f"第 {i} 张图 OCR：{value[:480]}" for i, value in enumerate(reads, 1)
+                    if isinstance(value, str) and value.strip()]
+        ocr_text = "\n".join(readable)
+        if readable and len(readable) == len(paths[:limit]):
+            return ocr_text
 
         # 2026-11-15：图注的目标是「隔天能检索」，不是「完整理解」。
         # 当轮模型直接看原图，不需要图注；图注只进历史、占 token，所以按类型覆盖：
@@ -398,7 +402,7 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
             if url:
                 content.append({"type": "image_url", "image_url": {"url": url}})
         if len(content) == 1:
-            return ""
+            return ocr_text
         try:
             # 图注是附加信息，不能吃掉整轮的 45 秒预算：它在主生成之前被同步 await，
             # 视觉模型一慢（或 429 重试）就把回复时间全占掉，用户只等到「有点卡」。
@@ -406,10 +410,11 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
                 self.complete_raw([{"role": "user", "content": content}],
                                   None, max_tokens=140, thinking=False),
                 timeout=8)
-            return (msg.get("content") or "").strip()[:200]
+            visual = (msg.get("content") or "").strip()[:200]
+            return "\n".join(part for part in (ocr_text, visual) if part)[:1000]
         except Exception as e:  # noqa: BLE001
             log.debug("生成图注失败：%s", e)
-            return ""
+            return ocr_text[:1000]
 
     def build_messages(self, history: list[dict], user_text: str,
                        memories: list[dict] | None = None,

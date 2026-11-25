@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 IMAGE_UNAVAILABLE = "图片没拿到，可以重发一下。"
 _MORE_INPUT = re.compile(
     r"[，、：,:…（(]$|(?:等我一下|等我发|我给你看|我(?:先|再|马上|等会儿|待会儿|接下来)?"
-    r"(?:给你)?(?:发|补发|截)(?:一张|个|张)?(?:截图|图片|图)|我(?:还没说完|再补一句))"
+    r"(?:给你)?(?:发|补发|截)(?:一张|个|张)?(?:截图|图片|图)|(?:发|用|补)(?:个|段|条|一段)?语音|我(?:还没说完|再补一句))"
 )
 
 
@@ -29,9 +29,11 @@ class Turn:
         return not (self.texts or self.images or self.file)
 
     def image_status(self, prompt: str) -> str:
-        if not self.meta.get("image_unavailable"):
-            return prompt
-        return prompt + "\n[有图片未能读取，请告知用户，并仅根据现有内容回答。]"
+        if self.meta.get("image_unavailable"):
+            prompt += "\n[有图片未能读取，请告知用户，并仅根据现有内容回答。]"
+        if self.meta.get("voice_unavailable"):
+            prompt += "\n[有语音未能转写，请告知用户，并仅根据现有内容回答。]"
+        return prompt
 
     def merge(self, other: "Turn") -> "Turn":
         self.texts.extend(other.texts)

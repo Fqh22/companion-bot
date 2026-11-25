@@ -2,10 +2,10 @@
 {"id": "c02-weather-cold", "user": "上海今天冷不冷", "weather": "上海 阴 9℃", "covers": [["weather", "hit", "nonempty"]]}
 {"id": "c03-weather-missing", "user": "杭州今天天气怎样", "weather": "missing", "covers": [["weather", "fail", "nonempty", "degraded"]]}
 {"id": "c04-weather-none", "user": "今天好累", "weather": null, "covers": [["weather", "none", "empty", "no_call"]]}
-{"id": "c05-search-hit", "user": "这个方案该不该做，帮我分析一下", "search": "1. 方案评估要点\n2. 成本收益对比", "covers": [["search", "hit", "nonempty"]]}
-{"id": "c06-search-trend", "user": "这个趋势值不值，对比一下", "search": "1. 趋势向上\n2. 成本可接受", "covers": [["search", "hit", "nonempty"]]}
-{"id": "c07-search-miss", "user": "该不该换工作", "search": "", "covers": [["search", "empty", "empty", "degraded"]]}
-{"id": "c08-search-error", "user": "这个方案该不该做，帮我分析一下", "search_error": true, "covers": [["search", "error", "empty", "degraded"]]}
+{"id": "c05-search-hit", "user": "帮我查一下这个方案的公开成本，再分析该不该做", "search": "1. 方案评估要点\n2. 成本收益对比", "covers": [["search", "hit", "nonempty"]]}
+{"id": "c06-search-trend", "user": "帮我查一下这个趋势，找到数据后对比一下", "search": "1. 趋势向上\n2. 成本可接受", "covers": [["search", "hit", "nonempty"]]}
+{"id": "c07-search-miss", "user": "帮我查一下这个行业的岗位数量", "search": "", "covers": [["search", "empty", "empty", "degraded"]]}
+{"id": "c08-search-error", "user": "帮我查一下这个方案的公开成本，再分析该不该做", "search_error": true, "covers": [["search", "error", "empty", "degraded"]]}
 {"id": "c09-followup-done", "user": "下周三面试我搞定了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "done", "nonempty"]]}
 {"id": "c10-followup-confirm", "user": "下周三面试好像结束了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "acknowledged", "nonempty"]]}
 {"id": "c11-followup-drop", "user": "下周三面试算了不弄了", "followup": [{"text": "下周三面试", "status": "todo"}], "history": [{"role": "user", "content": "下周三有个面试"}, {"role": "assistant", "content": "记着了，面完跟我说"}], "covers": [["followup", "drop", "nonempty"]]}

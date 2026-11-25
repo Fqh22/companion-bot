@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from app_core import paths as _paths
+from app_core.grounding import source_segments
 from app_core import profile as profile_mod
 
 log = logging.getLogger("qqbot.learn")
@@ -273,7 +274,8 @@ def normalize_correction(item: str) -> str:
     return "[通用] " + t
 
 def save_profile(fields: dict, conf: dict, evidence: dict,
-                 changed: dict | None = None, day: str | None = None) -> dict:
+                 changed: dict | None = None, day: str | None = None, *,
+                 evidence_ids: dict[str, int] | None = None) -> dict:
     """把画像字段合并进 profile.json + self_profile.md。**纯文件写入，不调模型**。
 
     从 apply_review 里抽出来，给 MemoryPort 用（P5）：写入规则只有一份，
@@ -286,15 +288,25 @@ def save_profile(fields: dict, conf: dict, evidence: dict,
     state = profile_mod.update_state(
         profile_mod.load(json_path), profile_mod.load_conf(json_path),
         profile_mod.load_seen(json_path), profile_mod.load_previous(json_path),
-        fields, conf, evidence, changed or {}, now)
+        fields, conf, evidence, changed or {}, now,
+        require_evidence=evidence_ids is not None)
     merged = state["fields"]
+    sources = {}
+    try:
+        saved_sources = json.loads(json_path.read_text(encoding="utf-8")).get("source_msg_ids")
+        if isinstance(saved_sources, dict):
+            sources = saved_sources
+    except (OSError, ValueError, AttributeError):
+        pass
+    sources = {k: v for k, v in {**sources, **(evidence_ids or {})}.items() if k in merged}
     profile_mod.save(json_path, merged, state["confidence"], state["seen"],
                      state["previous"],
-                     extra={"updated_at": now, "day": day})
+                     extra={"updated_at": now, "day": day, "source_msg_ids": sources})
     PROFILE.write_text(profile_mod.render_md(merged), encoding="utf-8")
     return state
 
-def apply_review(data: dict, day: str | None = None) -> dict:
+def apply_review(data: dict, day: str | None = None, *,
+                 evidence_sources: dict[int, str] | None = None) -> dict:
     """把复盘产出的 JSON 落到文件。**不调模型**，所以写入规则可以离线测。
 
     拆出来的原因：review() 里"调模型"和"写文件"混在一起，导致写入规则
@@ -306,13 +318,35 @@ def apply_review(data: dict, day: str | None = None) -> dict:
     fields = profile_mod.parse(raw_profile)
     conf = profile_mod.parse_conf(raw_profile)
     evidence = profile_mod.parse_evidence(raw_profile)
+    evidence_ids = None
+    corrections = data.get("corrections") or []
+    if evidence_sources is not None:
+        evidence_ids = {}
+        quotes = {}
+        for row_id, original in evidence_sources.items():
+            for part, reported in source_segments(original):
+                if not reported:
+                    normalized = " ".join(part.split()).strip("。！？!? ")
+                    if len(normalized) >= 4:
+                        quotes.setdefault(normalized, row_id)
+        for field, quote in evidence.items():
+            matched = quotes.get(quote.strip("。！？!? "))
+            if matched:
+                evidence_ids[field] = matched
+        fields = {field: value for field, value in fields.items() if field in evidence_ids}
+        evidence = {field: quote for field, quote in evidence.items() if field in evidence_ids}
+        corrections = [
+            item["text"] for item in corrections if isinstance(item, dict)
+            and isinstance(item.get("text"), str)
+            and isinstance(item.get("evidence"), str)
+            and " ".join(item["evidence"].split()).strip("。！？!? ") in quotes]
     # 老格式（一段自由文本）仍然收下，写进 md；json 这边就当这轮没给
     legacy = ""
-    if not fields and isinstance(raw_profile, str):
+    if evidence_sources is None and not fields and isinstance(raw_profile, str):
         legacy = raw_profile.strip()[:1200]
     out = {"learned": bool(learned), "profile": bool(fields or legacy),
            "corrections": 0, "curious": 0, "resolved": 0}
-    if not learned and not bool(fields or legacy):
+    if not (learned or fields or legacy or corrections):
         return out
     LEARN.mkdir(parents=True, exist_ok=True)
     (LEARN / f"{day}.md").write_text(
@@ -323,14 +357,14 @@ def apply_review(data: dict, day: str | None = None) -> dict:
         # 合并而不是整份替换：一天没聊工作，不代表他不在找工作。
         # 写入规则全在 save_profile → profile.update_state（纯函数）。
         state = save_profile(fields, conf, evidence,
-                            profile_mod.parse_changed(raw_profile), day)
+                            profile_mod.parse_changed(raw_profile), day, evidence_ids=evidence_ids)
         if state.get("dropped"):
             out["profile_dropped"] = state["dropped"]
             log.info("[learn] 画像过期删除：%s", "、".join(state["dropped"]))
     elif legacy:
         PROFILE.write_text(legacy, encoding="utf-8")
 
-    corr = [normalize_correction(str(c)) for c in (data.get("corrections") or [])]
+    corr = [normalize_correction(str(c)) for c in corrections]
     corr = [c for c in corr if c]
     if corr:
         merge_list(CORRECTIONS, "他纠正过我的", corr)

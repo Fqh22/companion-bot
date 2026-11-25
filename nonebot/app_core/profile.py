@@ -246,7 +246,8 @@ def update_state(fields: dict[str, str], conf: dict[str, float],
                  seen: dict[str, float], previous: dict[str, dict],
                  new_fields: dict[str, str], new_conf: dict[str, float],
                  evidence: dict[str, str], changed: dict[str, bool],
-                 now: float, drop_after_days: float = DROP_AFTER_DAYS) -> dict:
+                 now: float, drop_after_days: float = DROP_AFTER_DAYS,
+                 *, require_evidence: bool = False) -> dict:
     """把一次复盘的结果并进画像。纯函数，写入规则可以离线测。
 
     三条规则，对应三种真实情况：
@@ -272,7 +273,8 @@ def update_state(fields: dict[str, str], conf: dict[str, float],
         old = f.get(k)
         flag = (changed or {}).get(k)
         has_ev = bool((evidence or {}).get(k))
-
+        if require_evidence and not has_ev:
+            continue
         if old and flag is False:
             if k in (new_conf or {}):
                 c[k] = float(new_conf[k])

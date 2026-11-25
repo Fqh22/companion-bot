@@ -54,6 +54,8 @@ def init() -> None:
             "ALTER TABLE followups ADD COLUMN asked_msg_id INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE followups ADD COLUMN asked_text TEXT NOT NULL DEFAULT ''",
             "ALTER TABLE followups ADD COLUMN quiet_until REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN source_msg_id INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE followups ADD COLUMN source_key TEXT NOT NULL DEFAULT ''",
         ):
             try:
                 c.execute(ddl)
@@ -71,6 +73,8 @@ def init() -> None:
         if not any(r[1] == "target_id" for r in c.execute("PRAGMA table_info(followup_clarifications)")):
             c.execute("ALTER TABLE followup_clarifications ADD COLUMN target_id INTEGER NOT NULL DEFAULT 0")
         c.execute("CREATE INDEX IF NOT EXISTS idx_delivery_refs_message ON delivery_refs(assistant_msg_id)")
+        c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_followup_source_key ON followups(source_key) "
+                  "WHERE source_key!=''")
         # 历史清理脚本各自连接 SQLite，触发器让引用跟随历史删除。
         if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='messages'").fetchone():
             c.execute(
@@ -81,7 +85,8 @@ def init() -> None:
     c.close()
 
 def add(text: str, source: str = "memory", ref_id: str = "",
-        source_ts: float | None = None) -> bool:
+        source_ts: float | None = None, *, source_msg_id: int = 0,
+        source_key: str = "") -> bool:
     """加一条。**文本相同或近似**都跳过。
 
     只靠唯一索引挡不住「换个说法」：实测同一件事进过两条
@@ -99,6 +104,14 @@ def add(text: str, source: str = "memory", ref_id: str = "",
     init()
     c = _conn()
     try:
+        c.execute("BEGIN IMMEDIATE")
+        if source_msg_id:
+            # 同一条用户承诺被后台重放时保留原状态，含已答、暂停和关闭。
+            # 允许一条消息里明确交代多件独立事项。
+            source_tasks = c.execute("SELECT text FROM followups WHERE source_msg_id=?",
+                                     (source_msg_id,)).fetchall()
+            if any(t in old or old in t for (old,) in source_tasks):
+                return False
         try:
             from app_core.textsim import similar
 
@@ -106,7 +119,8 @@ def add(text: str, source: str = "memory", ref_id: str = "",
             # 只比未关闭的，会让「已经说过的事」换个说法重新进来再问一遍。
             rows = c.execute(
                 "SELECT text FROM followups WHERE (done=0 AND status!='cancelled') "
-                "OR created_ts > ? OR quiet_until < 0", (time.time() - 30 * 86400,)).fetchall()
+                "OR created_ts > ? OR quiet_until < 0 OR (source_msg_id>0 AND source_msg_id=?)",
+                (time.time() - 30 * 86400, source_msg_id)).fetchall()
             for (old,) in rows:
                 if similar(old, t) >= NEAR_DUP:
                     log.debug("跟进近似重复，跳过：%s ≈ %s", t[:20], old[:20])
@@ -114,9 +128,9 @@ def add(text: str, source: str = "memory", ref_id: str = "",
         except Exception:  # noqa: BLE001
             pass                                  # 相似度算不出来也不影响写入
         cur = c.execute(
-            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts, source_ts) "
-            "VALUES (?,?,?,?,?)",
-            (t, source, str(ref_id), time.time(), float(source_ts or 0)))
+            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts, source_ts, source_msg_id, source_key) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (t, source, str(ref_id), time.time(), float(source_ts or 0), source_msg_id, source_key))
         c.commit()
         # 用 rowcount 而不是 total_changes：后者是连接级累计值，判断不准
         return cur.rowcount > 0

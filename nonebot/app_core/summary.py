@@ -9,6 +9,7 @@ ChatCore 提供（Mixin 通过 self 访问），这里只搬方法体。
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -292,6 +293,30 @@ class SummaryMixin:
         if applied:
             log.info("矛盾检测：%d 条旧记忆被新记忆 %s 取代", applied, doc_id[:8])
 
+    @staticmethod
+    def _verified_followups(candidates, rows) -> list[tuple[str, int, float, str]]:
+        """摘要可以提名事项，只有实际的用户承诺才能创建跟进。"""
+        import re
+        from app_core import grounding
+
+        out = []
+        for task, evidence in candidates:
+            task, evidence = (" ".join(part.split()) for part in (task, evidence))
+            if (len(task) < 4 or not evidence or len(evidence) > 200 or task not in evidence
+                    or not re.search(r"我.{0,12}(?:会|要|答应|保证|一定|准备|得|负责)|(?:麻烦|请|帮我).{0,8}(?:跟进|盯一下|问我)", evidence)
+                    or re.search(r"如果|要是|假设|不用|不要|不再|没打算|不打算|不准备|不会|先别|等我主动|已经|完成了|办完了", evidence)):
+                continue
+            for msg_id, role, content, ts in reversed(rows):
+                own = grounding.source_segments(content or "") if role == "user" else []
+                if any(not reported and " ".join(part.split()).strip("。！？!?") == evidence.strip("。！？!?")
+                       for part, reported in own):
+                    dated_task = timenorm.normalize(task, now=timenorm.anchor(float(ts or 0)))
+                    sentence = evidence.strip("。！？!?")
+                    token = hashlib.sha256(sentence.encode("utf-8")).hexdigest()[:24]
+                    out.append((dated_task, int(msg_id), float(ts or 0), f"{msg_id}:{token}"))
+                    break
+        return out
+
     async def _summarize_once(self, session: str, force: bool = False) -> None:
         """按消息 id 水位增量固化记忆。
 
@@ -368,6 +393,8 @@ class SummaryMixin:
         data = summarize.parse(raw)
         # 第二道网：模型自己写出来的相对日期，按来源对话时间换算（见 _dated_payload）
         data = _dated_payload(data, anchor_ts)
+        verified_followups = self._verified_followups(data.get("followup_candidates") or [], rows)
+        data["followups"] = [task for task, _, _, _ in verified_followups]
         # 归并到已有词表：模型偶尔还是会给「求职面试」这种自造的近义标签，
         # 而基于实体的连边只认完全相同的字符串。
         if data.get("topics"):
@@ -397,6 +424,7 @@ class SummaryMixin:
                 "range_key": f"{session}:{last_id}-{target}",
                 # 这段对话到哪一刻为止：写库层的相对日期换算、记忆的 source_ts 都用它
                 "anchor_ts": anchor_ts,
+                "source_msg_ids": [str(r[0]) for r in rows if r[1] == "user"],
             }
             port = self._memory_port()
             if port is not None:
@@ -428,17 +456,19 @@ class SummaryMixin:
                 if port_t is not None:
                     from app_core.memory_port import MemoryItem
 
-                    for _t in data["followups"]:
+                    for _t, _mid, _ts, _key in verified_followups:
                         try:
                             await port_t.remember(MemoryItem(
                                 type="task", text=str(_t), source="memory",
                                 payload={"kind": "followup", "source": "memory",
-                                         "ref": doc_id, "source_ts": anchor_ts}))
+                                         "ref": doc_id, "source_ts": _ts, "source_msg_id": _mid,
+                                         "source_key": _key}))
                         except Exception as e:  # noqa: BLE001
                             log.debug("跟进写入跳过（%s）：%s", type(e).__name__, _t)
                 else:
-                    followup.add_many(data["followups"], "memory", doc_id,
-                                      source_ts=anchor_ts)
+                    for _t, _mid, _ts, _key in verified_followups:
+                        followup.add(_t, "memory", doc_id, source_ts=_ts,
+                                     source_msg_id=_mid, source_key=_key)
             # 滚动纪要：历史原文只留最近 2500 字，更早的靠这段纪要接住。
             # 优先用同一次调用带回来的 digest；模型没给（或太短）再退回单独一次调用，
             # 保证旧行为可用，不会因为一次 JSON 缺字段就把纪要停更。

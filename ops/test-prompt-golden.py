@@ -467,7 +467,7 @@ else:
     {"id": "chat-only", "user": "在吗"},
     {"id": "weather-hit", "user": "今天北京天气怎么样", "weather": "北京 晴 18℃"},
     {"id": "weather-fail", "user": "今天上海天气怎么样", "weather": "missing"},
-    {"id": "analytic-search", "user": "这个方案该不该做，帮我分析一下",
+    {"id": "analytic-search", "user": "这个方案的公开成本帮我查一下，再分析该不该做",
      "search": "1. 方案评估要点\n2. 成本收益"},
     {"id": "image-share", "user": "", "images": ["/tmp/a.jpg"]},
 ]

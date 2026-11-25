@@ -101,6 +101,8 @@ class Turn:
     prefetch: dict = field(default_factory=dict)
     followup_control_reply: str | None = None
     calls: dict = field(default_factory=dict)   # 每个 fetch 被调用几次（判 no_call / degraded）
+    prior_images: list = field(default_factory=list)
+    recalled_image_paths: list = field(default_factory=list)
     caption_text: str = ""                      # RENDER_SLOTS 生成、POST_WRITE 写回
     gap_basis: float = 0.0                      # 上一条用户消息时间（READ_HISTORY 冻结）
     prepare_ms: float = 0.0                     # 取证+组装耗时（首字预算的实际占用）

@@ -640,7 +640,7 @@ async def group_checks() -> None:
 
 
 async def plugin_logic_checks() -> None:
-    """插件里那些不经过 _handle 的逻辑：命令参数解析、后台图注任务。"""
+    """单独验证命令参数解析与内核图注入库。"""
     from types import SimpleNamespace
 
     import plugins.commands as cmd_mod
@@ -673,36 +673,28 @@ async def plugin_logic_checks() -> None:
           len(_parts) == 4 and _parts[-1].startswith("…（还有"), f"{len(_parts)} 段")
 
     import plugins.chat as chat_mod2
+    from app_core.chat_turn_base import Turn
 
     calls: list[tuple] = []
 
-    async def fake_cap(paths, limit: int = 2):
-        calls.append(("cap", list(paths)))
-        return "一只猫"
-
     async def fake_append(mid, suffix):
-        calls.append(("append", mid, suffix))
+        calls.append((mid, suffix))
         return True
 
-    _s1, _s2 = chat_mod2.core.caption_images, chat_mod2.core.append_to_message
-    chat_mod2.core.caption_images = fake_cap
-    chat_mod2.core.append_to_message = fake_append
+    core = chat_mod2.core
+    original = core.append_to_message
+    core.append_to_message = fake_append
     try:
-        await chat_mod2._caption_later(42, ["/tmp/a.jpg"])
-        check("后台图注任务会写回原消息",
-              any(c[0] == "append" and c[1] == 42 and "图注" in c[2] for c in calls),
-              str(calls))
+        turn = Turn("private:link-check", "看图", [], None, True, "test", 0.0,
+                    user_msg_id=42, stored="看图", caption_text="一只猫")
+        await core._commit_write_user(turn)
+        check("内核图注只写回原消息", calls == [(42, "｜图注：一只猫")], str(calls))
         calls.clear()
-        chat_mod2.core.caption_images = lambda paths, limit=2: _none()
-        await chat_mod2._caption_later(43, ["/tmp/a.jpg"])
+        turn.caption_text = ""
+        await core._commit_write_user(turn)
         check("图注为空时不写回", not calls, str(calls))
     finally:
-        chat_mod2.core.caption_images = _s1
-        chat_mod2.core.append_to_message = _s2
-
-
-async def _none():
-    return ""
+        core.append_to_message = original
 
 
 def main() -> None:

@@ -407,6 +407,17 @@ async def _deliver_voice_reply(session: str, ch: FeishuChannel,
     )
 
 
+async def _load_voice(message_id: str, file_key: str) -> str:
+    wav = await asyncio.to_thread(_audio_to_wav, message_id, file_key)
+    if not wav:
+        return ""
+    try:
+        result = await asr.transcribe(wav)
+        return str(result.get("text") or "").strip()
+    finally:
+        wav.unlink(missing_ok=True)
+
+
 async def _handle(data) -> None:
     """处理一条飞书事件（3 秒内返回由 _on_event 保证，这里是后台任务）。"""
     received = time.monotonic()
@@ -428,19 +439,8 @@ async def _handle(data) -> None:
         parsed = parse_content(msg.message_type, msg.content)
         text = str(parsed["text"] or "")
         loaders = tuple(partial(_load_image, mid, key) for key in parsed["image_keys"])
-        voice = False
-        if parsed["audio_key"]:
-            wav = await asyncio.to_thread(_audio_to_wav, mid, parsed["audio_key"])
-            res: dict = {}
-            if wav:
-                res = await asr.transcribe(wav)
-                if res.get("text"):
-                    text = (text + "\n" + str(res["text"])).strip()
-                    voice = True
-                wav.unlink(missing_ok=True)
-            if not text:
-                logger.info(f"[feishu] 语音转写为空：{str(res.get('error') or '')[:80]}")
-        if not text and not loaders:
+        voice_loader = partial(_load_voice, mid, parsed["audio_key"]) if parsed["audio_key"] else None
+        if not text and not loaders and voice_loader is None:
             await asyncio.to_thread(
                 _send_message, msg.chat_id, "text",
                 {"text": "这条消息我暂时读不了（%s）" % (parsed["unsupported"] or msg.message_type)})
@@ -460,7 +460,8 @@ async def _handle(data) -> None:
         _turns.submit((session, str(msg.chat_id)), Turn(
             texts=[text] if text else [],
             meta={"received_at": received, "event_id": mid, "user_id": open_id,
-                  "reply_to": getattr(msg, "parent_id", None), "voice": voice}), image_loaders=loaders)
+                  "reply_to": getattr(msg, "parent_id", None)}), image_loaders=loaders,
+                      voice_loader=voice_loader)
     except Exception as e:  # noqa: BLE001
         logger.warning(f"[feishu] 接收失败：{e!r}")
 
@@ -477,9 +478,11 @@ async def _run_turn(key: tuple[str, str], turn: Turn) -> None:
     voice = bool(turn.meta.get("voice"))
     reply_to = turn.meta.get("reply_to")
     try:
-        if turn.empty() and turn.meta.get("image_unavailable"):
-            timing.status = "image_unavailable"
-            if await asyncio.to_thread(_send_message, chat_id, "text", {"text": IMAGE_UNAVAILABLE}):
+        if turn.empty() and (turn.meta.get("image_unavailable") or turn.meta.get("voice_unavailable")):
+            voice_failed = turn.meta.get("voice_unavailable")
+            timing.status = "voice_unavailable" if voice_failed else "image_unavailable"
+            message = "这段语音没转出来，可以重发或打字补一下。" if voice_failed else IMAGE_UNAVAILABLE
+            if await asyncio.to_thread(_send_message, chat_id, "text", {"text": message}):
                 timing.mark("first_sent")
             return
         timing.mark("intent_start")
@@ -494,7 +497,7 @@ async def _run_turn(key: tuple[str, str], turn: Turn) -> None:
         inbound = to_inbound(open_id=turn.meta["user_id"], chat_id=chat_id,
                              text=model_text, images=images, event_id=turn.meta["event_id"],
                              voice=voice, session=session, store_text=text,
-                             reply_to=reply_to, intent=decision)
+                             reply_to=reply_to, intent=decision, image_sources=turn.meta.get("image_sources"))
         runner = TurnRunner(engine, ch, caps=FEISHU_CAPS, deadline=core.reply_deadline,
                             stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
         logger.info(f"[feishu] recv {session}: {(text or '')[:60]!r}"

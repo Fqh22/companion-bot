@@ -648,8 +648,8 @@ async def main() -> None:
         except ValueError:
             _empty_form_rejected = True
         check("message: 空 form 会被拒", _empty_form_rejected)
-        check("ocr: 布局标记被清掉",
-              ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "hello")
+        check("ocr: 清掉布局标记并保留原文",
+              ocr_mod._RE_MARKUP.sub("", "<｜ref｜>text<｜/ref｜><｜box｜>[[1,2,3,4]]<｜/box｜> hello").strip() == "text hello")
         check("ocr: 接口地址", provider_routes.service_route("ocr").api.endswith("/v1/tools/ocr"))
         from app_core import alerts as alerts_mod
         check("alerts: 计数函数不抛", isinstance(alerts_mod.recent(1.0), dict))

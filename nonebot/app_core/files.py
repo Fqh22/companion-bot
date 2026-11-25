@@ -5,6 +5,7 @@ import base64
 import json
 import re
 import time
+import uuid
 from pathlib import Path
 
 from app_core import paths as _paths
@@ -204,7 +205,7 @@ async def save_image(bot, seg) -> Path | None:
     if not small:
         return None
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    target = IMAGE_DIR / f"img-{int(time.time() * 1000)}.jpg"
+    target = IMAGE_DIR / f"img-{int(time.time() * 1000)}-{uuid.uuid4().hex[:10]}.jpg"
     try:
         target.write_bytes(small)
     except Exception:

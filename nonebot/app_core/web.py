@@ -95,7 +95,9 @@ async def search_via_model(query: str, timeout: float = 30.0) -> str:
     代价：模型会把结果再总结一遍（二手），且不快（10-20 秒）。
     所以只在「预搜索」用，不走每轮。
     """
-    q = (query or "").strip()[:128]
+    q = (query or "").strip()
+    if len(q) > 2000:
+        q = q[:350] + "\n…\n" + q[-1600:]
     if not q:
         return ""
     try:
@@ -125,8 +127,9 @@ async def search_via_model(query: str, timeout: float = 30.0) -> str:
             if u or t:
                 refs.append((t or u)[:40] + (" <" + u + ">" if u else ""))
     if refs:
-        text += "\n\n来源：" + "；".join(refs)
-    return text[:1600]
+        sources = "\n\n来源：" + "；".join(refs)
+        return text[:max(300, 1200 - len(sources))] + sources
+    return text[:1200]
 
 
 async def search(query: str, count: int = 5) -> str:

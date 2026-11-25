@@ -14,6 +14,16 @@ from app_core.prompt import split_reply
 BUFFERED = "buffered"
 
 
+class UnknownDelivery:
+    """传输中断，平台可能已经收下。"""
+
+    def __bool__(self) -> bool:
+        return False
+
+
+DELIVERY_UNKNOWN = UnknownDelivery()
+
+
 def is_buffered(result) -> bool:
     return result == BUFFERED
 
@@ -36,7 +46,7 @@ class Receipt:
         return f"{self.platform}:{self.message_id}" if self.message_id else ""
 
 
-DeliveryResult = bool | str | Receipt
+DeliveryResult = bool | str | Receipt | UnknownDelivery
 
 
 @dataclass(frozen=True)

@@ -6,10 +6,31 @@ import re
 from collections.abc import Callable
 
 CAPTION_MARK = "｜图注："
+_NO_WEB = re.compile(r"(?:不要|不用|别|不必|无需|不准|禁止)(?:再|特意|先|帮我)?(?:上网|联网|搜索|搜|查(?:一下|资料|网页|官网)?)(?!不到)")
+_OLD_IMAGE = re.compile(r"(?:刚才|刚刚|之前|上次|上回|昨天|前面|前几天|最早|最后|那|第一|第二|第三).{0,12}(?:截图|图片|照片|张图)|(?:截图|图片|照片).{0,10}(?:右侧|左侧|编号|上面|下面)")
+_IMAGE_TEXT = re.compile(r"编号|号码|报错|错误码|图里.{0,6}(?:字|写)|文字|哪一行|转写|抄|OCR|识字", re.I)
+
+
+def forbids_web(text: str) -> bool:
+    return bool(_NO_WEB.search(direct_words(text)))
+
+
+def refers_to_image(text: str) -> bool:
+    return bool(_OLD_IMAGE.search(direct_words(text)))
+
+
+def wants_image_text(text: str) -> bool:
+    return bool(_IMAGE_TEXT.search(direct_words(text)))
+
+
+def important_user_sentences(text: str) -> list[str]:
+    return [part for part, reported in source_segments(text)
+            if not reported and (_CORRECTION.search(part) or re.search(
+                r"更正|改成|改到|最后定|最终决定|我答应|我保证|我一定会|我会在|我会于|截止", part))]
 _IMAGE_COUNT = re.compile(r"（附了 \d+ 张图）")
 _IMAGE_MARK = re.compile(r"\[发了图片\]|" + _IMAGE_COUNT.pattern)
 _REPORTED = re.compile(
-    r"^(?:[>＞“「『\"]|(?:他|她|他们|别人|对方|(?:我的?)?(?:朋友|同事))(?:说|问|写|[：:])|"
+    r"^(?:[>＞“「『\"]|(?:他|她|他们|别人|对方|(?:我的?)?(?:朋友|同事))(?:对我|跟我)?(?:说|问|写|[：:])|"
     r"(?:图里|截图(?:里|上)?|视频(?:里|中)?|原文|引文|转发)(?:说|写|显示|[：:])|引用|\[发来文件[：:]|"
     r"(?:刚才|之前|昨天)(?:你|他|她)说|例子[：:]|假如|如果|假设)"
 )

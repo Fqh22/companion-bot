@@ -14,6 +14,7 @@ from app_core.turn import Turn, expects_more
 log = logging.getLogger("app_core")
 Key = TypeVar("Key", bound=Hashable)
 ImageLoad = Callable[[], Awaitable[str | None]]
+VoiceLoad = Callable[[], Awaitable[str]]
 
 
 @dataclass
@@ -32,13 +33,25 @@ class _Batch:
     voice: bool
     reply_to: str | None
     downloads: list[asyncio.Task[_Download]] = field(default_factory=list)
+    transcripts: dict[int, asyncio.Task[_Download]] = field(default_factory=dict)
+    image_sources: dict[str, list[asyncio.Task[_Download]]] = field(default_factory=dict)
 
     async def combine(self) -> Turn:
         result = Turn()
+        ready_at = max(t.meta["ready_at"] for t in self.parts)
+        voice_unavailable = False
         for part in sorted(self.parts, key=lambda t: t.meta["received_at"]):
+            if task := self.transcripts.get(id(part)):
+                transcript = await task
+                ready_at = max(ready_at, transcript.ready_at)
+                if transcript.path:
+                    part.texts.append(transcript.path)
+                else:
+                    voice_unavailable = True
+                    part.meta["voice"] = False
             result.merge(part)
         result.meta["received_at"] = self.first
-        ready_at = max(t.meta["ready_at"] for t in self.parts)
+        result.meta["voice_unavailable"] = voice_unavailable
         if self.downloads:
             downloads = await asyncio.gather(*(asyncio.shield(task) for task in self.downloads))
             for download in downloads:
@@ -47,6 +60,10 @@ class _Batch:
                 ready_at = max(ready_at, download.ready_at)
             result.images = list(dict.fromkeys(result.images))
             result.meta["image_unavailable"] = any(item.path is None for item in downloads)
+            result.meta["image_sources"] = {
+                event_id: [item.path for task in tasks if (item := task.result()).path]
+                for event_id, tasks in self.image_sources.items()
+            }
         result.meta["ready_at"] = ready_at
         result.meta["input_count"] = len(self.parts)
         return result
@@ -75,9 +92,7 @@ class InboundTurns(Generic[Key]):
         self._image_refs: OrderedDict[tuple[Key, str], tuple[float, list[asyncio.Task[_Download]]]] = OrderedDict()
 
     def _deadline(self, batch: _Batch) -> float:
-        if batch.voice:
-            gap = 0.0
-        elif not batch.has_text:
+        if batch.voice or not batch.has_text:
             gap = max(self.media_gap, self.text_gap)
         elif len(batch.parts) > 1 or expects_more(batch.parts[0].texts[-1]):
             gap = self.text_gap
@@ -97,17 +112,29 @@ class InboundTurns(Generic[Key]):
             path = None
         return _Download(path, time.monotonic())
 
-    def submit(self, key: Key, part: Turn, *, image_loaders: tuple[ImageLoad, ...] = ()) -> asyncio.Task | None:
-        if part.empty() and not image_loaders:
+    async def _transcribe(self, load: VoiceLoad) -> _Download:
+        try:
+            text = await asyncio.wait_for(load(), timeout=18.0)
+        except Exception as exc:
+            log.warning("私聊语音读取失败（%s）", type(exc).__name__)
+            text = ""
+        return _Download(text or None, time.monotonic())
+
+    def submit(self, key: Key, part: Turn, *, image_loaders: tuple[ImageLoad, ...] = (),
+               voice_loader: VoiceLoad | None = None) -> asyncio.Task | None:
+        if part.empty() and not image_loaders and voice_loader is None:
             return None
         now = time.monotonic()
         received = part.meta.setdefault("received_at", now)
         part.meta.setdefault("ready_at", now)
         reply_to = part.meta.get("reply_to")
-        voice = bool(part.meta.get("voice"))
+        voice = bool(part.meta.get("voice") or voice_loader is not None)
+        if voice:
+            part.meta["voice"] = True
         while self._image_refs and next(iter(self._image_refs.values()))[0] <= now:
             self._image_refs.popitem(last=False)
         downloads = [asyncio.create_task(self._download(load)) for load in image_loaders]
+        own_downloads = downloads.copy()
         if downloads:
             if event_id := part.meta.get("event_id"):
                 index = (key, str(event_id))
@@ -121,7 +148,7 @@ class InboundTurns(Generic[Key]):
         if session is None:
             session = self._sessions[key] = _Session()
         batch = session.batches[-1] if session.batches else None
-        if (batch is not None and not (voice or batch.voice)
+        if (batch is not None and not (voice and batch.voice)
                 and batch.first - self.text_gap <= received < self._deadline(batch)
                 and not (part.file and batch.has_file)
                 and not (reply_to and batch.reply_to and reply_to != batch.reply_to)):
@@ -130,11 +157,16 @@ class InboundTurns(Generic[Key]):
             batch.last = max(batch.last, received)
             batch.has_text |= bool(part.texts)
             batch.has_file |= bool(part.file)
+            batch.voice |= voice
             batch.reply_to = reply_to or batch.reply_to
         else:
             batch = _Batch(received, received, [part], bool(part.texts), bool(part.file), voice, reply_to)
             session.batches.append(batch)
         batch.downloads = list(dict.fromkeys([*batch.downloads, *downloads]))
+        if own_downloads and part.meta.get("event_id"):
+            batch.image_sources[str(part.meta["event_id"])] = own_downloads
+        if voice_loader is not None:
+            batch.transcripts[id(part)] = asyncio.create_task(self._transcribe(voice_loader))
         session.changed.set()
         if session.task is None:
             session.task = asyncio.create_task(self._drain(key, session))

@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 
 import aiosqlite
 
@@ -69,6 +70,47 @@ class HistoryMixin:
             picked.append({"role": role, "content": shown, "ts": float(ts or 0)})
             used += c
         return list(reversed(picked))
+
+    async def image_history(self, session: str, limit: int = 12) -> list[dict]:
+        """回查本会话近期有图注的原消息，独立于普通上下文窗口。"""
+        async with aiosqlite.connect(DB, timeout=15) as db:
+            cur = await db.execute(
+                "SELECT id, content, ts FROM messages WHERE session=? AND role='user' "
+                "AND ts>=? AND instr(content, '｜图注：')>0 ORDER BY id DESC LIMIT ?",
+                (session, time.time() - 30 * 86400, limit))
+            return [{"id": row[0], "content": row[1], "ts": row[2]} for row in await cur.fetchall()]
+
+    async def recalled_image(self, session: str, reference: str) -> dict | None:
+        async with aiosqlite.connect(DB, timeout=15) as db:
+            cur = await db.execute(
+                "SELECT m.id, m.content, m.ts, r.paths FROM inbound_image_refs r JOIN messages m "
+                "ON m.id=r.message_id AND m.session=r.session WHERE r.session=? AND r.platform_ref=?",
+                (session, reference))
+            row = await cur.fetchone()
+        if not row:
+            return None
+        from app_core import files
+
+        base = files.SAVE_DIR.resolve()
+        paths = [(base / name).resolve() for name in json.loads(row[3])]
+        return {"id": row[0], "content": row[1], "ts": row[2],
+                "paths": [str(path) for path in paths if path.is_relative_to(base) and path.is_file()]}
+
+    async def save_image_references(self, session: str, row_id: int, sources: dict[str, list[str]]) -> None:
+        from app_core import files
+
+        base = files.SAVE_DIR.resolve()
+        rows = []
+        for reference, paths in sources.items():
+            relative = [str(path.relative_to(base)) for name in paths if
+                        (path := Path(name).resolve()).is_relative_to(base) and path.is_file()]
+            if relative:
+                rows.append((session, reference, row_id, json.dumps(relative)))
+        if rows:
+            async with aiosqlite.connect(DB, timeout=15) as db:
+                await db.executemany("INSERT OR IGNORE INTO inbound_image_refs "
+                                     "(session, platform_ref, message_id, paths) VALUES (?, ?, ?, ?)", rows)
+                await db.commit()
 
     async def message_ts(self, row_id: int) -> float:
         """某条消息的落库时间戳；拿不到返回 0。

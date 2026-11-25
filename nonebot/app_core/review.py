@@ -74,11 +74,15 @@ def _extract_json(text: str) -> dict:
         parse_log.note("review", text, "json")
         return {}
 # ---------- 记忆读取 ----------
-def _documents_since(days: float) -> list[str]:
+def _documents_since(days: float, session: str = "") -> list[str]:
     since = datetime.now() - timedelta(days=days)
     try:
         con = sqlite3.connect(f"file:{learn.MEM_DB}?mode=ro", uri=True, timeout=10)
-        rows = con.execute("SELECT text, created_at FROM documents ORDER BY id DESC LIMIT 200").fetchall()
+        rows = con.execute(
+            "SELECT text, created_at FROM documents "
+            "WHERE COALESCE(json_extract(metadata, '$.status'), 'active')='active' "
+            "AND (?='' OR json_extract(metadata, '$.session_id')=?) "
+            "ORDER BY id DESC LIMIT 200", (session, session)).fetchall()
         con.close()
     except Exception:
         return []
@@ -155,28 +159,47 @@ def _session_of(core) -> str:
         return ""
 
 
+def _recent_user_sources(session: str) -> dict[int, str]:
+    from app_core.grounding import direct_words
+
+    if not session or not learn.CHAT_DB.is_file():
+        return {}
+    try:
+        with sqlite3.connect(f"file:{learn.CHAT_DB}?mode=ro", uri=True, timeout=5) as con:
+            rows = con.execute(
+                "SELECT id, content FROM messages WHERE session=? AND role='user' AND ts>=? "
+                "ORDER BY id DESC LIMIT 45", (session, time.time() - 86400)).fetchall()
+        return {row_id: direct_words(text) for row_id, text in rows}
+    except sqlite3.Error:
+        return {}
+
+
 async def review(core) -> str:
     today = datetime.now().strftime("%Y-%m-%d")
     session = _session_of(core)
-    memories = _documents_since(1)
+    memories = _documents_since(1, session)
     if not memories:
         return f"{today} 没有新记忆，跳过复盘"
     profile = _profile_block_for_review()
+    sources = {row_id: text for row_id, text in _recent_user_sources(session).items() if text}
+    verified_context = "\n".join(f"- [{row_id}] " + (text if len(text) <= 500 else text[:220] + " … " + text[-260:])
+                                 for row_id, text in sources.items())
     curious_now = learn.read_list(learn.CURIOUS)
     joined = "\n".join(f"- {m[:220]}" for m in memories[:40])
     prompt = (
         f"【我现在的自我认知】\n{profile or '（还没有）'}\n\n"
         f"【{today} 的状态】\n{_day_context(1, session) or '（没有记录）'}\n\n"
         f"【{today} 的记忆】\n{joined}\n\n"
+        f"【可核对的用户原话】\n{verified_context}\n\n"
+        "画像 evidence 必须逐字摘录可核对的用户完整原句。一次性的要求或临时情绪不要写进稳定画像。\n"
         f"【我还没搞懂的事】\n" + ("\n".join(f"- {x}" for x in curious_now) or "（没有）") + "\n\n"
         f"【已经记下的纠正（别重复写——换个说法也算重复）】\n"
         + ("\n".join(f"- {x}" for x in learn.read_list(learn.CORRECTIONS)[-24:]) or "（还没有）") + "\n\n"
         "请输出 JSON，不要输出别的：\n"
-        '{"learned":"3-6 条可复用的判断规则，写成「当…时，做…（因为…）」或「别做…，因为…」；不要写「今天聊了…」这种流水",'
+        '{"learned":"0-6 条可复用的判断规则，写成「当…时，做…（因为…）」或「别做…，因为…」；不要写「今天聊了…」这种流水",'
         f'"profile":{_PROFILE_SPEC},'
-        '"corrections":["他明确纠正过我的、或者明确不喜欢我的做法，每条一句，'
-        '开头必须带场景标签：[图片] 看图/识图判断错，[文字] 说话方式或内容错，[通用] 其他；'
-        '没有就空数组"],'
+        '"corrections":[{"text":"他明确纠正过我的行为，开头带 [图片]、[文字] 或 [通用]",'
+        '"evidence":"从可核对的用户完整原话逐字摘录"}],'
         '"curious":["他明确提到过、但当时没讲清楚的具体内容（有原话可指），每条一句；'
         '不要写「还没提过/没讲过/一直没定」这类信息缺口；没有就空数组"],'
         '"resolved_curious":["今天已经搞懂的、上面「我还没搞懂的事」里的条目；没有就空数组"]}'
@@ -184,12 +207,12 @@ async def review(core) -> str:
     raw = await core.complete_summary(
         [{"role": "system", "content": SYSTEM_REVIEW + SYSTEM_PROFILE},
          {"role": "user", "content": prompt}],
-        max_tokens=900,
+        max_tokens=1200,
     )
     data = _extract_json(raw)
-    res = learn.apply_review(data, today)
-    if not res["learned"] and not res["profile"]:
-        return "复盘失败：模型没有给出可用结果"
+    res = learn.apply_review(data, today, evidence_sources=sources)
+    if not (res["learned"] or res["profile"] or res["corrections"]):
+        return "这次复盘没有可验证的更新。"
     return f"复盘完成（{len(memories)} 条记忆，纠正 {res['corrections']} 条）"
 # ---------- 周报 ----------
 def quality_metrics(days: int = 7, session: str = "") -> dict:
@@ -279,7 +302,7 @@ async def weekly(core) -> str:
     text = await core.complete_summary(
         [{"role": "system", "content": SYSTEM_WEEKLY},
          {"role": "user", "content": prompt}],
-        max_tokens=900,
+        max_tokens=1200,
     )
     if not text:
         return "周报失败：模型没有输出"

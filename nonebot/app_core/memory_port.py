@@ -181,7 +181,9 @@ class CoreMemoryPort:
 
             if not followup.add(item.text, str(p.get("source") or "memory"),
                                  str(p.get("ref") or ""),
-                                 source_ts=float(p.get("source_ts") or 0) or None):
+                                 source_ts=float(p.get("source_ts") or 0) or None,
+                                 source_msg_id=int(p.get("source_msg_id") or 0),
+                                 source_key=str(p.get("source_key") or "")):
                 raise RuntimeError("跟进创建失败（可能近似重复，或不像待办）")
             fid = followup_store.id_for_text(item.text)
             return f"followup:{fid}" if fid else "followup:"

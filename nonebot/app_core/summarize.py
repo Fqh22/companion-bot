@@ -11,7 +11,7 @@ SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 J
  "summary": "120-200 字，第一人称，写清发生了什么、对方在意什么、我该记住什么",
  "key_facts": ["3-6 条关键事实，每条一句话，带具体细节"],
  "topics": ["2-4 个主题词"],
- "followups": ["最多 2 条：他明确说要做的具体事（有承诺或时间），主语必须是他；没有就空数组"],
+ "followups": [{"text":"用户原话中的具体待办行动片段","evidence":"他这次明确承诺或委托跟进的完整原话，不超过 200 字"}],
  "importance": 0.0,
  "progress": "advance | repeat | switch",
  "digest": "200-300 字，把【旧纪要】和这段新对话合成一段「更早的对话纪要」"
@@ -21,7 +21,7 @@ SYSTEM = """你在把一段真实对话整理成一条长期记忆。只输出 J
   里提到时间一律写 YYYY-MM-DD，不要写「明天」「昨天」「下周」。
   「他说计划要做某件事」写成「他说要 / 计划」，不要写成已经做完；做没做完只看对话里说没说。
 importance：日常寒暄 0.25-0.4；有信息量或明显情绪 0.5-0.7；重要事件/长期约定 0.75-0.95。
-followups 只写「他明确承诺或交代要做的具体事」，比如「2026-11-21 前交稿」「去闲鱼查 4080S 价格」。
+followups 最多两条，text 从 evidence 原文逐字摘录，evidence 只从本段的用户原话摘录。只写「他明确承诺或交代要做的具体事」，比如「2026-11-21 前交稿」「去闲鱼查 4080S 价格」。
 以下一律不写（线上踩过：这些会被当成他的待办天天追问）：
   - 你自己的待办/动作（「我需要整理…」「补讲…」「告诉他…」）
   - 他没回答的问题（「他还没回复…」「他没确认…」）
@@ -79,7 +79,13 @@ def format_dialog(rows: list[tuple]) -> str:
             raw = grounding.history_text(raw, (lambda text: timenorm.normalize(text, now=d)) if d else None)
         elif d:
             raw = timenorm.normalize(raw, now=d)
-        text = raw.strip().replace("\n", " ")[:400]
+        text = " ".join(raw.split())
+        if len(text) > 400:
+            head, tail = text[:180], text[-220:]
+            important = [" ".join(part.split()) for part in grounding.important_user_sentences(content or "")
+                         if 4 <= len(part) <= 180] if role == "user" else []
+            preserved = [part for part in important if part not in head and part not in tail][-2:]
+            text = " … ".join((head, *preserved, tail))
         if text:
             stamp = f"[{d:%Y-%m-%d %H:%M}]" if d else ""
             lines.append(f"{stamp}[{who}] {text}")
@@ -133,8 +139,14 @@ def parse(text: str) -> dict:
         "summary": str(_summary or "").strip(),
         "key_facts": _as_list(data.get("key_facts"), 6, "key_facts", text),
         "topics": _as_list(data.get("topics"), 4, "topics", text),
-        "followups": _as_list(data.get("followups"), 4, "followups", text),
+        "followups": [] if (isinstance(data.get("followups"), list)
+                            and any(isinstance(item, dict) for item in data["followups"]))
+                     else _as_list(data.get("followups"), 4, "followups", text),
     }
+    if isinstance(data.get("followups"), list):
+        out["followup_candidates"] = [
+            (str(item.get("text") or "").strip(), str(item.get("evidence") or "").strip())
+            for item in data["followups"][:4] if isinstance(item, dict)]
     try:
         out["importance"] = max(0.0, min(1.0, float(data.get("importance", 0.5))))
     except Exception:

@@ -40,7 +40,7 @@ def _collect(node, out: list[str], depth: int = 0) -> None:
 
 # 布局标记：rich_layout 模式会返回 <｜ref｜>text<｜/ref｜><｜box｜>[[x,y,x,y]]<｜/box｜> 这种
 # 带坐标的片段。图注只要文字，坐标是噪声。
-_RE_MARKUP = re.compile(r"<｜[^｜]*｜>[^<]*<｜/[^｜]*｜>|<｜box｜>\[\[[^\]]*\]\]<｜/box｜>")
+_RE_MARKUP = re.compile(r"<｜box｜>.*?<｜/box｜>|<｜/?[^｜]*｜>", re.S)
 
 
 async def ocr_text(path: Path, purpose: str = "rich_layout_recognition",
