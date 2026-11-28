@@ -246,18 +246,19 @@ MODEL_FIRST_GUIDE = (
 MODEL_FIRST_EXAMPLES = [
     ("今天累死了", "那就别动了。饭吃了没"),
     ("这个报错又出来了", "哪个，发我看看"),
-    ("算了不弄了", "行，先放着"),
-    ("你觉得这名字怎么样", "念着挺顺的，有点像古装剧里的人"),
     # 分析/拿主意：示范「判断 + 依据 + 下一步」，以及「没依据就承认」
     ("我该不该继续投简历",
      "投。但先看有没有回应——一直没回音的话，问题可能在简历，不在投不投。"),
     ("AI 岗位现在什么形势",
      "涨的是「用 AI」的岗，不是「做 AI」的。具体数字我只有零散印象，不敢当行情说。"),
+    # 末尾放日常短口语：模型会照着最后两个例子的节奏说话
+    ("算了不弄了", "行，先放着"),
+    ("但是省钱", "那确实，能省一点是一点"),
 ]
 MODEL_FIRST_TAIL = (
     "【这轮】用他的动作回应他：他演就接，他问就答，他倒就接住，他给你看就指认一个点。"
-    "别当评论员（点评写法/结构/好坏都算站台下）。别把每句都当题目；背景只在相关时提，"
-    "别万物转工作/爱好。有依据就说是哪来的，没依据就说没把握——别编。"
+    "别当评论员，别把每句都当题目；先核对近几轮他刚交代过的条件（账号、卡、地区、进度），"
+    "已知事实别再反问、别前后改口；结论直接说，别列一二三点。有依据就说是哪来的，没依据就说没把握——别编。"
 )
 
 # 雷区清单：正确姿势写不完，雷就这几组（来自真实对话的坏例子）。
@@ -307,6 +308,26 @@ CONTEXT_CHAR_BUDGET = 1200
 # 于是 2 条 insight 就能把 fact 挤到只剩 1 条——洞察是推断，
 # 不该占用「他说过的话」的名额。默认仍是 legacy，保证 prompt 快照基线不变。
 TIER_QUOTA = {"memory": 3, "insight": 2}
+
+
+def model_nudge(user_text: str, history: list[dict] | None = None,
+                recent_lens: list[int] | None = None, images: int = 0,
+                meme_ok: bool = False) -> str:
+    """model 模式下的稀疏防失衡轻提醒：只在字数严重膨胀、连续反问或适合发表情时触发。"""
+    t = (user_text or "").strip()
+    hints: list[str] = []
+    if (not images and len(t) <= 12 and "?" not in t and "？" not in t
+            and recent_lens and len([x for x in recent_lens[-2:] if x > 55]) >= 2):
+        hints.append("他这句很短，半句话或十来个字接住就行，别写长段解释。")
+    last_bot = next((str(m.get("content") or "").strip()
+                     for m in reversed(history or []) if m.get("role") == "assistant"), "")
+    if last_bot.endswith(("？", "?")):
+        hints.append("上一句刚问过他，这轮直接给判断或接话，别连着反问。")
+    if meme_ok and not images and len(t) <= 24 and (
+            _LAUGH_ONLY_RE.match(t)
+            or any(w in t for w in ("无语", "离谱", "笑死", "好家伙", "算了", "烦死了", "绷不住", "牛逼"))):
+        hints.append("气氛到了，可以先用 meme_send 发张合适表情包，再补半句短话。")
+    return "\n".join(hints)
 
 
 def _compact_background(memories, knowledge: str, skills, lessons: str,
@@ -643,7 +664,8 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
                    style_mode: str = "rules",
                    context_format: str = "legacy",
                    gap_hours: float | None = None,
-                   budget_mode: str = "legacy") -> list[dict]:
+                   budget_mode: str = "legacy",
+                   self_check: bool = False) -> list[dict]:
     """拼 prompt。两条原则：**约束放两端、参考材料贴提问** + **稳定前缀往前放**。
 
     顺序：人格 → few-shot → 纪要 → 历史 → 情绪 → 记忆/知识索引/技能 → 当前提问。
@@ -739,18 +761,16 @@ def build_messages(persona: dict, history: list[dict], user_text: str,
     for extra in (extra_system or []):
         if extra:
             msgs.append({"role": "system", "content": extra})
+    tail_parts: list[str] = []
     if str(style_mode).lower() == "model":
-        # 尾部锚点：只重复最高优先级，不把整段规则再写一遍。
-        msgs.append({"role": "system", "content": MODEL_FIRST_TAIL})
+        # 尾部固定锚点合并成单块：减少用户消息前连续多条 system 角色切换导致的注意力稀释。
+        tail_parts.append(MODEL_FIRST_TAIL)
         if style_mode == "model":
-            msgs.append({"role": "system", "content": SELF_CHECK_RULE})
-            msgs.append({"role": "system", "content": LANDMINES})
-            msgs.append({"role": "system", "content": CATCHING_RULE})
-            msgs.append({"role": "system", "content": MEME_HINT})
-    # 时间放在最后一段：每轮都变，只能放易变区；但 model / rules 都必须拿到，
-    # 否则「明天几点」这类话只能靠猜（以前只有 rules 模式的 style_block 带时间）。
-    msgs.append({"role": "system",
-                 "content": now_line(gap_hours=gap_hours).replace("[现在] ", "现在：")})
+            if self_check:
+                tail_parts.append(SELF_CHECK_RULE)
+            tail_parts.extend((LANDMINES, CATCHING_RULE, MEME_HINT))
+    tail_parts.append(now_line(gap_hours=gap_hours).replace("[现在] ", "现在："))
+    msgs.append({"role": "system", "content": "\n".join(tail_parts)})
     if images:
         # 图不是"要我分析的东西"，是"他想让我知道的事"。旧提示写死了「多半是截图，
         # 帮我转录」，结果任何一张图它都一本正经地分析构图和参数。

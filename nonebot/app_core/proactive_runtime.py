@@ -319,7 +319,8 @@ class ProactiveRuntime:
             time.time() - self.last_user_ts(),
             self.daily_count(), cap, m,
             [random.random(), random.random(), random.random()],
-            threads=1 if _wc else len(followup.due_for_asking(5)))
+            threads=1 if _wc else len(followup.due_for_asking(5)),
+            day_key=now.strftime("%Y-%m-%d"))
         log.info("[proactive] 评估：今日 %d/%d，%s", self.daily_count(), cap, why)
         if not ok:
             return
@@ -340,6 +341,29 @@ class ProactiveRuntime:
             fu, cu, me = sources.collect(lambda: self.core.memory_forgotten(3))
         except Exception:  # noqa: BLE001
             return
+        # 同日相似话题互斥：避免同一主题簇（如租房/看房多条子事项）在一天内连续追问。
+        try:
+            from app_core import followup_domain, textsim
+
+            c = self._conn()
+            today_topics = [
+                str(r[0] or "")
+                for r in c.execute(
+                    "SELECT topic FROM proactive_log WHERE ts>=?",
+                    (time.time() - 86400,)).fetchall()
+                if r and r[0]
+            ]
+            c.close()
+            if today_topics:
+                fu = [
+                    item for item in fu
+                    if not any(
+                        followup_domain.shared_span(item[1], prev, n=2)
+                        or textsim.similar(item[1], prev) >= 0.35
+                        for prev in today_topics)
+                ]
+        except Exception:  # noqa: BLE001
+            pass
         picked = decide.pick_topic(fu, cu, me, self.recent_topics(),
                                    random.random(), random.random())
         if not picked:

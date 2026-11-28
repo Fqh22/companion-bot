@@ -73,10 +73,15 @@ llm:
   # 输出 token 更多（每次约 +100），且思考模式下 temperature 完全不生效。
   # 2026-10-31 实测取舍后选择开启；想更快更省改成 false。
   thinking: true
-  # 闲聊轮单独关思考。默认 **false（常开）**：2026-11-10 A/B（10 条真实消息）显示
-  # 开思考在事实类问题上更准（不编数字），字数几乎无差（35 vs 38），代价是首字慢约 0.8s。
-  # 想恢复「短句关、其余开」的分流，改成 true：短句、没问号、没技术词、不带图时关。
-  thinking_casual: false
+  # 闲聊轮单独关思考：短句、没问号、没技术词、不带图时关思考，恢复 temperature 自然口语度。
+  thinking_casual: true
+  # 强档推理模型：遇到求助截图、被纠正、多条件排错时自动切过去（如 deepseek-v4-pro）；model 留空不启用。
+  strong:
+    model: ""
+    api: ""
+    protocol: ""
+    key_ref: ""
+    thinking: true
 
 summary:
   api: ""
@@ -165,9 +170,13 @@ chat:
   #   voice          只发语音（合成失败才退回文字）
   voice_reply_mode: voice
   # 已开始连发或明显在等补充时的停顿。普通单条最多等 0.9 秒，设为 0 关闭纯文本等待。
-  text_settle_seconds: 2.0
+  text_settle_seconds: 2.4
   # 图片/文件后等补充说明，沿用两种窗口较长的一个。
   media_settle_seconds: 1.5
+  # 纯图片无配字时等待补充提问的窗口。
+  media_only_settle_seconds: 4.5
+  # off = 关闭每轮前置 [自检] 标签，让第一字直接进入口语；sample = 10% 抽样；always = 每轮输出。
+  self_check_mode: "off"
   # 引用回复：第一段带「回复你那条」。默认 false——实测每条都挂引用框太重；
   # 想开就改成 true，只有第一段带，流式后续段不带。
   quote_reply: false

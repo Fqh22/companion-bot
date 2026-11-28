@@ -20,7 +20,7 @@ MAX_AGE_DAYS = 60
 MAX_ASKS = 6
 KEEP_MAX_OPEN = 30
 ASK_MAX_AGE_DAYS = 14
-ASK_MAX_TIMES = 3
+ASK_MAX_TIMES = 2
 
 _BOT_TASK = re.compile(
     r"^\s*(我|我们)(需要|要|得|该|会|先|去|来|帮|给)|^告诉他|^把他|^帮他|^给他|"
@@ -247,8 +247,39 @@ def responds_to(item_text: str, question: str, user_text: str) -> bool:
 
 
 _ABS_DATE = re.compile(r"(20\d{2})[-/年](\d{1,2})[-/月](\d{1,2})")
+_YM_DATE = re.compile(r"(20\d{2})[-/年](\d{1,2})(?![-/月\d])")
 _MD_DATE = re.compile(r"(?<!\d)(\d{1,2})月(\d{1,2})[日号]")
 _PLAN_WORD = ("签约", "面试", "报到", "入职", "开庭", "航班", "复查", "体检")
+
+
+def not_before_epoch(text: str, now: float | None = None) -> float:
+    """提取事项里显式的未来时间锚点（如 2026-12、下个月、具体日期），未到期前不提前追问。"""
+    import datetime as _dt
+    import time as _time
+
+    t = text or ""
+    clock = now if now is not None else _time.time()
+    base = _dt.datetime.fromtimestamp(clock)
+    if m := _YM_DATE.search(t):
+        try:
+            y, mo = int(m.group(1)), int(m.group(2))
+            if 1 <= mo <= 12:
+                ts = _dt.datetime(y, mo, 1, 9, 0).timestamp()
+                return ts if ts > clock else 0.0
+        except ValueError:
+            pass
+    if "下个月" in t or "下月" in t:
+        y = base.year + (1 if base.month == 12 else 0)
+        mo = 1 if base.month == 12 else base.month + 1
+        return _dt.datetime(y, mo, 1, 9, 0).timestamp()
+    if "下周" in t:
+        days = 7 - base.weekday()
+        nxt = (base + timedelta(days=days)).replace(hour=9, minute=0, second=0, microsecond=0)
+        return nxt.timestamp()
+    when = event_epoch(t, clock)
+    if when is not None and when > clock + 36 * 3600:
+        return when + 8 * 3600
+    return 0.0
 
 
 def event_epoch(text: str, now: float | None = None) -> float | None:

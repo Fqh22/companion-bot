@@ -15,9 +15,11 @@ class ModelRoute:
     protocol: str = "deepseek"
     key_ref: str = "deepseek"
 
-    def request_fields(self, messages: list[dict], *, thinking: bool, stream: bool = False) -> dict:
+    def request_fields(self, messages: list[dict], *, thinking: bool, stream: bool = False,
+                       model: str = "") -> dict:
         if self.protocol == "deepseek":
-            fields = {"messages": messages, "thinking": {"type": "enabled" if thinking else "disabled"}}
+            think = True if "reasoner" in (model or "") else thinking
+            fields = {"messages": messages, "thinking": {"type": "enabled" if think else "disabled"}}
             if stream:
                 fields["stream_options"] = {"include_usage": True}
             return fields
@@ -54,6 +56,24 @@ def chat_routes(llm: dict, summary: dict) -> tuple[ModelRoute, ModelRoute | None
     if any(summary.get(key) for key in ("api", "protocol", "key_ref")):
         return chat, model_route(summary)
     return chat, None if legacy else ModelRoute(DEEPSEEK_CHAT)
+
+
+def strong_route(llm: dict, base: ModelRoute) -> tuple[str, ModelRoute, bool] | None:
+    """解析 llm.strong 强档模型配置；model 留空表示不启用分流。"""
+    strong = llm.get("strong") or {}
+    model = str(strong.get("model") or "").strip()
+    if not model:
+        return None
+    if any(strong.get(key) for key in ("api", "protocol", "key_ref")):
+        opts = {
+            "api": strong.get("api") or base.api,
+            "protocol": strong.get("protocol") or base.protocol,
+            "key_ref": strong.get("key_ref") or "",
+        }
+        route = model_route(opts)
+    else:
+        route = base
+    return model, route, bool(strong.get("thinking", True))
 
 
 @dataclass(frozen=True)

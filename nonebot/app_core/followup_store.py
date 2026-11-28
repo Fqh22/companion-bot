@@ -11,7 +11,7 @@ from app_core import textsim, timenorm
 from app_core.followup_domain import (  # noqa: F401
     ANSWER_COOLDOWN_DAYS, ASK_MAX_AGE_DAYS, ASK_MAX_TIMES, CLOSED, COOLDOWN_DAYS,
     IGNORE_LIMIT, KEEP_MAX_OPEN, AFFIRM, MAX_AGE_DAYS, MAX_ASKS, MAX_TEXT,
-    NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis,
+    NEAR_DUP, STATUSES, _overlap, askable, expired_one_off, fresh_basis, not_before_epoch,
     QuietControl, control_target, is_affirm, links_question, quiet_control, resolve_from, responds_to, shared_span, is_negate, snooze_deadline, strip_punct,
 )
 
@@ -128,10 +128,12 @@ def add(text: str, source: str = "memory", ref_id: str = "",
                     return False
         except Exception:  # noqa: BLE001
             pass                                  # 相似度算不出来也不影响写入
+        now_ts = time.time()
+        not_before = not_before_epoch(t, float(source_ts or 0) or now_ts)
         cur = c.execute(
-            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts, source_ts, source_msg_id, source_key) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (t, source, str(ref_id), time.time(), float(source_ts or 0), source_msg_id, source_key))
+            "INSERT OR IGNORE INTO followups(text, source, ref_id, created_ts, source_ts, quiet_until, source_msg_id, source_key) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (t, source, str(ref_id), now_ts, float(source_ts or 0), not_before, source_msg_id, source_key))
         c.commit()
         # 用 rowcount 而不是 total_changes：后者是连接级累计值，判断不准
         return cur.rowcount > 0
@@ -178,6 +180,8 @@ def due_for_asking(limit: int = 5, cooldown_days: float = COOLDOWN_DAYS) -> list
     out = []
     for r in rows:
         if not askable(r[1]):
+            continue
+        if not_before_epoch(r[1], now) > now:
             continue
         src = float(r[6] or 0)
         if not _mentionable(r[1], float(r[3] or 0), src, now):

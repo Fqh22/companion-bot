@@ -96,6 +96,32 @@ class HistoryMixin:
         return {"id": row[0], "content": row[1], "ts": row[2],
                 "paths": [str(path) for path in paths if path.is_relative_to(base) and path.is_file()]}
 
+    async def trailing_unanswered_images(self, session: str, max_age: float = 90.0) -> list[str]:
+        """若最新一条消息是刚发不久且未回复的用户发图，返回其有效本地图片路径。"""
+        async with aiosqlite.connect(DB, timeout=15) as db:
+            cur = await db.execute(
+                "SELECT id, role, ts FROM messages WHERE session=? ORDER BY id DESC LIMIT 1",
+                (session,))
+            last = await cur.fetchone()
+            if not last or last[1] != "user" or time.time() - float(last[2] or 0) > max_age:
+                return []
+            cur = await db.execute(
+                "SELECT paths FROM inbound_image_refs WHERE session=? AND message_id=?",
+                (session, int(last[0])))
+            rows = await cur.fetchall()
+        if not rows:
+            return []
+        from app_core import files
+
+        base = files.SAVE_DIR.resolve()
+        out: list[str] = []
+        for (raw,) in rows:
+            for name in json.loads(raw):
+                path = (base / name).resolve()
+                if path.is_relative_to(base) and path.is_file() and str(path) not in out:
+                    out.append(str(path))
+        return out
+
     async def save_image_references(self, session: str, row_id: int, sources: dict[str, list[str]]) -> None:
         from app_core import files
 

@@ -52,6 +52,25 @@ class PrivateChannel(Channel, Protocol):
 # 并发消息在真人聊天里也是「一句一句回」，排队是更对的行为，不是延迟缺陷。
 _SESSION_LOCKS: dict[str, asyncio.Lock] = {}
 _TYPING_TASKS: dict[tuple[type, str], asyncio.Task] = {}
+_ACTIVE_RUNS: dict[str, dict] = {}
+
+
+def request_supersede(session: str) -> bool:
+    """若同会话上一轮尚未向用户发出任何片段且未执行副作用工具，取消它让新消息合并重跑。"""
+    active = _ACTIVE_RUNS.get(session)
+    if not active:
+        return False
+    state = active["state"]
+    timing = active["timing"]
+    if state.get("sent") or state.get("sending") or "side_effect" in timing.marks:
+        return False
+    handle = active.get("handle")
+    if handle is None or handle.done():
+        return False
+    state["why"] = "superseded"
+    handle.cancel()
+    log.info("[runner] 新消息到达，抢占未发出的旧轮次：%s", session)
+    return True
 
 
 def voice_reply_mode(settings: dict) -> str:
@@ -97,9 +116,12 @@ async def run_private_turn(turn: Turn, inbound: InboundMessage, channel: Private
         if store_composed or (image_failed and stored is None):
             stored = text
         msg = replace(inbound, text=prompt, store_text=stored, intent=decision)
+        request_supersede(session)
         runner = TurnRunner(engine, channel, caps=caps, deadline=core.reply_deadline,
                             stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
         out = await runner.run(msg)
+        if timing.status == "superseded":
+            return
         if getattr(out, "images_sent", None):
             try:
                 await core.record_assistant(session, "（另外发了一张图）", kind="image")
@@ -248,7 +270,10 @@ class TurnRunner:
         gap = pacing.gap_seconds(sent) if sent else 0.0
         pace = pacing.pace_seconds(text, datetime.now().hour, m,
                                    fast=pacing.is_fast(sent) or left < 12)
-        wait = min(gap + pace, max(0.0, left - 4))    # 留 4 秒给发送和收尾
+        wait = gap + pace
+        if time.monotonic() - started >= 2.5:
+            wait = min(wait * 0.4, 1.0)
+        wait = min(wait, max(0.0, left - 4))    # 留 4 秒给发送和收尾
         if wait > 0:
             await asyncio.sleep(wait)
         # 发送本身也吃时限：平台 API 挂住时，到点就放弃，别把会话锁拖死。
@@ -329,7 +354,7 @@ class TurnRunner:
         started = time.monotonic()
         delivery = ConfirmedText()
         confirmed = delivery.parts
-        state = {"last_progress": started, "sent": 0, "why": ""}
+        state = {"last_progress": started, "sent": 0, "sending": False, "why": ""}
         pending: asyncio.Queue[tuple[str, bool] | None] = asyncio.Queue(maxsize=4)
         typing_key = (type(self.channel), msg.session)
         previous = _TYPING_TASKS.get(typing_key)
@@ -361,6 +386,7 @@ class TurnRunner:
                     continue
                 if interrupted:
                     continue
+                state["sending"] = True
                 status = await self._pace_and_send(msg.session, part, len(confirmed), started)
                 if status is False and self._remaining(started) > 0:
                     status = await self._send_part(
@@ -382,6 +408,7 @@ class TurnRunner:
                 timing.mark("first_sent")
 
         async def enqueue(part: str) -> DeliveryResult:
+            state["sending"] = True
             state["last_progress"] = time.monotonic()
             await asyncio.wait_for(pending.put((part, False)), timeout=self._remaining(started))
             # 内核只知道片段已入队，发送结果由消费者统一回写。
@@ -400,11 +427,15 @@ class TurnRunner:
         handle = asyncio.create_task(
             self.engine.handle(msg, on_sentence=enqueue, caps=self.caps,
                                delivery_policy=self.policy, defer_history=True))
+        _ACTIVE_RUNS[msg.session] = {"state": state, "timing": timing, "handle": handle}
         watch = asyncio.create_task(self._watchdog(handle, started, state))
         try:
             try:
                 out = await handle
             except asyncio.CancelledError:
+                if state["why"] == "superseded":
+                    timing.status = "superseded"
+                    return OutboundMessage(text="", chunks=[])
                 if state["why"]:
                     raise asyncio.TimeoutError() from None
                 raise
@@ -424,6 +455,8 @@ class TurnRunner:
                         timing.mark("first_sent")
             return out
         finally:
+            if _ACTIVE_RUNS.get(msg.session, {}).get("handle") is handle:
+                _ACTIVE_RUNS.pop(msg.session, None)
             for task in (watch, worker, progress, typing):
                 task.cancel()
             await asyncio.gather(watch, worker, progress, return_exceptions=True)

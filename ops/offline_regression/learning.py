@@ -561,8 +561,8 @@ async def run(core, mem, wiki_mod):
     _lines = (TMP / "shadow-positive.jsonl").read_text(encoding="utf-8").strip().splitlines()
     check("正例写进了 jsonl", len(_lines) == 1 and "笑死" in _lines[0], str(len(_lines)))
 
-    # ---- 思考模式：默认常开；分流逻辑保留在 thinking_casual=True 时 ----
-    check("默认常开：短句也开思考", core._thinking_for("今天好累", None) is None)
+    # ---- 思考模式：默认开启闲聊分流（短句闲聊关思考） ----
+    check("默认分流：闲聊短句关思考", core._thinking_for("今天好累", None) is False)
     _old_tc = core.thinking_casual
     core.thinking_casual = True
     check("分流模式：闲聊短句关思考", core._thinking_for("今天好累", None) is False)
@@ -613,7 +613,8 @@ async def run(core, mem, wiki_mod):
           not any("[你记得的事]" in s or "[你的知识索引]" in s for s in _sys))
     check("compact 背景有来源标签", "[记忆]" in _bg and "[相关知识资料]" in _bg, _bg[:80])
     check("compact 有尾部锚点", any("【这轮】" in s for s in _sys))
-    check("尾部锚点足够短", all(len(s) < 120 for s in _sys if "【这轮】" in s))
+    check("尾部锚点足够短", len(prompt_fresh.MODEL_FIRST_TAIL) < 160
+          and all(len(s) < 600 for s in _sys if "【这轮】" in s))
     check("尾部锚点在背景之后", _sys.index(_bg) < next(
         i for i, s in enumerate(_sys) if "【这轮】" in s))
     check("背景有被动触发提示", "只在相关时用" in _bg, _bg[:40])

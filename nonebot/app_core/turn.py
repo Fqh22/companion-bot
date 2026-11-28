@@ -10,10 +10,15 @@ _MORE_INPUT = re.compile(
     r"[，、：,:…（(]$|(?:等我一下|等我发|我给你看|我(?:先|再|马上|等会儿|待会儿|接下来)?"
     r"(?:给你)?(?:发|补发|截)(?:一张|个|张)?(?:截图|图片|图)|(?:发|用|补)(?:个|段|条|一段)?语音|我(?:还没说完|再补一句))"
 )
+_DANGLING_CLAUSE = re.compile(
+    r"^(?:唯一可惜的(?:就是|是)?|可惜的(?:就是|是)?|主要是|问题是|但是有个问题|不过有个|而且还有|"
+    r"顺便说(?:一下|下)?|另外就是)[^。！？!?]{0,24}$"
+)
 
 
 def expects_more(text: str) -> bool:
-    return bool(_MORE_INPUT.search(text.strip()))
+    t = text.strip()
+    return bool(_MORE_INPUT.search(t) or _DANGLING_CLAUSE.match(t))
 
 
 @dataclass

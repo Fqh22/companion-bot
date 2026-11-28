@@ -12,7 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from app_core.provider_routes import chat_routes, validate_services
+from app_core.provider_routes import chat_routes, strong_route, validate_services
 from app_core import paths as _paths
 
 import aiosqlite
@@ -170,6 +170,8 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         validate_services(cfg.get("provider_routes") or {})
         self.api = route.api
         self.model = llm.get("model") or "deepseek-flash"
+        self.strong_spec = strong_route(llm, route)
+        self._strong_sticky: dict[str, int] = {}
         self.temperature = float(llm.get("temperature", 1.15))
         self.max_tokens = int(llm.get("max_tokens", MAX_TOKENS))
         self.summary_model = summ.get("model") or "deepseek-chat"
@@ -436,10 +438,16 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
                     "budget_mode", "legacy"))
             except Exception:  # noqa: BLE001
                 budget_mode = "legacy"
+        try:
+            _sc_mode = str((config.load().get("chat") or {}).get("self_check_mode", "off")).strip().lower()
+        except Exception:  # noqa: BLE001
+            _sc_mode = "off"
+        _sc_on = (_sc_mode == "always") or (_sc_mode == "sample" and random.random() < 0.1)
         return prompt_mod.build_messages(
             persona or self.persona, history, user_text, memories, mood_text, knowledge,
             skills, images, extra_system, digest, DIGEST_MAX, lessons, open_items,
-            profile, style_mode, context_format, gap_hours, budget_mode)
+            profile, style_mode, context_format, gap_hours, budget_mode,
+            self_check=_sc_on)
 
     async def complete_raw(self, *a, **kw) -> dict:
         """LLM 调用本体在 llm.py，这里只是让 ChatCore 保持原接口。"""

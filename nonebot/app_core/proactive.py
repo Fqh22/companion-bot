@@ -22,45 +22,50 @@ def period(hour: int) -> str:
     if 18 <= hour < 23:
         return "晚上"
     return "深夜"
-MIN_GAP = 7200                 # 两次之间至少 2 小时
+MIN_GAP = 19800                # 两次之间至少 5.5 小时
 QUIET_AFTER_USER = 1200        # 刚聊过 20 分钟不打扰
-DAILY_MAX = 4
+DAILY_MAX = 2
 TOPIC_COOLDOWN_DAYS = 7        # 同一件事一周内不重复提
 
 
 def daily_cap(reply_rate: float | None) -> int:
     """按最近 7 天的回应率定今天的上限。宁少勿多：烦人一次要好几条正常回复才修得回来。"""
     if reply_rate is None:
-        return DAILY_MAX
-    if reply_rate < 0.2:
         return 1
     if reply_rate < 0.4:
-        return 2
+        return 1
     return DAILY_MAX
+
+
+def _jitter_seconds(sent_today: int, day_key: str = "") -> int:
+    """基于日期和当日已发次数的确定性抖动（0～1800s），避免整点打卡感且轮询幂等。"""
+    import zlib
+
+    if not day_key:
+        return 0
+    return zlib.crc32(f"{day_key}:{sent_today}".encode("utf-8")) % 1800
 
 
 def gate(hour: int, since_sent: float, since_user: float,
          sent_today: int, cap: int, mood: dict | None,
-         rolls: list[float], threads: int = 0) -> tuple[bool, str]:
+         rolls: list[float], threads: int = 0,
+         day_key: str = "") -> tuple[bool, str]:
     """返回 (该不该开口, 原因)。
 
     顺序有讲究：先看「能不能说」（时段/频率），再看「有没有话头」。
     原因只用于日志——「今天为什么没说话」应该能一眼查到。
-
-    2026-11-10 按真实使用收窄：11 天发了 5 条主动消息，curious 3 条、memory 1 条
-    全都没得到回复，唯一被接住的是 followup（「那件事进度咋样了」）。
-    判据因此从「抽签 + 泛话题」改成「他留了话头才开口」——没话找话对这个人无效，
-    他画像里明写着讨厌空话。rolls 保留只为签名兼容；心情只决定怎么说，不决定说不说。
     """
     if not HOUR_START <= hour < HOUR_END:
         return False, "不在时段"
-    if since_sent < MIN_GAP:
+    min_gap = MIN_GAP if cap >= 2 else 21600
+    jitter = _jitter_seconds(sent_today, day_key)
+    if since_sent < min_gap + jitter:
         return False, "距上次太近"
     if since_user < QUIET_AFTER_USER:
         return False, "刚聊过"
     if sent_today >= cap:
         return False, "今日已满"
-    if threads and since_user >= 2 * 3600:
+    if threads and since_user >= 3.5 * 3600 + jitter:
         return True, "他留的话头还悬着"
     return False, "没有话头，不没话找话"
 

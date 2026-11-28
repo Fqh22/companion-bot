@@ -31,10 +31,10 @@ from app_core.chat_turn_commit import CommitMixin
 # 完整的一等上下文（TurnContext）没做——见 docs/04 §10。
 TURN_DEPS = {
     "_affect_port", "_context_format", "_memory_port", "_recall_context", "_run_tools",
-    "_style_mode", "_thinking_for", "build_messages", "caption_images",
+    "_select_model_for_turn", "_style_mode", "_thinking_for", "build_messages", "caption_images",
     "first_token_budget", "get_digest", "history", "history_max_chars", "image_history", "interpret_intent",
-    "last_user_ts", "max_tokens", "memory", "persist_inbound", "persona_for",
-    "recalled_image", "save_image_references",
+    "last_user_ts", "max_tokens", "meme_allowed", "memory", "persist_inbound", "persona_for",
+    "recalled_image", "save_image_references", "trailing_unanswered_images",
     "recall_query_items", "reply_deadline", "reply_min_tokens", "fallback_lines", "seg_max",
 }
 
@@ -173,6 +173,15 @@ class ChatTurnMixin(CommitMixin):
                     existing = {row.get("content") for row in turn.history}
                     if len(candidates) > 1 or candidates[0]["content"] not in existing:
                         turn.prior_images = candidates[:3]
+        if not turn.images and not turn.recalled_image_paths:
+            trailing_fn = getattr(self, "trailing_unanswered_images", None)
+            if trailing_fn is not None:
+                try:
+                    _trailing = await trailing_fn(session)
+                    if _trailing:
+                        turn.recalled_image_paths = _trailing
+                except (sqlite3.Error, OSError, ValueError):
+                    log.debug("继承前序未答图片失败", exc_info=True)
         recent_user = [x["content"] for x in turn.history if x["role"] == "user"][-self.recall_query_items:]
         turn.query = " ".join(recent_user + [user_text])[-400:]
 
@@ -540,6 +549,18 @@ class ChatTurnMixin(CommitMixin):
                     turn.set_slot("style", block)
             except Exception as e:  # noqa: BLE001
                 log.debug("风格块生成失败：%s", e)
+        else:
+            try:
+                recent_lens = [len(h.get("content") or "") for h in turn.history
+                               if h.get("role") == "assistant"][-3:]
+                nudge = prompt_mod.model_nudge(
+                    turn.user_text, turn.history, recent_lens,
+                    images=len(turn.images) if turn.images else 0,
+                    meme_ok=bool(turn.owner and self.meme_allowed(turn.m)))
+                if nudge:
+                    turn.set_slot("style", nudge)
+            except Exception as e:  # noqa: BLE001
+                log.debug("model_nudge 失败：%s", e)
 
         # 他发表情/贴图/纯图时，优先用表情回应：文字接不住一张梗图。
         # 只在 reaction 轮加，正经问题不加，避免每轮都想发表情。
@@ -725,7 +746,7 @@ class ChatTurnMixin(CommitMixin):
                             turn.failed_parts.append(part)
 
         turn.img_budget = max(self.max_tokens, self.reply_min_tokens)
-        turn.think = self._thinking_for(turn.user_text, turn.images)
+        sel_model, sel_route, turn.think = self._select_model_for_turn(turn)
         own_text = grounding.direct_words(turn.store_text or turn.user_text)
         allow_web = not grounding.forbids_web(own_text)
         show_tool_examples = bool(re.search(
@@ -738,7 +759,8 @@ class ChatTurnMixin(CommitMixin):
                 on_text=sink if on_sentence else None,
                 budget=turn.img_budget, stats=turn.task_stats,
                 thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
-                show_tool_examples=show_tool_examples)
+                show_tool_examples=show_tool_examples,
+                model=sel_model, route=sel_route)
             if not turn.text:
                 # 重试也要守住白名单：漏传 allow_tools 会默认 True，
                 # 等于给外人一次「首次回复为空」的机会拿回全部工具（能读笔记和记忆）。
@@ -746,7 +768,8 @@ class ChatTurnMixin(CommitMixin):
                     turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                     budget=turn.img_budget, stats=turn.task_stats,
                     thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
-                    show_tool_examples=show_tool_examples)
+                    show_tool_examples=show_tool_examples,
+                    model=sel_model, route=sel_route)
         except Exception as e:  # noqa: BLE001
             log.warning("生成回复失败：%s", e)
             turn.degraded += 1
@@ -759,7 +782,8 @@ class ChatTurnMixin(CommitMixin):
                         turn.msgs, turn.allow_meme, turn.ai_images,
                         budget=turn.img_budget, stats=turn.task_stats,
                         thinking=turn.think, allow_tools=turn.owner, allow_web=allow_web,
-                        show_tool_examples=show_tool_examples)
+                        show_tool_examples=show_tool_examples,
+                        model=sel_model, route=sel_route)
                     log.info("流式失败，回退非流式成功")
                 except Exception as e2:  # noqa: BLE001
                     log.warning("回退非流式也失败：%s", e2)
@@ -775,12 +799,15 @@ class ChatTurnMixin(CommitMixin):
                 # 记下来——这种轮次用户看到的是「说到一半停了」，比报错更难查。
                 turn.meta_leak_partial = True
             if not turn.sent_parts:
+                _retry_model = None if (sel_model and "reasoner" in sel_model) else sel_model
+                _retry_route = None if _retry_model is None else sel_route
                 try:
                     turn.text = await self._run_tools(
                         turn.msgs, turn.allow_meme, turn.ai_images, retry=True,
                         budget=turn.img_budget, stats=turn.task_stats,
                         thinking=False, allow_tools=turn.owner, allow_web=allow_web,
-                        show_tool_examples=show_tool_examples)
+                        show_tool_examples=show_tool_examples,
+                        model=_retry_model, route=_retry_route)
                     turn.streamed = False      # 重试是非流式，交回给 reply 发
                 except Exception as e:  # noqa: BLE001
                     log.warning("元叙述重试失败：%s", e)

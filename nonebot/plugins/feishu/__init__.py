@@ -474,8 +474,9 @@ async def _run_turn(key: tuple[str, str], turn: Turn) -> None:
 
 
 _turns = InboundTurns(_run_turn,
-                     text_gap=float(_CHAT_CFG.get("text_settle_seconds", 2.0)),
-                     media_gap=float(_CHAT_CFG.get("media_settle_seconds", 1.5)))
+                     text_gap=float(_CHAT_CFG.get("text_settle_seconds", 2.4)),
+                     media_gap=float(_CHAT_CFG.get("media_settle_seconds", 1.5)),
+                     media_only_gap=float(_CHAT_CFG.get("media_only_settle_seconds", 4.5)))
 
 
 def _on_event(data) -> None:

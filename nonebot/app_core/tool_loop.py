@@ -16,7 +16,7 @@ import time
 from app_core import self_check
 from app_core.round_timing import current as current_timing
 
-from app_core.tool_policy import READ_ONLY_TOOLS
+from app_core.tool_policy import READ_ONLY_TOOLS, SIDE_EFFECT_TOOLS
 
 log = logging.getLogger("qqbot.tool_loop")
 
@@ -188,6 +188,10 @@ async def run(core, msgs: list[dict], *,
                 done[key] = out
                 st["tools"] += 1
         for i, name, args, key in seq:
+            if name in SIDE_EFFECT_TOOLS:
+                st["side_effect"] = True
+                if timing := current_timing.get():
+                    timing.marks["side_effect"] = time.monotonic()
             out = await _exec_one(core, tools_mod.execute, name, args, images,
                                   tool_timeout)
             results[i] = out

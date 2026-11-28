@@ -1,8 +1,8 @@
 {
   "c01-weather-hit": {
-    "sha": "beb0c3438cd92668c78930732dd6360f3d7d3db19b4de6a322a74c7ee7e4bc09",
-    "n": 27,
-    "chars": 1241,
+    "sha": "d5e9ad1c945696995f0cc61191393f7aa17080d0448a9ec20c24b5fb5eb043d1",
+    "n": 22,
+    "chars": 1066,
     "blocks": [
       {
         "role": "system",
@@ -51,26 +51,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -88,6 +68,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -101,38 +101,13 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：今天北京天气"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -142,9 +117,9 @@
     ]
   },
   "c02-weather-cold": {
-    "sha": "2869b07fe42c6770b641612d2409b7f4464d7df0804a380c94c4a3ab39aa0056",
-    "n": 27,
-    "chars": 1236,
+    "sha": "879af3ce113ae0497c05f5fe45afc6e917ca77dfcbe494b6ca2b02e1b1812aa0",
+    "n": 22,
+    "chars": 1063,
     "blocks": [
       {
         "role": "system",
@@ -193,26 +168,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -230,6 +185,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -243,38 +218,13 @@
       },
       {
         "role": "system",
-        "chars": 81,
-        "label": "[此刻] 最近在聊：上海今天冷不"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -284,9 +234,9 @@
     ]
   },
   "c03-weather-missing": {
-    "sha": "dafbd2db010aa9663de6c3cbe31176b2fd0e24e962d064ad018e900e9a502bfd",
-    "n": 27,
-    "chars": 1220,
+    "sha": "9fac862db5204cfb4dbdf8949db4c3722aa4a298fe5ffe70c83c4a6088ef4565",
+    "n": 22,
+    "chars": 1046,
     "blocks": [
       {
         "role": "system",
@@ -335,26 +285,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -372,6 +302,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -385,38 +335,13 @@
       },
       {
         "role": "system",
-        "chars": 82,
-        "label": "[此刻] 最近在聊：杭州今天天气"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -426,9 +351,9 @@
     ]
   },
   "c04-weather-none": {
-    "sha": "58cc968054de03e05a4227fc1c8f5c14cc937a6df10fc84f2dc8033bbaab8872",
-    "n": 26,
-    "chars": 1192,
+    "sha": "1396da9eed36c430b0b10a44c44796b86680c5994e529f2343bce2ad8a01940c",
+    "n": 21,
+    "chars": 1022,
     "blocks": [
       {
         "role": "system",
@@ -477,26 +402,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -516,44 +421,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 78,
-        "label": "[此刻] 最近在聊：今天好累 此"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -563,9 +463,9 @@
     ]
   },
   "c05-search-hit": {
-    "sha": "349c7877d617eace756d8c7911adabbdd935e405ea3c01e660f5994ecf391c03",
-    "n": 27,
-    "chars": 1269,
+    "sha": "db532ce3434ff83ed0d2d75f3215bb96cc67fce5a00085cda754b22a8ace4895",
+    "n": 22,
+    "chars": 1089,
     "blocks": [
       {
         "role": "system",
@@ -614,26 +514,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -651,6 +531,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -664,38 +564,13 @@
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：帮我查一下这"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -705,9 +580,9 @@
     ]
   },
   "c06-search-trend": {
-    "sha": "50e476fbd5000449af0d1c77b758a9084ffffde04b68451234449bbc9161c62c",
-    "n": 27,
-    "chars": 1263,
+    "sha": "6fc60a8a831abae794202d4b0fa8d462f3fc187398ff22767922330c867fb876",
+    "n": 22,
+    "chars": 1083,
     "blocks": [
       {
         "role": "system",
@@ -756,26 +631,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -793,6 +648,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -806,38 +681,13 @@
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：帮我查一下这"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -847,9 +697,9 @@
     ]
   },
   "c07-search-miss": {
-    "sha": "b10c36e31e92cf66ea8b35159949852794ebf1633fe29e654dd3947fd9eb4c76",
-    "n": 26,
-    "chars": 1212,
+    "sha": "73c05ac17514a503b86c023354b019570ac2465aecaa1bce8ae0a862ae7beef1",
+    "n": 21,
+    "chars": 1032,
     "blocks": [
       {
         "role": "system",
@@ -898,26 +748,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -937,44 +767,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：帮我查一下这"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -984,9 +809,9 @@
     ]
   },
   "c08-search-error": {
-    "sha": "fbf39c91bd5a2319300bbff93e79d96cbec08cdcaf3820ac29948df9ee0323fc",
-    "n": 26,
-    "chars": 1220,
+    "sha": "3dc49c3a97732fade890b212b1d0e58791bcf9971fe16b6855989f241698497c",
+    "n": 21,
+    "chars": 1040,
     "blocks": [
       {
         "role": "system",
@@ -1035,26 +860,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1074,44 +879,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：帮我查一下这"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1121,9 +921,9 @@
     ]
   },
   "c09-followup-done": {
-    "sha": "c44d34163e588304f8155fca6508add01ba95c5506373c2c82c026a558a5835b",
-    "n": 29,
-    "chars": 1314,
+    "sha": "7b0dfcda443c5e6ec781b26e6b6596a796f022074da84c838d4db0df8afb353e",
+    "n": 24,
+    "chars": 1131,
     "blocks": [
       {
         "role": "system",
@@ -1172,26 +972,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1209,6 +989,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "user",
@@ -1232,38 +1032,13 @@
       },
       {
         "role": "system",
-        "chars": 91,
-        "label": "[此刻] 最近在聊：下周三面试我"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1273,9 +1048,9 @@
     ]
   },
   "c10-followup-confirm": {
-    "sha": "1cfef5596dfbcea48a26ef105efaefc0eda014fd248f301c669cecbbe529df0c",
-    "n": 29,
-    "chars": 1306,
+    "sha": "1482c3109d6abeb3f073974432c0ea7abb0a9f186e7ffa94e3af67b5a6c9f639",
+    "n": 24,
+    "chars": 1122,
     "blocks": [
       {
         "role": "system",
@@ -1324,26 +1099,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1361,6 +1116,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "user",
@@ -1384,38 +1159,13 @@
       },
       {
         "role": "system",
-        "chars": 92,
-        "label": "[此刻] 最近在聊：下周三面试好"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1425,9 +1175,9 @@
     ]
   },
   "c11-followup-drop": {
-    "sha": "d28efe6063ffb419a69c83d336174dfe9f2fa44d613930bf559381902072f2b5",
-    "n": 29,
-    "chars": 1316,
+    "sha": "3e0359cc114349d1730de84e691ac5309444ae6321940bf258fb795bfe6a8e2d",
+    "n": 25,
+    "chars": 1167,
     "blocks": [
       {
         "role": "system",
@@ -1476,26 +1226,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1513,6 +1243,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "user",
@@ -1536,38 +1286,18 @@
       },
       {
         "role": "system",
-        "chars": 92,
-        "label": "[此刻] 最近在聊：下周三面试算"
+        "chars": 35,
+        "label": "气氛到了，可以先用 meme_s"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
+      },
+      {
+        "role": "system",
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1577,9 +1307,9 @@
     ]
   },
   "c12-followup-none": {
-    "sha": "e3f0614ebf03d07812b78860762c7da032dba0bbe1f2d6e421f7f961e4be50f7",
-    "n": 26,
-    "chars": 1180,
+    "sha": "98729284969d2a88fc23da822b81a7ea838f6b0e5c827bd2c7eb9d29daafcf59",
+    "n": 21,
+    "chars": 1020,
     "blocks": [
       {
         "role": "system",
@@ -1628,26 +1358,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1667,6 +1377,26 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
@@ -1678,33 +1408,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1766,9 +1471,9 @@
     ]
   },
   "c14-style-rules-tired": {
-    "sha": "5ee82aa633df0d33918ec0589b0a66ef80582bc753c9257ac5c7860da9edef69",
+    "sha": "f81814adda4d06fd11c8c9ad0d2724b89ff97d98350a40e93813dc6cc2a85e91",
     "n": 9,
-    "chars": 433,
+    "chars": 422,
     "blocks": [
       {
         "role": "system",
@@ -1802,8 +1507,8 @@
       },
       {
         "role": "system",
-        "chars": 79,
-        "label": "[此刻] 最近在聊：今天累死了 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -1818,9 +1523,9 @@
     ]
   },
   "c15-reaction-emoji": {
-    "sha": "ea5f7ac809ec4c760295404f8e51868809afffcfd2015aa22d5a85c3923aeb7c",
-    "n": 27,
-    "chars": 1245,
+    "sha": "4bb2ef44bbd7a8b33bf732e9d3be91ffb0449134595af2bfada63f2527b2117c",
+    "n": 23,
+    "chars": 1109,
     "blocks": [
       {
         "role": "system",
@@ -1869,26 +1574,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -1908,9 +1593,34 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
+      },
+      {
+        "role": "system",
+        "chars": 35,
+        "label": "气氛到了，可以先用 meme_s"
       },
       {
         "role": "system",
@@ -1919,38 +1629,13 @@
       },
       {
         "role": "system",
-        "chars": 79,
-        "label": "[此刻] 最近在聊：哈哈哈哈哈 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -1960,9 +1645,9 @@
     ]
   },
   "c16-caption": {
-    "sha": "92d3f9a4b67f4c20c10c66823081993b092195a211eca6b65b94693a4cbdc8b2",
+    "sha": "222057669095096d717dde2b8915f0222d3dac22cd48f052e06719d07cfce434",
     "n": 12,
-    "chars": 681,
+    "chars": 666,
     "blocks": [
       {
         "role": "system",
@@ -2006,8 +1691,8 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2027,9 +1712,9 @@
     ]
   },
   "c17-caption-empty": {
-    "sha": "0da9f2e5846c3ffcf057493d435088d715296055674c9ff89083e57e96b55a8a",
+    "sha": "a77bb006545be51723c6179a5a2c91c1179df0bcfa9ddbf1f44b8c416be392a3",
     "n": 11,
-    "chars": 642,
+    "chars": 627,
     "blocks": [
       {
         "role": "system",
@@ -2068,8 +1753,8 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2089,9 +1774,9 @@
     ]
   },
   "c18-share-tier0": {
-    "sha": "e6bef2f46a9422fb0227b6ae526d95d19ce2d8449a18edac2ba5237e4b63c622",
+    "sha": "0311396b5d0a3a4424b8472ba7eda85846bc40fd83e4a35c76aa8c7256e27a75",
     "n": 13,
-    "chars": 797,
+    "chars": 782,
     "blocks": [
       {
         "role": "system",
@@ -2140,8 +1825,8 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2161,9 +1846,9 @@
     ]
   },
   "c19-share-tier1": {
-    "sha": "fe61152137fbbb8d16f494fbc39b794d81ded82c29c8c83a81545094c14a9f4a",
+    "sha": "46bee2dddd56c606a252ba0cff1d69cd0358c38915d0d9e4c89ce7996c6fab89",
     "n": 13,
-    "chars": 782,
+    "chars": 767,
     "blocks": [
       {
         "role": "system",
@@ -2212,8 +1897,8 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2233,9 +1918,9 @@
     ]
   },
   "c20-share-tier2": {
-    "sha": "f8d4cfd86060c31670ae372f2200226de30f20ce9cfce092c2f1b0ca18604c15",
+    "sha": "0c98f8a837714ea134a98e3ffa0b53d958a825969432258009f9e4cf39961ce0",
     "n": 13,
-    "chars": 777,
+    "chars": 757,
     "blocks": [
       {
         "role": "system",
@@ -2284,8 +1969,8 @@
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：今天拍的这个"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2305,9 +1990,9 @@
     ]
   },
   "c21-share-tier3": {
-    "sha": "821dc6fc2a94f69c6dba2b7a49faccd65409398b2f59c127064b862eafc7b93c",
+    "sha": "191fcacb5e175cedcb50e13a0c5f11b738c1861d62062723e7df03414700990a",
     "n": 12,
-    "chars": 709,
+    "chars": 689,
     "blocks": [
       {
         "role": "system",
@@ -2351,8 +2036,8 @@
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：你觉得这个设"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2372,9 +2057,9 @@
     ]
   },
   "c22-share-tier4": {
-    "sha": "d43a6223695a646861d706e7f136fb363c1ad82dcf2bbc0c85b233cd4cd75ad1",
+    "sha": "c632638efa87ec561124f09cab974af1e78c8002d4039170fc87552018c55d0b",
     "n": 13,
-    "chars": 759,
+    "chars": 739,
     "blocks": [
       {
         "role": "system",
@@ -2423,8 +2108,8 @@
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：我这个方案想"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2444,9 +2129,9 @@
     ]
   },
   "c23-share-off": {
-    "sha": "1a7fe50a018acda060b678970dbfb6790e3dda29c91c0e326493938748ed9d63",
+    "sha": "9c9f4dad5a1610e01fe4be383d16dd731d5aa7c56365e0dfd1b18ddff40a9274",
     "n": 12,
-    "chars": 676,
+    "chars": 661,
     "blocks": [
       {
         "role": "system",
@@ -2490,8 +2175,8 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：（附了 1 "
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -2511,9 +2196,9 @@
     ]
   },
   "c24-relation": {
-    "sha": "86a4f088db814697550ab042c7c94a5a8ea69bd926ace9c3622e7817bb33f95c",
-    "n": 27,
-    "chars": 1204,
+    "sha": "0089dcfad046214d976c3e154e52bffa3a473a0b613494aca86af1725d9d2ecc",
+    "n": 22,
+    "chars": 1044,
     "blocks": [
       {
         "role": "system",
@@ -2562,26 +2247,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -2599,6 +2264,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -2617,33 +2302,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -2653,9 +2313,9 @@
     ]
   },
   "c25-owner-false": {
-    "sha": "af8bc16e9abd47b1cb9f23d3985f480b36a7567e82533a58a2cdb6f5a221cfc3",
-    "n": 26,
-    "chars": 1265,
+    "sha": "5ee730fc51d2db530ec6096936e69debb674f902eae21a0297ba89f3be36e20c",
+    "n": 21,
+    "chars": 1105,
     "blocks": [
       {
         "role": "system",
@@ -2704,26 +2364,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -2741,6 +2381,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -2754,33 +2414,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -2790,9 +2425,9 @@
     ]
   },
   "c26-memory-hit": {
-    "sha": "5e96e3d9628ee8b33cf4331a6fbf488b5d5729e609012e7ade8aff8509be1370",
-    "n": 26,
-    "chars": 1200,
+    "sha": "aed20b59b2106625cf20859ea08a0df750cdb11c5043ce0dde109aa6cdf9183d",
+    "n": 21,
+    "chars": 1026,
     "blocks": [
       {
         "role": "system",
@@ -2841,26 +2476,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -2880,44 +2495,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 82,
-        "label": "[此刻] 最近在聊：面试准备得怎"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -2927,9 +2537,9 @@
     ]
   },
   "c27-knowledge": {
-    "sha": "786ee49a5db22611c69fc00526adbef30f0461ec7bac3923cd0551cc5134c2b9",
-    "n": 27,
-    "chars": 1251,
+    "sha": "9a75f4976ad0972d51dbcb9608453800b0e88e6886ad3c009dd2685527d66bda",
+    "n": 22,
+    "chars": 1078,
     "blocks": [
       {
         "role": "system",
@@ -2978,26 +2588,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3017,6 +2607,26 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
@@ -3028,38 +2638,13 @@
       },
       {
         "role": "system",
-        "chars": 81,
-        "label": "[此刻] 最近在聊：面试该注意什"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3069,9 +2654,9 @@
     ]
   },
   "c28-knowledge-multi": {
-    "sha": "103b7f9a9c32fc1eeba9b53fc2978ddbbdb371df37ee9e9af0f8e6bcbeefd507",
-    "n": 27,
-    "chars": 1249,
+    "sha": "8a78f8f98b75040d0780037aae4e0259a63ba0ac9798c9948ee09c8646cc236c",
+    "n": 22,
+    "chars": 1077,
     "blocks": [
       {
         "role": "system",
@@ -3120,26 +2705,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3157,6 +2722,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -3170,38 +2755,13 @@
       },
       {
         "role": "system",
-        "chars": 80,
-        "label": "[此刻] 最近在聊：面试要注意啥"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3211,9 +2771,9 @@
     ]
   },
   "c29-profile": {
-    "sha": "a8cbad30772330fd25364b0f5ee675eccd7c27d60444f249042abb25f8d44f0c",
-    "n": 27,
-    "chars": 1239,
+    "sha": "c2688190968ddd9c5808792f2a7aa1dd452eec884288eebe69ef4fe8c95db01d",
+    "n": 22,
+    "chars": 1064,
     "blocks": [
       {
         "role": "system",
@@ -3262,26 +2822,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3299,6 +2839,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -3312,38 +2872,13 @@
       },
       {
         "role": "system",
-        "chars": 83,
-        "label": "[此刻] 最近在聊：你觉得我适合"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3353,9 +2888,9 @@
     ]
   },
   "c30-mood-low": {
-    "sha": "2d52f6125db81e80727f8ec03b0a58817e81ca1ccf00e3a7318d576effd5feb2",
-    "n": 26,
-    "chars": 1180,
+    "sha": "8fe0940aa80ee4d6e10e10b574c8b3e33558ba9227f9f44fdb77cebdf8e0f182",
+    "n": 21,
+    "chars": 1020,
     "blocks": [
       {
         "role": "system",
@@ -3404,26 +2939,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3443,6 +2958,26 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
@@ -3454,33 +2989,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3490,9 +3000,9 @@
     ]
   },
   "c31-mood-high": {
-    "sha": "a968e5417e953f92820927636ab0db2ad4c8efdd11eec0f1d7667174c208b23c",
-    "n": 26,
-    "chars": 1180,
+    "sha": "14733c406bee5af477d7a832c1eeb9d413b20dae85b421ae0261696763e53414",
+    "n": 21,
+    "chars": 1020,
     "blocks": [
       {
         "role": "system",
@@ -3541,26 +3051,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3580,6 +3070,26 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
@@ -3591,33 +3101,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3627,9 +3112,9 @@
     ]
   },
   "c32-empty": {
-    "sha": "0ffc338ca03abd80d850d9ba384c9082793664be63397bf300efce2bdfcff7da",
-    "n": 26,
-    "chars": 1178,
+    "sha": "304d3908bad6f07b05c060ce2543d28379b21b8ac3659df4b807c590e9b9e4be",
+    "n": 21,
+    "chars": 1018,
     "blocks": [
       {
         "role": "system",
@@ -3678,26 +3163,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3715,6 +3180,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -3728,33 +3213,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3764,9 +3224,9 @@
     ]
   },
   "c33-long": {
-    "sha": "719b836274e7b667065abc4fbe39ab212149b0d7b500ebfa250a48b2c267fd7e",
-    "n": 26,
-    "chars": 1278,
+    "sha": "8068526b9811b75895c75ed8d009d3dfd07c8054230d54f8e97d862220fa564f",
+    "n": 21,
+    "chars": 1098,
     "blocks": [
       {
         "role": "system",
@@ -3815,26 +3275,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3854,44 +3294,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 88,
-        "label": "[此刻] 最近在聊：我今天在公司"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -3901,9 +3336,9 @@
     ]
   },
   "c34-group": {
-    "sha": "b613d8bd497d220c87c7882527541c3c6bcf6f1a640fe96a6b88f3f05c8cf0d3",
-    "n": 26,
-    "chars": 1265,
+    "sha": "e46e20a49ae6afaacc8a07325147bad707a273435c3ae0ec907d95e12a17a06d",
+    "n": 21,
+    "chars": 1105,
     "blocks": [
       {
         "role": "system",
@@ -3952,26 +3387,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -3991,6 +3406,26 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
@@ -4002,33 +3437,8 @@
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -4038,9 +3448,9 @@
     ]
   },
   "c35-chat-none": {
-    "sha": "036d4953f33bb398967d389f3f5e6427b637bb1b377246f6c2e8e627fe3c6982",
-    "n": 26,
-    "chars": 1192,
+    "sha": "8d9f4cd1d6f612488ee9a902fe5aa8a14bcde70136a085e425501715d1b73981",
+    "n": 21,
+    "chars": 1022,
     "blocks": [
       {
         "role": "system",
@@ -4089,26 +3499,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -4128,44 +3518,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 78,
-        "label": "[此刻] 最近在聊：随便聊聊 此"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -4175,9 +3560,9 @@
     ]
   },
   "c36-caption-noimg": {
-    "sha": "523dc606449b967d19c31db53b172218e102977b56fd620c0bfb473702b597d8",
+    "sha": "414d0461d30108a4c2099725645b72785878c7723bdf76bea1e88e99d3878f7e",
     "n": 9,
-    "chars": 423,
+    "chars": 413,
     "blocks": [
       {
         "role": "system",
@@ -4211,8 +3596,8 @@
       },
       {
         "role": "system",
-        "chars": 78,
-        "label": "[此刻] 最近在聊：看看这个 此"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
@@ -4227,9 +3612,9 @@
     ]
   },
   "c37-just-said": {
-    "sha": "d8aaf73d509ce17409504622035d09279ef7a8979080100f41138557ec64cab9",
-    "n": 27,
-    "chars": 1242,
+    "sha": "c57cc65460a771bae26bfe5ba4071682631291f1d84cddf185811c7914d09b0a",
+    "n": 22,
+    "chars": 1056,
     "blocks": [
       {
         "role": "system",
@@ -4278,26 +3663,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -4315,6 +3680,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "user",
@@ -4328,38 +3713,13 @@
       },
       {
         "role": "system",
-        "chars": 94,
-        "label": "[此刻] 最近在聊：我刚才说我今"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -4369,9 +3729,9 @@
     ]
   },
   "c38-common-sense": {
-    "sha": "bf1b1f9c9a79f35ad6f5c7684316118c2ba0ea8ae4b9135df548d042f6013d34",
-    "n": 26,
-    "chars": 1198,
+    "sha": "082fd4d91cf093a1b02baddead8492ed55cb478aefc9385259f56dfdbd009ff3",
+    "n": 21,
+    "chars": 1025,
     "blocks": [
       {
         "role": "system",
@@ -4420,26 +3780,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -4459,44 +3799,39 @@
         "label": "涨的是「用 AI」的岗，不是「做"
       },
       {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
+      },
+      {
         "role": "system",
         "chars": 33,
         "label": "【现在】[现在的相处] 还在聊，"
       },
       {
         "role": "system",
-        "chars": 81,
-        "label": "[此刻] 最近在聊：1+1 等于"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",
@@ -4506,9 +3841,9 @@
     ]
   },
   "c39-profile-known": {
-    "sha": "b7dbb47745b76b2fe413eb45e84a557c95d1a519a9150237d73a535763c80217",
-    "n": 27,
-    "chars": 1235,
+    "sha": "cba8113b35f6e2c277505930d5050a28bce5454142fa964a7087c12c007afaf6",
+    "n": 22,
+    "chars": 1062,
     "blocks": [
       {
         "role": "system",
@@ -4557,26 +3892,6 @@
       },
       {
         "role": "user",
-        "chars": 5,
-        "label": "算了不弄了"
-      },
-      {
-        "role": "assistant",
-        "chars": 5,
-        "label": "行，先放着"
-      },
-      {
-        "role": "user",
-        "chars": 9,
-        "label": "你觉得这名字怎么样"
-      },
-      {
-        "role": "assistant",
-        "chars": 15,
-        "label": "念着挺顺的，有点像古装剧里的人"
-      },
-      {
-        "role": "user",
         "chars": 9,
         "label": "我该不该继续投简历"
       },
@@ -4594,6 +3909,26 @@
         "role": "assistant",
         "chars": 41,
         "label": "涨的是「用 AI」的岗，不是「做"
+      },
+      {
+        "role": "user",
+        "chars": 5,
+        "label": "算了不弄了"
+      },
+      {
+        "role": "assistant",
+        "chars": 5,
+        "label": "行，先放着"
+      },
+      {
+        "role": "user",
+        "chars": 4,
+        "label": "但是省钱"
+      },
+      {
+        "role": "assistant",
+        "chars": 11,
+        "label": "那确实，能省一点是一点"
       },
       {
         "role": "system",
@@ -4607,38 +3942,13 @@
       },
       {
         "role": "system",
-        "chars": 81,
-        "label": "[此刻] 最近在聊：我是做什么的"
+        "chars": 68,
+        "label": "[此刻] 此刻：[你此刻的状态]"
       },
       {
         "role": "system",
-        "chars": 114,
+        "chars": 471,
         "label": "【这轮】用他的动作回应他：他演就"
-      },
-      {
-        "role": "system",
-        "chars": 174,
-        "label": "先写一行：[自检] 主=接住|判"
-      },
-      {
-        "role": "system",
-        "chars": 110,
-        "label": "【别踩】安慰：抱抱/会好的/我理"
-      },
-      {
-        "role": "system",
-        "chars": 104,
-        "label": "他说话没头没尾（比如只说「那个」"
-      },
-      {
-        "role": "system",
-        "chars": 55,
-        "label": "情绪明显、自嘲、或者一句话太干的"
-      },
-      {
-        "role": "system",
-        "chars": 65,
-        "label": "现在：2026-11-15 20"
       },
       {
         "role": "user",

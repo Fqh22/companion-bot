@@ -1235,8 +1235,9 @@ async def run(core, fake_embed, learn_store_mod, mem, relational_mod):
     check("没话头就不开口", not ok and "话头" in why, why)
 
     check("回应率 0 只给 1 条", decide.daily_cap(0.0) == 1, str(decide.daily_cap(0.0)))
-    check("回应率 30% 给 2 条", decide.daily_cap(0.3) == 2)
-    check("没有样本给满额", decide.daily_cap(None) == 4)
+    check("回应率 30% 克制为 1 条", decide.daily_cap(0.3) == 1)
+    check("高回应率给 2 条", decide.daily_cap(0.6) == 2)
+    check("没有样本保守给 1 条", decide.daily_cap(None) == 1)
 
     _fu = [("fu:1", "交周报", "问进展")]
     _cu = [("cur:1", "没搞懂的事", "问一句")]

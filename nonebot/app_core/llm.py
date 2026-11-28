@@ -113,10 +113,13 @@ class LLM:
         用来让「同一段输入重跑两次结果一致」——线上路径一律不传。"""
         think = self.thinking if thinking is None else thinking
         active = route or self.route
-        payload = {"model": model or self.model,
+        active_model = model or self.model
+        rf = (active.request_fields(messages, thinking=think, model=active_model)
+              if "reasoner" in active_model else active.request_fields(messages, thinking=think))
+        payload = {"model": active_model,
                    "temperature": self.temperature if temperature is None else temperature,
                    "max_tokens": max_tokens or self.max_tokens,
-                   **active.request_fields(messages, thinking=think)}
+                   **rf}
         if tools_arg:
             payload["tools"] = tools_arg
         if response_format:
@@ -175,7 +178,9 @@ class LLM:
     # ---------- 流式 ----------
     async def stream(self, messages: list[dict], tools_arg=None, on_text=None,
                      max_tokens: int | None = None,
-                     thinking: bool | None = None) -> dict:
+                     thinking: bool | None = None,
+                     model: str | None = None,
+                     route: ModelRoute | None = None) -> dict:
         """流式调用。边收边把文本增量交给 on_text，结束时返回完整 message。
 
         流式不重试：已经吐出去的文字收不回来。首字之前的失败由上层回退非流式处理。
@@ -184,10 +189,15 @@ class LLM:
         天然产出「总—分—总」，还会让 temperature 失效。
         """
         think = self.thinking if thinking is None else bool(thinking)
-        payload = {"model": self.model,
+        active = route or self.route
+        active_model = model or self.model
+        rf = (active.request_fields(messages, thinking=think, stream=True, model=active_model)
+              if "reasoner" in active_model
+              else active.request_fields(messages, thinking=think, stream=True))
+        payload = {"model": active_model,
                    "temperature": self.temperature,
                    "max_tokens": max_tokens or self.max_tokens,
-                   "stream": True, **self.route.request_fields(messages, thinking=think, stream=True)}
+                   "stream": True, **rf}
         if tools_arg:
             payload["tools"] = tools_arg
 
@@ -198,10 +208,10 @@ class LLM:
         usage: dict | None = None
         t0 = time.perf_counter()
 
-        key = self._key_for(self.route)
+        key = self._key_for(active)
         client = _http()
         async with client.stream(
-                "POST", self.route.api,
+                "POST", active.api,
                 headers={"Authorization": f"Bearer {key}",
                          "Content-Type": "application/json"},
                 json=payload) as r:
@@ -253,7 +263,7 @@ class LLM:
 
         if usage:
             try:
-                await self.record_usage(self.model, usage,
+                await self.record_usage(active_model, usage,
                                         int((time.perf_counter() - t0) * 1000), "chat")
             except Exception as e:  # noqa: BLE001
                 # 记账失败不该打断回复，但要留痕：否则 /usage 会悄悄少计，排障时找不到原因

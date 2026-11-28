@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import time
 
 import aiosqlite
@@ -164,10 +165,42 @@ class ReplyMixin:
 
     async def _stream_raw(self, messages: list[dict], tools_arg=None, on_text=None,
                           max_tokens: int | None = None,
-                          thinking: bool | None = None) -> dict:
+                          thinking: bool | None = None,
+                          model: str | None = None,
+                          route=None) -> dict:
         self._sync_llm_db()
+        if model or route:
+            return await self.llm.stream(messages, tools_arg, on_text,
+                                         max_tokens=max_tokens, thinking=thinking,
+                                         model=model, route=route)
         return await self.llm.stream(messages, tools_arg, on_text,
                                      max_tokens=max_tokens, thinking=thinking)
+
+    def _select_model_for_turn(self, turn) -> tuple[str | None, object | None, bool | None]:
+        """按轮次复杂度选择快/强模型；排错命中后保持 3 轮强档粘性，防止中途失忆。"""
+        base_think = self._thinking_for(turn.user_text, turn.images)
+        spec = getattr(self, "strong_spec", None)
+        if not spec or not turn.owner:
+            return None, None, base_think
+        from app_core import correction, grounding
+
+        own_words = grounding.direct_words(turn.store_text or turn.user_text)
+        has_fix_img = (bool(turn.images or getattr(turn, "recalled_image_paths", None))
+                       and prompt_mod.image_mode(turn.user_text) == "fix")
+        is_corr = correction.looks_like_correction(own_words) or bool(re.search(
+            r"为什么我可以|我不是已经|已经绑上|你说错了|不对吧|不是.{1,20}而是|明明", own_words))
+        is_complex = (len(own_words) >= 45
+                      or any(h in own_words for h in self._ANALYTIC_HINTS)
+                      or bool(re.search(r"报错|无效|失败|风控|限制|区别|哪个好|绑不上|登不上|为什么", own_words)))
+        sticky = getattr(self, "_strong_sticky", {})
+        if has_fix_img or is_corr or is_complex:
+            sticky[turn.session] = 3
+        elif sticky.get(turn.session, 0) > 0:
+            sticky[turn.session] -= 1
+        else:
+            return None, None, base_think
+        strong_model, strong_route, strong_think = spec
+        return strong_model, strong_route, (True if strong_think else base_think)
 
     def _style_mode(self) -> str:
         """rules = 旧规则；model = 只给人格和例子。未知值按 model。"""
@@ -224,7 +257,9 @@ class ReplyMixin:
                          stats: dict | None = None,
                          thinking: bool | None = None,
                          allow_tools: bool = True, allow_web: bool = True,
-                         show_tool_examples: bool = False) -> str:
+                         show_tool_examples: bool = False,
+                         model: str | None = None,
+                         route=None) -> str:
         """工具循环本体在 tool_loop.py。这里只决定「哪些工具这轮不给用」。
 
         allow_tools=False 是给外人的：只放行 tools.PUBLIC_TOOLS（查资料、发表情），
@@ -240,19 +275,40 @@ class ReplyMixin:
             banned.update(("web_search", "web_open"))
         if retry:
             banned |= RETRY_BLOCKED
-        messages = [*msgs[:-1], {"role": "system", "content":
-            "回答前判断证据是否够。已给全信息就直接答。缺的是对话里提过的细节，先看引用、原话、图注或记忆。"
-            "缺的是公开事实、时效信息或需要可靠来源，且允许联网时，带上实际对象和待核实的问题去搜。"
-            "搜索摘要不足以支持结论时打开原文或继续查，交叉理解后再作答；分清事实、推断和仍不确定的部分。"
-            "只有用户掌握的信息确实缺失时，才问一个具体问题。"
-            "只写给用户看的回答。隐去内部知识目录、检索标签、工具语法和调用参数。"
-            "背景资料与本轮无关时省略；需要时用自然语言解释与问题有关的部分。"}, *msgs[-1:]]
+        if thinking is False and not model:
+            tail_hint = (
+                "顺着接一两句短话就行，别展开分析或列点；不确定别编数字，对话里刚提过的事别反问。"
+                "隐去工具语法和内部目录。"
+            )
+            eff_budget = min(budget or self.max_tokens, 260)
+        else:
+            tail_hint = (
+                "回答前判断证据是否够。已给全信息就直接答，结论直接说，别列一二三点或写小作文。"
+                "缺的是对话里提过的细节，先看引用、原话、图注或记忆。"
+                "缺的是公开事实、时效信息且允许联网时再搜；分清事实、推断和仍不确定的部分。"
+                "对话里刚交代过的条件严禁再反问；只有用户掌握的信息确实缺失时，才问一个具体问题。"
+                "只写给用户看的回答，隐去内部目录、检索标签、工具语法和调用参数。"
+            )
+            eff_budget = budget
+        messages = [*msgs[:-1], {"role": "system", "content": tail_hint}, *msgs[-1:]]
+        if model or route:
+            def _complete(m, t):
+                return self.complete_raw(m, t, max_tokens=eff_budget,
+                                         thinking=thinking, model=model, route=route)
+
+            def _stream(m, t, cb):
+                return self._stream_raw(m, t, cb, max_tokens=eff_budget,
+                                        thinking=thinking, model=model, route=route)
+        else:
+            def _complete(m, t):
+                return self.complete_raw(m, t, max_tokens=eff_budget, thinking=thinking)
+
+            def _stream(m, t, cb):
+                return self._stream_raw(m, t, cb, max_tokens=eff_budget, thinking=thinking)
         return await tool_loop.run(
             self, messages,
-            complete=lambda m, t: self.complete_raw(m, t, max_tokens=budget,
-                                                    thinking=thinking),
-            stream=lambda m, t, cb: self._stream_raw(m, t, cb, max_tokens=budget,
-                                                     thinking=thinking),
+            complete=_complete,
+            stream=_stream,
             tools_mod=tools,
             tools_banned=banned, show_tool_examples=show_tool_examples,
             max_rounds=self.max_tool_rounds,

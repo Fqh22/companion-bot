@@ -83,7 +83,15 @@ DEFAULTS = {
         # 声明默认值，以便配置同步检查覆盖这个键。
         # 2026-11-10 用户决定常开思考：清空会话也走思考，不再按「短句/无问号」关。
     # 分流逻辑保留在 _thinking_for 里，把这里改回 True 即可恢复。
-    "thinking_casual": False,
+        "thinking_casual": True,
+        # 排错、报错截图、被纠正或多条件对比时自动切到强推理模型（如 deepseek-v4-pro）；model 留空不启用分流。
+        "strong": {
+            "model": "",
+            "api": "",
+            "protocol": "",
+            "key_ref": "",
+            "thinking": True,
+        },
         # 取数并发（S2）：默认全 false = 与改造前完全一致。打开后 search/weather 并发跑，
         # 受首字预算与总闸约束。读的是 llm.prepare_parallel（chat_turn.py），
         # 不是 chat 段——此前 yaml 写在 llm 下、代码读 chat 下，两边都以为对方有。
@@ -203,8 +211,12 @@ DEFAULTS = {
         # voice_then_text（先语音再文字）| voice（只发语音，失败才退回文字）。
         # 只在「他发语音 / 明确要语音」时生效；普通文字聊天不受影响。
         "voice_reply_mode": "voice",
-        "text_settle_seconds": 2.0,
+        "text_settle_seconds": 2.4,
         "media_settle_seconds": 1.5,
+        # 纯图片无配字时等待补充提问的窗口（发截图后打字往往需要 4 秒左右）。
+        "media_only_settle_seconds": 4.5,
+        # off = 不再每轮强迫模型先输出 [自检] 分类标签；sample = 10% 抽样；always = 每轮都开。
+        "self_check_mode": "off",
         # 引用回复：第一段带「回复你那条」。默认关——用户实测觉得每条都挂引用框太重。
         "quote_reply": False,
         # false 时关闭事实召回，其他读写沿用兼容行为。
@@ -252,6 +264,8 @@ DEFAULTS = {
         # cache_in 是「上下文缓存命中」的输入单价，约为未命中的 1/4
         "deepseek-flash": {"in": 2.0, "out": 8.0, "cache_in": 0.5},
         "deepseek-chat": {"in": 2.0, "out": 8.0, "cache_in": 0.5},
+        "deepseek-reasoner": {"in": 2.0, "out": 8.0, "cache_in": 0.5},
+        "deepseek-v4-pro": {"in": 4.0, "out": 16.0, "cache_in": 1.0},
         "cache_in": 0.5,
     },
 }

@@ -57,13 +57,10 @@ def recent_topics(session: str, limit: int = MAX_TOPICS, latest: str = "") -> li
 
 
 def describe(session: str, m: dict | None = None, latest: str = "") -> str:
-    """一段「此刻」；没有可说的就返回空串（不注入）。"""
+    """一段「此刻」；只保留有真实状态语义的待办与情绪，不再拼接 14 字残句。"""
     parts: list[str] = []
-    topics = recent_topics(session, latest=latest)
-    if topics:
-        parts.append("最近在聊：" + "、".join(topics))
     try:
-        todo = [x["text"][:18] for x in followup.pending(2)]
+        todo = [x["text"][:24] for x in followup.pending(2)]
         if todo:
             parts.append("还挂着：" + "；".join(todo))
     except Exception:  # noqa: BLE001

@@ -200,8 +200,9 @@ async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
 
 
 _turns = InboundTurns(_run_turn,
-                     text_gap=float(_SETTLE_CFG.get("text_settle_seconds", 2.0)),
-                     media_gap=float(_SETTLE_CFG.get("media_settle_seconds", 1.5)))
+                     text_gap=float(_SETTLE_CFG.get("text_settle_seconds", 2.4)),
+                     media_gap=float(_SETTLE_CFG.get("media_settle_seconds", 1.5)),
+                     media_only_gap=float(_SETTLE_CFG.get("media_only_settle_seconds", 4.5)))
 
 
 def _bot():

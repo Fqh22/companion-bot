@@ -82,23 +82,30 @@ class InboundTurns(Generic[Key]):
     REFERENCE_LIMIT = 256
 
     def __init__(self, handler: Callable[[Key, Turn], Awaitable[None]], *,
-                 text_gap: float = 2.0, media_gap: float = 1.5, image_timeout: float = 8.0) -> None:
+                 text_gap: float = 2.0, media_gap: float = 1.5,
+                 media_only_gap: float | None = None, image_timeout: float = 8.0) -> None:
         self.handler = handler
         self.text_gap = max(0.0, min(10.0, text_gap))
         self.media_gap = max(0.0, min(10.0, media_gap))
+        self.media_only_gap = (max(0.0, min(10.0, media_only_gap))
+                               if media_only_gap is not None
+                               else max(self.media_gap, self.text_gap))
         self.image_timeout = image_timeout
         self._sessions: dict[Key, _Session] = {}
         self._image_slots = asyncio.Semaphore(4)
         self._image_refs: OrderedDict[tuple[Key, str], tuple[float, list[asyncio.Task[_Download]]]] = OrderedDict()
 
     def _deadline(self, batch: _Batch) -> float:
-        if batch.voice or not batch.has_text:
+        if batch.downloads and not batch.has_text and not batch.voice:
+            gap = max(self.media_only_gap, self.media_gap, self.text_gap)
+        elif batch.voice or not batch.has_text:
             gap = max(self.media_gap, self.text_gap)
         elif len(batch.parts) > 1 or expects_more(batch.parts[0].texts[-1]):
             gap = self.text_gap
         else:
             gap = min(self.QUICK_GAP, self.text_gap)
-        return min(batch.last + gap, batch.first + max(4.0, gap))
+        cap = max(4.0, gap + 1.5 if gap > 3.0 else gap)
+        return min(batch.last + gap, batch.first + cap)
 
     async def _download(self, load_images: ImageLoad) -> _Download:
         async def load() -> str | None:
