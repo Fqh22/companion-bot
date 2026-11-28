@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote
@@ -32,7 +33,7 @@ SKIP = ("http://", "https://", "mailto:", "#", "tel:")
 # 备份/ 是运行产物（云端 tgz、文档快照），不是文档；放进去的旧 md 不该被守门员检查
 EXCLUDE_DIRS = {".git", ".workbuddy", "assets", "__pycache__", "node_modules", "备份"}
 # 护栏脚本本身含故意写坏的反例，不能被自己扫到
-EXCLUDE_FILES = {"CHANGELOG.md",
+EXCLUDE_FILES = {"CHANGELOG.md", "HANDOFF.md", "交接卡.md",
                  "test-check-links.py", "test-guards.py"}
 REF_EXTS = {".md", ".py", ".yaml", ".yml", ".toml", ".sh"}
 
@@ -71,10 +72,30 @@ def target_path(root: Path, src: Path, raw: str) -> Path | None:
     return p
 
 
+def _git_ignored(root: Path, paths: list[Path]) -> set[Path]:
+    """若 root 是 git 仓库，返回这批路径中被 .gitignore 忽略的集合。"""
+    if not paths or not (root / ".git").exists():
+        return set()
+    rels = [Path(rel(root, p)).as_posix() for p in paths]
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(root), "check-ignore", "--", *rels],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=10,
+        )
+    except Exception:  # noqa: BLE001
+        return set()
+    if r.returncode not in (0, 1):
+        return set()
+    ignored_rels = {line.strip() for line in r.stdout.splitlines() if line.strip()}
+    return {root.resolve() / item for item in ignored_rels}
+
+
 def check_links(root: Path) -> tuple[list[str], int, int]:
     errors: list[str] = []
     n_links = 0
     mds = [p for p in iter_files(root, {".md"})]
+    existing_targets: list[tuple[Path, str, Path]] = []
     for src in mds:
         try:
             text = src.read_text(encoding="utf-8", errors="replace")
@@ -82,9 +103,18 @@ def check_links(root: Path) -> tuple[list[str], int, int]:
             continue
         for m in LINK.finditer(text):
             n_links += 1
-            p = target_path(root, src, m.group(1))
-            if p is not None and not p.exists():
-                errors.append(f"失效链接 {rel(root, src)} -> {m.group(1)}")
+            raw = m.group(1)
+            p = target_path(root, src, raw)
+            if p is None:
+                continue
+            if not p.exists():
+                errors.append(f"失效链接 {rel(root, src)} -> {raw}")
+            else:
+                existing_targets.append((src, raw, p))
+    ignored = _git_ignored(root, [p for _, _, p in existing_targets])
+    for src, raw, p in existing_targets:
+        if p in ignored:
+            errors.append(f"失效链接（目标被 gitignore，CI 不存在） {rel(root, src)} -> {raw}")
     return errors, n_links, len(mds)
 
 

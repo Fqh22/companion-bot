@@ -88,7 +88,20 @@ def main() -> int:
         errors, _ = scan(base)
         check("抓到登记了不存在的页", has(errors, "登记了不存在"), str(errors)[:120])
 
-    print(f"\n=== {6 - len(FAILS)}/6 通过 ===" if not FAILS else
+        import subprocess
+
+        subprocess.run(["git", "-C", str(base), "init", "-q"], check=True)
+        (base / ".gitignore").write_text("HANDOFF.md\n", encoding="utf-8")
+        (base / "HANDOFF.md").write_text("# handoff\n", encoding="utf-8")
+        (docs / "README.md").write_text(
+            "# 文档地图\n\n| 层 | 文档 |\n|---|---|\n"
+            "| L1 | [01-a](01-a.md) |\n| L2 | [02-b](02-b.md) |\n",
+            encoding="utf-8")
+        (base / "README.md").write_text("# root\n见 [卡](HANDOFF.md)\n", encoding="utf-8")
+        errors, _ = scan(base)
+        check("抓到指向 gitignore 文件的链接", has(errors, "gitignore"), str(errors)[:120])
+
+    print(f"\n=== {7 - len(FAILS)}/7 通过 ===" if not FAILS else
           f"\n=== FAIL: {', '.join(FAILS)} ===")
     return 1 if FAILS else 0
 
