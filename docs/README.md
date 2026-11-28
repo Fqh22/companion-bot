@@ -16,11 +16,32 @@
 `CHANGELOG.md` 按日期流水 · `CONTRIBUTING.md` 提交约定 · `SECURITY.md` 密钥与平台风险。
 `relation.example.md` 是关系小抄示例，不是叙述文档。
 
-## 三条阅读路径
+## 按任务阅读
 
-1. **只想跑起来**：`README.md#快速开始` → [03-运维与通道](03-运维与通道.md)
-2. **要改代码**：`AGENTS.md` → [02-系统与扩展](02-系统与扩展.md) → [01-定义与决策](01-定义与决策.md) 的五问
-3. **想理解为什么**：[01-定义与决策](01-定义与决策.md) → [04-评测与实验](04-评测与实验.md) → `CHANGELOG.md`
+| 任务 | 从哪里开始 |
+|---|---|
+| 启动和排障 | [快速开始](../README.md#快速开始)与[运维与通道](03-运维与通道.md) |
+| 审查工作树改动 | [项目约定](../AGENTS.md)、交接看板、Git 状态和目标 diff |
+| 审查入站与回复 | [一轮对话](02-系统与扩展.md#2--一轮对话)与[通道协议](02-系统与扩展.md#3--通道协议) |
+| 审查记忆与主动跟进 | [系统与扩展](02-系统与扩展.md)第 4、5 节 |
+| 审查搜索与工具 | [系统与扩展](02-系统与扩展.md)第 2、7 节，再定位相关工具与测试 |
+| 查设计依据或评测结果 | [定义与决策](01-定义与决策.md)、[评测与实验](04-评测与实验.md)及对应的 [变更记录](../CHANGELOG.md)条目 |
+
+## 验证清单
+
+在项目根将 `QQBOT_CODE_DIR` 指向当前工作树的 `nonebot` 目录。PowerShell 可用 `$env:QQBOT_CODE_DIR = (Resolve-Path nonebot).Path`。
+
+| 范围 | 在项目根用 Python 运行的脚本 |
+|---|---|
+| 基础八项 | `ops/lint-plugins.py`、`ops/lint-layers.py`、`ops/test-nonebot-offline.py`、`ops/smoke-all.py`、`ops/test-runner.py`、`ops/test-commands.py`、`ops/link-check.py`、`ops/smoke-plugins.py` |
+| 静态检查与守门员 | `ops/scan-secrets.py`、`ops/check-links.py`、`ops/test-guards.py`、`ops/test-lint-layers.py`、`ops/test-check-links.py`、`ops/test-embed-guard.py` |
+| 配置、记忆端口和审批护栏 | `ops/test-batch2-guards.py`、`ops/test-batch3-guards.py`、`ops/test-batch4-guards.py` |
+| 独立的线上观测 | `ops/replay-diff.py 5` 用真实对话样本调用模型，独立于 CI。观察期用 `ops/memory-report.py 7` 汇总记忆使用情况 |
+
+完整发布验证使用 `python ops/verify.py --profile all`，只改接线可用 `--profile quick`。
+离线回归入口默认跑全套。可用 `--group adapters` 或 `--group pacing` 独立验证，也可用 `--group conversation` 验证到对话组。分组源码在 `ops/offline_regression/`。
+
+用测试汇总和失败附近的输出核对行为，用脚本名和断言文字定位细节。云端部署验证及各链路的测试入口见[测试与联动](02-系统与扩展.md#8--测试与联动)。
 
 ## 约定
 

@@ -26,6 +26,7 @@ import uuid
 from pathlib import Path
 
 from app_core import paths as _paths
+from app_core.tool_policy import IRREVERSIBLE, SIDE_EFFECT_TOOLS
 
 log = logging.getLogger("qqbot.audit")
 
@@ -33,14 +34,6 @@ AUDIT_LOG = _paths.DATA / "audit.jsonl"
 PENDING_FILE = _paths.DATA / "audit-pending.json"
 PENDING_TTL = 600.0            # 10 分钟：没人批准就作废
 MAX_PENDING = 50
-
-# 会改状态的工具。`web_open` 也在内：它会 learn.note_write 往知识库写笔记
-# （以前被误列进只读白名单，见 tools.py 的注释）。
-SIDE_EFFECT_TOOLS = frozenset({
-    "note_write", "remind_me", "remind_cancel", "meme_send", "web_open",
-})
-# 消息一旦发出就撤不回，审计里必须明说「不可回滚」，不能假装能撤销。
-IRREVERSIBLE = frozenset({"meme_send", "web_open"})
 
 
 def _dump(rec: dict) -> str:
@@ -213,7 +206,7 @@ def propose(name: str, args: dict, session: str = "",
 
 # 同一进程内的批准串行：两个 /approve 同时读同一份 pending 再各自写回，
 # 后写的会覆盖先写的，两边都拿到可执行请求 → 同一 ID 执行两次。
-# 跨进程（配置面板等）不共享这把锁，但落盘仍是"先写后执行"的原子领取。
+# 跨进程不共享这把锁，但落盘仍是"先写后执行"的原子领取。
 _DECIDE_LOCK = threading.Lock()
 
 

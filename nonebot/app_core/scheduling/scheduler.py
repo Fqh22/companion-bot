@@ -22,6 +22,7 @@ import aiosqlite
 from app_core import paths as _paths
 from app_core import (config, diary, followup, kb, learn, mood, purge,
                       remind, watch, web, wiki)
+from app_core.delivery import DELIVERY_UNKNOWN
 
 NL = chr(10)
 CHAT_DB = _paths.DATA / "chat.db"
@@ -189,10 +190,18 @@ class Scheduler:
             if not remind.claim(r["id"]):
                 continue
             text = await self._reminder_text(r["text"])
-            if text and await self.send(text):
+            result = await self.send(text) if text else False
+            if result:
                 log.info("提醒 %s 已发送：%s", r["id"], text[:40])
                 continue
+            if result is DELIVERY_UNKNOWN:
+                log.warning("提醒 %s 的送达状态未知，保留抢占避免重发", r["id"])
+                continue
             remind.release(r["id"])
+
+    async def _report_handled(self, text: str) -> bool:
+        result = await self.send(text)
+        return bool(result) or result is DELIVERY_UNKNOWN
 
     async def _run_cleanup(self) -> None:
         self._log_cleanup(self.core.memory.cleanup())
@@ -267,11 +276,11 @@ class Scheduler:
                        if r.get("titles") else ""))
 
     async def _run_weekly(self) -> bool:
-        """返回是否已经送到。False 会被 _tick 撤回标记，下一分钟重试。"""
+        """明确未送达时撤回执行标记，下一分钟重试。"""
         text = await learn.weekly(self.core)
         if not text or not self.send:
             return True
-        if await self.send(text):
+        if await self._report_handled(text):
             return True
         log.error("周报发送失败（内容已落盘 weekly 文件），撤回标记等重试")
         return False
@@ -290,7 +299,7 @@ class Scheduler:
         log.info("话题巡检：%d 条变化", len(changes))
         if not self.send:
             return True
-        if await self.send("有变化：\n" + "\n".join(f"- {c}" for c in changes)):
+        if await self._report_handled("有变化：\n" + "\n".join(f"- {c}" for c in changes)):
             return True
         log.error("话题巡检有 %d 条变化但没发出去，撤回标记等重试", len(changes))
         return False
@@ -334,7 +343,7 @@ class Scheduler:
         log.info("知识库周检：%d 字，发送中", len(text))
         if not self.send:
             return True
-        if await self.send(text):
+        if await self._report_handled(text):
             return True
         log.error("知识库周检没发出去，撤回标记等重试")
         return False

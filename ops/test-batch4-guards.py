@@ -23,7 +23,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-from app_core import audit, pacing, proactive_channels  # noqa: E402
+from app_core import audit, pacing, proactive_channels, tool_policy  # noqa: E402
 
 TOTAL = 0
 FAILS: list[str] = []
@@ -349,7 +349,6 @@ def wiring_checks() -> None:
     loop = read(core, "tool_loop.py")
     cfg = read(core, "config.py")
     ex = read(CODE, "config.example.yaml")
-    ui = read(ROOT / "ops", "config-ui.py")
     qq = read(CODE / "plugins" / "chat", "__init__.py")
     fs = read(CODE / "plugins" / "feishu", "__init__.py")
     pro = read(CODE / "plugins" / "proactive", "__init__.py")
@@ -357,16 +356,18 @@ def wiring_checks() -> None:
     hp = read(core, "help.py")
     smoke = read(ROOT / "ops", "smoke-all.py")
 
-    check("web_open 不再被当只读（两处名单）",
-          '"web_open", "kb_read"' not in tools and '"web_open", "kb_read"' not in loop
-          and '"web_search", "kb_read"' in tools)
+    check("工具并发、审批和重试共用策略，web_open 始终视为写类",
+          "from app_core.tool_policy import" in tools
+          and "from app_core.tool_policy import READ_ONLY_TOOLS" in loop
+          and "web_open" not in tool_policy.READ_ONLY_TOOLS
+          and "web_open" in audit.SIDE_EFFECT_TOOLS & tool_policy.RETRY_BLOCKED
+          and {"web_search", "kb_read"} <= tool_policy.READ_ONLY_TOOLS)
     check("tools.execute 接上审计与授权重放入口",
           "audit.propose" in tools and "approved: bool = False" in tools
           and "audit.record" in tools)
-    check("配置四处同步（DEFAULTS / example / 面板）",
+    check("配置默认值与示例一致",
           '"require_approval": False' in cfg and '"proactive": {' in cfg
-          and "require_approval: false" in ex and "channel: \"qq\"" in ex
-          and '"tools.require_approval"' in ui and '"proactive.channel"' in ui)
+          and "require_approval: false" in ex and "channel: \"qq\"" in ex)
     # 2026-11-16：分段逻辑上移到 outbound.py，插件只传回调
     ob = read(core, "outbound.py")
     check("QQ / 飞书语音都走按句分段（outbound 统一）",

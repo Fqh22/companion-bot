@@ -1,157 +1,23 @@
-#!/bin/bash
-# verify.sh —— 一键跑「五件套」，任何一套失败就返回非零。
-#
-# 用法（在云端 /opt/nonebot 下，root 或 ubuntu 都行）：
-#   ops/verify.sh            # 全量：规范 + 分层 + 离线回归 + 联动体检 + 全链路 + 插件启动
-#   ops/verify.sh --pre      # 重启前：规范 + 分层 + 离线回归 + 联动体检（都不碰生产库、不发消息）
-#   ops/verify.sh --quick    # 秒级：规范 + 分层 + 联动体检（改完想先看一眼接线时用）
-#   ops/verify.sh --verbose  # 失败时也打印完整输出
-#   ops/verify.sh --code /path/to/nonebot
-#
-# 退出码：0 全过；1 有失败；2 环境不对（找不到代码或解释器）。
-set -uo pipefail
-
+#!/usr/bin/env bash
+# 云端入口，使用候选或生产版本自带的验证清单。
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
 CODE="${QQBOT_CODE_DIR:-/opt/nonebot}"
-PY="$CODE/venv/bin/python"
-MODE="all"
-VERBOSE=0
-
-while [ $# -gt 0 ]; do
+MODE=all
+EXTRA=()
+while [ "$#" -gt 0 ]; do
     case "$1" in
-        --pre)     MODE="pre" ;;
-        --quick)   MODE="quick" ;;
-        --all)     MODE="all" ;;
-        --verbose|-v) VERBOSE=1 ;;
-        --code)    shift; CODE="$1"; PY="$CODE/venv/bin/python" ;;
-        -h|--help)
-            sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
-            exit 0 ;;
-        *) echo "未知参数：$1（用 --help 看用法）" >&2; exit 2 ;;
+        --pre|--quick|--all) MODE="${1#--}" ;;
+        --code) shift; CODE="${1:?--code 需要目录}" ;;
+        --verbose|-v) EXTRA+=(--verbose) ;;
+        -h|--help) echo "用法：ops/verify.sh [--quick|--pre|--all] [--code PATH] [--verbose]"; exit 0 ;;
+        *) echo "未知参数：$1" >&2; exit 2 ;;
     esac
     shift
 done
-
-OPS="$CODE/ops"
+PY="$CODE/venv/bin/python"
 [ -x "$PY" ] || { echo "找不到解释器：$PY" >&2; exit 2; }
-[ -d "$OPS" ] || { echo "找不到 ops 目录：$OPS" >&2; exit 2; }
-
-# 仓库里叫 test-nonebot-offline.py；云端历史上曾有 offline-test.py 的旧副本。
-# 优先仓库名——旧副本一旦残留就会遮住新回归集，「云端 5/5」跑的是旧测试。
-OFFLINE="$OPS/test-nonebot-offline.py"
-[ -f "$OFFLINE" ] || OFFLINE="$OPS/offline-test.py"
-
-# 云端是 root，但测试要用 ubuntu 跑（生产库只读副本、写临时目录）。
-# 本地/切换用户后已经是 ubuntu，就别再 sudo。
-if [ "$(id -u)" = "0" ]; then
-    RUN=(sudo -u ubuntu -E)
-else
-    RUN=()
+if [ "$(id -u)" = 0 ]; then
+    exec sudo -u ubuntu -E "$PY" "$HERE/verify.py" --profile "$MODE" --code "$CODE" "${EXTRA[@]}"
 fi
-
-TOTAL=0
-FAILED=0
-declare -a NAMES=()
-declare -a STATS=()
-declare -a DUR=()
-
-run_suite() {
-    local name="$1" script="$2"
-    # 缺文件不算通过：以前打印「跳过」就 return 0，等于少跑一套还报绿。
-    [ -f "$script" ] || {
-        echo "  $name     FAIL  找不到脚本：$script" >&2
-        TOTAL=$((TOTAL + 1)); FAILED=$((FAILED + 1))
-        NAMES+=("$name"); STATS+=("FAIL"); DUR+=("0s")
-        return 1
-    }
-
-    TOTAL=$((TOTAL + 1))
-    local t0 t1 out rc
-    t0=$(date +%s%N)
-    out=$("${RUN[@]}" env PYTHONIOENCODING=utf-8 QQBOT_CODE_DIR="$CODE" \
-          DRIVER='~websockets' "$PY" "$script" 2>&1)
-    rc=$?
-    t1=$(date +%s%N)
-    local secs
-    secs=$(awk "BEGIN{printf \"%.1f\", ($t1-$t0)/1000000000}")
-
-    if [ "$rc" -eq 0 ]; then
-        NAMES+=("$name"); STATS+=("PASS"); DUR+=("${secs}s")
-        printf '  %-10s PASS  %6ss\n' "$name" "$secs"
-    else
-        NAMES+=("$name"); STATS+=("FAIL"); DUR+=("${secs}s")
-        FAILED=$((FAILED + 1))
-        printf '  %-10s FAIL  %6ss\n' "$name" "$secs"
-        # 失败时打印关键行，别让人再翻一遍
-        if [ "$VERBOSE" -eq 1 ]; then
-            echo "$out" | sed 's/^/      /'
-        else
-            key=$(echo "$out" | grep -E "^(FAIL|失败项|  - )" | head -12)
-            # 像 lint 这种输出格式不同的，退回「最后十几行」
-            [ -z "$key" ] && key=$(echo "$out" | tail -14)
-            echo "$key" | sed 's/^/      /'
-        fi
-    fi
-}
-
-echo "=== 验证（模式：$MODE，代码：$CODE）==="
-
-case "$MODE" in
-    quick)
-        run_suite "规范检查" "$OPS/lint-plugins.py"
-        run_suite "分层依赖" "$OPS/lint-layers.py"
-        run_suite "配置同步" "$OPS/check-config-sync.py"
-        run_suite "骨架自检" "$OPS/test-harness.py"
-        run_suite "只读 MCP" "$OPS/test-mcp.py"
-        run_suite "联动体检" "$OPS/link-check.py"
-        ;;
-    pre)
-        run_suite "规范检查" "$OPS/lint-plugins.py"
-        run_suite "分层依赖" "$OPS/lint-layers.py"
-        run_suite "配置同步" "$OPS/check-config-sync.py"
-        run_suite "离线回归" "$OFFLINE"
-        run_suite "应用启动" "$OPS/test-package.py"
-        run_suite "投递账本" "$OPS/test-delivery-ledger.py"
-        run_suite "跟进控制" "$OPS/test-followup-control.py"
-        run_suite "当轮意图" "$OPS/test-turn-intent.py"
-        run_suite "响应流程" "$OPS/test-response-flow.py"
-        run_suite "对话事实核对" "$OPS/test-grounding.py"
-        run_suite "供应商路由" "$OPS/test-provider-routes.py"
-        run_suite "日期锚点" "$OPS/test-dates.py"
-        run_suite "恢复演练" "$OPS/test-restore-drill.py"
-        run_suite "复盘基线" "$OPS/ab-review.py"
-        run_suite "骨架自检" "$OPS/test-harness.py"
-        run_suite "只读 MCP" "$OPS/test-mcp.py"
-        run_suite "联动体检" "$OPS/link-check.py"
-        ;;
-    *)
-        run_suite "规范检查" "$OPS/lint-plugins.py"
-        run_suite "分层依赖" "$OPS/lint-layers.py"
-        run_suite "配置同步" "$OPS/check-config-sync.py"
-        run_suite "离线回归" "$OFFLINE"
-        run_suite "应用启动" "$OPS/test-package.py"
-        run_suite "投递账本" "$OPS/test-delivery-ledger.py"
-        run_suite "跟进控制" "$OPS/test-followup-control.py"
-        run_suite "当轮意图" "$OPS/test-turn-intent.py"
-        run_suite "响应流程" "$OPS/test-response-flow.py"
-        run_suite "对话事实核对" "$OPS/test-grounding.py"
-        run_suite "供应商路由" "$OPS/test-provider-routes.py"
-        run_suite "日期锚点" "$OPS/test-dates.py"
-        run_suite "恢复演练" "$OPS/test-restore-drill.py"
-        run_suite "复盘基线" "$OPS/ab-review.py"
-        run_suite "骨架自检" "$OPS/test-harness.py"
-        run_suite "只读 MCP" "$OPS/test-mcp.py"
-        run_suite "联动体检" "$OPS/link-check.py"
-        run_suite "全链路"   "$OPS/smoke-all.py"
-        run_suite "插件启动" "$OPS/smoke-plugins.py"
-        ;;
-esac
-
-
-
-echo
-if [ "$FAILED" -eq 0 ]; then
-    echo "=== 全部通过（$TOTAL/$TOTAL）==="
-    exit 0
-fi
-echo "=== 有失败：$((TOTAL - FAILED))/$TOTAL 通过 ==="
-exit 1
+exec "$PY" "$HERE/verify.py" --profile "$MODE" --code "$CODE" "${EXTRA[@]}"

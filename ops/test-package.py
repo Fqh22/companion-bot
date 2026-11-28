@@ -45,9 +45,21 @@ class StartupCore(FakeCore):
 async def check_startup():
     core = StartupCore()
     app = create_application(core=core)
+    events = []
+
+    async def start():
+        events.append(("start", core.initialized))
+
+    async def stop():
+        events.append(("stop", core.initialized))
+
+    app.register_background(start, stop)
+    app.register_background(start, stop)
     await asyncio.gather(app.start(), app.start())
     check("并发启动只初始化一次", core.initialized == 1)
-    await app.stop()
+    await asyncio.gather(app.stop(), app.stop())
+    check("后台服务在应用初始化之后启动，并且只启停一次",
+          events == [("start", 1), ("stop", 1)], events)
 
 
 def check_roots(tmp: Path):

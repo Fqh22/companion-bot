@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
+from collections.abc import Awaitable, Callable
 from functools import cache
+from pathlib import Path
 
 from companion_core.config import EngineConfig
 
 log = logging.getLogger("qqbot.application")
+Hook = Callable[[], Awaitable[None]]
 
 
 class Application:
@@ -18,6 +20,15 @@ class Application:
         self._lock = asyncio.Lock()
         self._started = False
         self._catch_up_task: asyncio.Task | None = None
+        self._background: list[tuple[Hook, Hook]] = []
+
+    def register_background(self, start: Hook, stop: Hook) -> None:
+        """注册宿主提供的后台服务，先初始化内核，再启动服务。"""
+        if self._started:
+            raise RuntimeError("后台服务须在应用启动前注册")
+        service = (start, stop)
+        if service not in self._background:
+            self._background.append(service)
 
     async def start(self, *, catch_up: bool = False) -> None:
         async with self._lock:
@@ -31,6 +42,11 @@ class Application:
             self._record_latency_settings()
             if catch_up:
                 self._catch_up_task = asyncio.create_task(self._catch_up())
+            for start, _ in self._background:
+                try:
+                    await start()
+                except Exception:
+                    log.exception("后台服务启动失败：%s", start.__module__)
 
     def _record_latency_settings(self) -> None:
         if not hasattr(self.core, "reply_deadline"):
@@ -77,9 +93,17 @@ class Application:
                 await asyncio.gather(task, return_exceptions=True)
             self._catch_up_task = None
             if self._started:
-                from app_core import embed_provider
+                from app_core import embed_provider, mcp
 
-                await embed_provider.close()
+                for _, stop in reversed(self._background):
+                    try:
+                        await stop()
+                    except Exception:
+                        log.exception("后台服务停止失败：%s", stop.__module__)
+                try:
+                    await mcp.close_all()
+                finally:
+                    await embed_provider.close()
             self._started = False
 
 

@@ -80,7 +80,7 @@ DEFAULTS = {
         # 2026-10-31 实测后选择开启（首字 +0.8s，每次多约 100 输出 token）。
         "thinking": True,
         # 闲聊轮单独关思考。原来只在 ChatCore 里用 get 兜底，没进 DEFAULTS，
-        # 配置面板会把它当成未知键；补进来让「默认值」也是真的。
+        # 声明默认值，以便配置同步检查覆盖这个键。
         # 2026-11-10 用户决定常开思考：清空会话也走思考，不再按「短句/无问号」关。
     # 分流逻辑保留在 _thinking_for 里，把这里改回 True 即可恢复。
     "thinking_casual": False,
@@ -207,10 +207,8 @@ DEFAULTS = {
         "media_settle_seconds": 1.5,
         # 引用回复：第一段带「回复你那条」。默认关——用户实测觉得每条都挂引用框太重。
         "quote_reply": False,
-        # 记忆契约（docs/01-定义与决策.md）：P1 起 fact 召回走 MemoryPort；false 可退回旧路径。
+        # false 时关闭事实召回，其他读写沿用兼容行为。
         "memory_port": True,
-        # 情绪契约（docs/01-定义与决策.md）：mood 的读/写走 AffectPort；false 可退回旧路径。
-        "affect_port": True,
         # 分析类问题先搜一轮（给材料，防止拿印象编数据）；false 关掉。
         "force_search": True,
         # 分享轮档位（docs/04-评测与实验.md）：算「他给了多少授权」，注入读深度上限。

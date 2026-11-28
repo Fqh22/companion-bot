@@ -224,7 +224,8 @@ class HistoryMixin:
 
     async def record_delivery(self, session: str, text: str, *,
                               references: tuple[tuple[str, str], ...] = (),
-                              topic_key: str = "", topic: str = "") -> int:
+                              topic_key: str = "", topic: str = "",
+                              track_followup: bool = True) -> int:
         """统一写入一条已经送达的回复或主动消息。"""
         from app_core import followup_store
 
@@ -233,7 +234,7 @@ class HistoryMixin:
         try:
             return await asyncio.to_thread(
                 followup_store.record_delivery, DB, session, text,
-                track_followup=self._is_owner(session), references=references,
+                track_followup=track_followup and self._is_owner(session), references=references,
                 topic_key=topic_key, topic=topic)
         except Exception as e:  # noqa: BLE001
             log.warning("已送达消息入账失败：%s", e)

@@ -56,11 +56,6 @@ IMAGE_MAX_TOKENS = REPLY_MAX_TOKENS     # 兼容旧引用
 CATCHUP_MIN_ROUNDS = 4       # 至少攒了这么多轮才补，太少了不值得烧一次总结
 CATCHUP_MIN_IDLE = 600       # 且距上次总结超过 10 分钟——正常发版重启（几秒）不会触发
 
-# 重试一次模型时禁用的工具：它们已经在第一次尝试里产生过副作用，
-# 再执行一遍会重复写笔记 / 重复发表情包。
-SIDE_EFFECT_TOOLS = {"note_write", "skill_save", "meme_send", "web_open",
-                     "remind_me", "remind_cancel"}
-
 DIGEST_SYSTEM = (
     "你在维护一段对话的「滚动纪要」，供之后的对话接着聊。"
     "把旧纪要和这段新对话合成一段 200-300 字的纪要：保留在做什么、已经定下的结论、"
@@ -212,6 +207,8 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
             "neutral": float(meme_cfg.get("threshold_neutral", base_thr)),
             "negative": float(meme_cfg.get("threshold_negative", base_thr)),
         }
+        self.reply_min_tokens = REPLY_MAX_TOKENS
+        self.fallback_lines = FALLBACK_LINES
         self.max_tool_rounds = max(1, int(llm.get("max_tool_rounds", MAX_TOOL_ROUNDS)))
         tool_cfg = cfg.get("tools") or {}
         # 总时限只是「永远不结束」的兜底，不是体验目标：45s 原本是从
@@ -265,8 +262,7 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         # 只读 MCP：把外部 server 的工具接给模型（默认关；白名单 + 超时 + 不可信隔离）
         try:
             from app_core import mcp as mcp_mod
-            from app_core import tools as tools_mod
-            mcp_mod.register(tools_mod)
+            mcp_mod.register(tools)
         except Exception as e:  # noqa: BLE001
             log.debug("MCP 注册失败：%s", e)
 
@@ -502,21 +498,28 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
             on = True
         if not on:
             return None
+        return self._default_memory_port()
+
+    def _default_memory_port(self):
         if getattr(self, "_mp", None) is None:
             from app_core.memory_port import CoreMemoryPort
 
             self._mp = CoreMemoryPort(self)
         return self._mp
 
+    def _memory_backend(self):
+        """给需要保持兼容的读写路径提供记忆接口和配置状态。"""
+        enabled = self._memory_port()
+        return (self._default_memory_port(), False) if enabled is None else (enabled, True)
+
+    async def _recall_context(self, kind: str, query: str, trace: list[dict]) -> str:
+        """知识与画像在关闭事实召回时仍沿用原有存储。"""
+        port, enabled = self._memory_backend()
+        items = await port.recall(query, (kind,), trace=trace if enabled else None)
+        return next((item.text for item in items if item.type == kind), "")
+
     def _affect_port(self):
-        """情绪契约；`chat.affect_port=false` 或 memory_port 关闭时返回 None，走旧路径。"""
-        try:
-            cfg = config.load().get("chat") or {}
-            on = bool(cfg.get("affect_port", True)) and bool(cfg.get("memory_port", True))
-        except Exception:  # noqa: BLE001
-            on = True
-        if not on:
-            return None
+        """所有聊天回合使用同一套情绪状态接口。"""
         if getattr(self, "_ap", None) is None:
             from app_core.affect_port import CoreAffectPort
 

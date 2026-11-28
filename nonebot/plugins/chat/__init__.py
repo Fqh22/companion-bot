@@ -12,7 +12,6 @@ from pathlib import Path
 import httpx
 
 from nonebot import get_bots, get_driver, logger, on_message
-from nonebot.exception import FinishedException
 from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
@@ -25,8 +24,7 @@ from app_core import asr, config, pacing
 from app_core import turn as turn_mod
 from app_core.inbound_turns import ImageLoad, InboundTurns, VoiceLoad
 from app_core.delivery import BUFFERED, DELIVERY_UNKNOWN, Capability, DeliveryResult, Receipt
-from app_core.runner import TurnRunner, TurnTiming
-from app_core.outbound import READ_ALOUD_DIRECTIVE
+from app_core.runner import run_private_turn, send_delivery, voice_reply_mode
 from app_core.files import (MAX_IMAGES, parse, remember_pending,
                             save_from_segment, save_image)
 from adapters.qq import to_inbound
@@ -42,8 +40,7 @@ _SETTLE_CFG = dict(config.load().get("chat") or {})
 # 第一段是否引用他的消息。默认关：实测每条回复都挂引用框太重，只在长对话里才像接话。
 QUOTE_REPLY = bool(_SETTLE_CFG.get("quote_reply", False))
 # 语音回复形态：text_then_voice（旧）| voice_then_text | voice（只语音，失败退文字）
-_VMODE = str(_SETTLE_CFG.get("voice_reply_mode") or "voice").strip().lower()
-VOICE_REPLY_MODE = _VMODE if _VMODE in ("text_then_voice", "voice_then_text", "voice") else "voice"
+VOICE_REPLY_MODE = voice_reply_mode(_SETTLE_CFG)
 
 chat = on_message(priority=10, block=False)
 
@@ -64,7 +61,7 @@ async def _draw_later(sid: str, ask: str) -> None:
     )
 
 
-async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) -> None:
+async def _speak_later(sid: str, text: str, rewrite: bool = True) -> None:
     """后台合成语音并发送。公共编排在 app_core/outbound.py。"""
     from app_core import outbound, tts
     from app_core.message import Part
@@ -77,26 +74,6 @@ async def _speak_later(sid: str, text: str, parts: int, rewrite: bool = True) ->
         send_text=lambda t: ch.send_text(sid, t),
         record=lambda text, kind: core.record_assistant(sid, text, kind=kind),
         tag="[chat]",
-    )
-
-
-async def _deliver_voice_reply(sid: str, ch: QQChannel,
-                             rewrite: bool = True, timing: TurnTiming | None = None) -> None:
-    """voice / voice_then_text 形态：先语音，按配置决定要不要再补文字。"""
-    from app_core import outbound, tts
-    from app_core.message import Part
-
-    buffered = list(ch.buffered)
-    ch.defer_text = False
-    await outbound.deliver_voice_reply(
-        buffered=buffered,
-        synth=lambda seg: tts.synth(seg, mood=core.mood.load(), rewrite=rewrite),
-        send_voice=lambda p: ch.send_part(sid, Part("voice", p)),
-        send_text=lambda t: ch.send_text(sid, t),
-        record_delivery=lambda text, refs: core.record_delivery(sid, text, references=refs),
-        mode=VOICE_REPLY_MODE,
-        tag="[chat]",
-        on_delivery=(lambda: timing.mark("first_sent")) if timing else None,
     )
 
 
@@ -118,7 +95,7 @@ class QQChannel:
     forms = {"text", "image", "voice", "drawing"}
 
     def __init__(self, reply_to: str | None = None) -> None:
-        self.sent: list[str] = []
+        self.sent_text: list[str] = []
         # 引用回复要引用「本轮」那条消息：跟着实例走，不能放模块级字典。
         # 放字典里会在拿会话锁之前就被下一条排队消息覆盖（同会话竞态）。
         self.reply_to = str(reply_to or "") or None
@@ -147,10 +124,10 @@ class QQChannel:
             self.buffered.append(text)
             return BUFFERED
         # 只有第一段带引用：后面几段接在它自己那条后面才对
-        reply_id = self.reply_to if (QUOTE_REPLY and not self.sent) else None
+        reply_id = self.reply_to if (QUOTE_REPLY and not self.sent_text) else None
         ok = await _send_text(text, tries=1, reply_id=reply_id)
         if ok:
-            self.sent.append(text)
+            self.sent_text.append(text)
         return ok
 
     async def send_image(self, session: str, path: str) -> bool:
@@ -193,98 +170,33 @@ class QQChannel:
 
 
 async def _run_turn(sid: str, turn: turn_mod.Turn) -> None:
-    timing = TurnTiming("qq", received=turn.meta.get("received_at", time.monotonic()))
-    timing.input_count = turn.meta["input_count"]
-    timing.mark("batch_start")
-    timing.marks["input_ready"] = turn.meta.get("ready_at", timing.received)
-    prompt, stored = turn.compose()
-    raw = "\n".join(turn.texts or [])
-    voice = bool(turn.meta.get("voice"))
-    reply_to = turn.meta.get("reply_to")
-    quoted = turn.meta.get("quote_text")
-    # 引用 ID 跟本轮实例走：下一条消息的 turn 再创建自己的 ch，互不覆盖。
-    ch = QQChannel(reply_to=turn.meta.get("event_id"))
-    runner = TurnRunner(engine, ch, caps=QQ_CAPS, deadline=core.reply_deadline,
-                        stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
-    logger.info(f"[chat] recv {sid}: {prompt[:80]!r}"
-                f"{'（含 %d 张图）' % len(turn.images) if turn.images else ''}")
-    try:
-        if turn.empty() and (turn.meta.get("image_unavailable") or turn.meta.get("voice_unavailable")):
-            voice_failed = turn.meta.get("voice_unavailable")
-            timing.status = "voice_unavailable" if voice_failed else "image_unavailable"
-            message = "这段语音没转出来，可以重发或打字补一下。" if voice_failed else turn_mod.IMAGE_UNAVAILABLE
-            if await ch.send_text(sid, message):
-                timing.mark("first_sent")
-            return
-        if turn.meta.get("image_unavailable") and stored is None:
-            stored = prompt
-        prompt = turn.image_status(prompt)
-        timing.mark("intent_start")
-        decision = await core.interpret_intent(
-            sid, raw, voice=voice, quote_text=quoted,
-            reply_to=f"qq:{reply_to}" if reply_to else None)
-        timing.mark("intent_finish")
-        timing.reply_form = "voice" if decision.voice else "text"
-        ch.defer_text = decision.voice and VOICE_REPLY_MODE != "text_then_voice"
-        model_text = READ_ALOUD_DIRECTIVE + prompt if decision.read_aloud else prompt
-        msg = to_inbound(
-            session=sid,
-            user_id=str(turn.meta.get("user_id") or ""),
-            chat_id=turn.meta.get("chat_id"),
-            is_group=bool(turn.meta.get("is_group")),
-            text=model_text, images=list(turn.images or []),
-            event_id=turn.meta.get("event_id"),
-            reply_to=reply_to,
-            quote_text=quoted,
-            store_text=stored,
-            voice=voice, intent=decision, image_sources=turn.meta.get("image_sources"))
-        out = await runner.run(msg)
-        logger.info(f"[chat] sent {sid}: {len(ch.sent)} 段（含补发）")
-        if getattr(out, "images_sent", None):
-            # 只看**实际发成功**的图；发送失败时不能写「另外发了一张图」。
-            try:
-                await core.record_assistant(
-                    sid, "（另外发了一张图）", kind="image")
-            except Exception:  # noqa: BLE001
-                pass
-        if decision.voice and ch.buffered:
-            await _deliver_voice_reply(sid, ch, rewrite=not decision.read_aloud, timing=timing)
-        elif decision.voice and ch.sent:
-            asyncio.create_task(
-                _speak_later(sid, "".join(ch.sent), len(ch.sent), rewrite=not decision.read_aloud))
-        # 画画同理：只在他明确要求时画，不做「氛围到了就画」
-        if decision.draw:
-            asyncio.create_task(_draw_later(sid, raw))
-    except asyncio.TimeoutError:
-        timing.status = "timeout"
-        logger.error(f"[chat] 回复收尾超时（总上限 {core.reply_deadline:.0f}s） "
-                     f"{sid}，已发 {len(ch.sent)} 段")
+    from app_core import tts
+
+    meta = turn.meta
+    ch = QQChannel(reply_to=meta.get("event_id"))
+    inbound = to_inbound(
+        session=sid, user_id=str(meta.get("user_id") or ""),
+        chat_id=meta.get("chat_id"), is_group=bool(meta.get("is_group")),
+        text="", images=turn.images, event_id=meta.get("event_id"),
+        reply_to=meta.get("reply_to"), quote_text=meta.get("quote_text"),
+        voice=bool(meta.get("voice")), image_sources=meta.get("image_sources"))
+
+    async def on_timeout(partial_reply: bool) -> None:
         await core.mood_event("timeout")
-        if ch.sent:
-            _tail = "先说到这。"
-            # 顺序反过来：**先发**收尾，发成功了才写历史。以前先写后发，
-            # 发送失败时历史里就多了一句用户从没见过的「先说到这」。
-            # 已发出的正文由 runner 在超时路径上写回，这里只补收尾这一句。
-            try:
-                await chat.finish(_tail)
-                await core.remember_safe(sid, "assistant", _tail)
-                logger.info(f"[chat] 超时补记收尾（已发 {len(ch.sent)} 段）")
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"[chat] 超时补发/补记失败：{e}")
+        if partial_reply:
+            await send_delivery(core, sid, "先说到这。", partial(_send_text, tries=1))
         else:
-            try:
-                await chat.finish("我这会儿有点卡，你再说一遍？")
-            except Exception:
-                pass
-    except Exception as e:  # noqa: BLE001
-        timing.status = "error"
-        logger.warning(f"[chat] reply failed: {e}")
-        try:
-            await chat.finish(f"出错了：{type(e).__name__}")
-        except Exception:
-            pass
-    finally:
-        timing.emit()
+            await _send_text("我这会儿有点卡，你再说一遍？", tries=1)
+
+    try:
+        await run_private_turn(
+            turn, inbound, ch, engine=engine, caps=QQ_CAPS, voice_mode=VOICE_REPLY_MODE,
+            synthesize=tts.synth,
+            speak=partial(_speak_later, sid), draw=partial(_draw_later, sid),
+            notify=partial(ch.send_text, sid), on_timeout=on_timeout)
+    except Exception as exc:
+        logger.warning(f"[chat] reply failed: {exc}")
+        await _send_text(f"出错了：{type(exc).__name__}", tries=1)
 
 
 _turns = InboundTurns(_run_turn,

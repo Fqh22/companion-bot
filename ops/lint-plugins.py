@@ -319,11 +319,8 @@ _MEM_ALLOWED: dict[str, dict[str, set[str]]] = {
     },
     "app_core/chat_turn.py": {
         "kb": {"recall"},                       # 索引没建好时的向量兜底
-        "learn": {"profile_conf", "profile_fields", "profile_seen",
-                  "recent_corrections", "skill_match"},   # 画像 / 技能 / 纠正清单
+        "learn": {"recent_corrections", "skill_match"},
         "memory": {"embed", "recall"},          # 向量与召回（port 内部也走这里）
-        "profile": {"compact"},                 # 画像压缩块
-        "wiki": {"index_text"},                 # 知识索引
     },
     # chat_turn.py 拆出的收尾段（2026-11-16）：即时记忆要直接拿向量
     "app_core/chat_turn_commit.py": {"memory": {"embed"}},

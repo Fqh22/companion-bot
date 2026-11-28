@@ -24,8 +24,8 @@
 
 - 模块声明 `[domain]`、`[orchestration]` 或 `[infra]`。domain 只做纯规则，orchestration 编排流程，infra 提供基础设施。
 - 通道使用 `Channel` 和 `TurnRunner`。命令登记在 `app_core/help.py`，跨端走 `commands.default_registry`。
-- LLM 工具同时登记 `TOOLS` 和 `HANDLERS`。定时任务更新 `scheduling/scheduler.py` 的 `JOBS` 和 `_run_job`。
-- 配置同步 `config.DEFAULTS`、`config.example.yaml` 和 `ops/config-ui.py`。
+- LLM 工具登记 `TOOLS`、`HANDLERS` 和 `tool_policy.BUILTIN_POLICIES`。定时任务更新 `scheduling/scheduler.py` 的 `JOBS` 和 `_run_job`。
+- 配置同步 `config.DEFAULTS` 与 `config.example.yaml`。
 
 ## 4. 红线（lint 会拦，别绕）
 

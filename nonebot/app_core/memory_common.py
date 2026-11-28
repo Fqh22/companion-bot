@@ -9,7 +9,6 @@ log = logging.getLogger("qqbot.memory")
 EMBED_API = "https://open.bigmodel.cn/api/paas/v4/embeddings"
 EMBED_MODEL = "embedding-3"
 PERSONA_ID = "editor-assistant"
-SHADOW_DEDUP_COS = 0.85
 
 
 def _zhipu_key() -> str:

@@ -4,7 +4,7 @@
 和人格、通道、回复编排无关；留在 ChatCore 里把入口类撑到 1400+ 行、
 最长函数 165 行。Mixin 组合：ChatCore(SummaryMixin, ChatTurnMixin)。
 
-注意：self._claim / _release / memory / complete_summary / _memory_port 仍由
+注意：self._claim / _release / memory / complete_summary / _memory_backend 仍由
 ChatCore 提供（Mixin 通过 self 访问），这里只搬方法体。
 """
 from __future__ import annotations
@@ -426,24 +426,16 @@ class SummaryMixin:
                 "anchor_ts": anchor_ts,
                 "source_msg_ids": [str(r[0]) for r in rows if r[1] == "user"],
             }
-            port = self._memory_port()
-            if port is not None:
-                from app_core.memory_port import MemoryItem
+            from app_core.memory_port import MemoryItem
 
-                doc_id = await port.remember(MemoryItem(
-                    type="fact", text=data["summary"],
-                    confidence=float(data.get("importance", 0.5) or 0.5),
-                    source="summary", payload=payload))
-            else:
-                doc_id = self.memory.add_document(
-                    text=data["summary"], session=session,
-                    importance=data.get("importance", 0.5),
-                    topics=data.get("topics", []),
-                    key_facts=data.get("key_facts", []),
-                    vec=vec,
-                    followups=data.get("followups", []),
-                    range_key=f"{session}:{last_id}-{target}",
-                    anchor_ts=anchor_ts)
+            port, enabled = self._memory_backend()
+            if not enabled:
+                # 旧配置保持原来的固化元数据，写入仍通过统一契约。
+                payload.pop("source_msg_ids", None)
+            doc_id = await port.remember(MemoryItem(
+                type="fact", text=data["summary"],
+                confidence=float(data.get("importance", 0.5) or 0.5),
+                source="summary", payload=payload))
             # 矛盾检测：新记忆可能让旧记忆过时（「在找工作」→「已入职」）。
             # 只在相似度够高时才多问一次模型；失败不影响写入。
             try:
@@ -451,24 +443,15 @@ class SummaryMixin:
             except Exception as e:  # noqa: BLE001
                 log.warning("矛盾检测失败：%s", e)
             # followup 单独存一份：记忆会被清理归档，跟进事项不该跟着消失
-            if data.get("followups"):
-                port_t = self._memory_port()
-                if port_t is not None:
-                    from app_core.memory_port import MemoryItem
-
-                    for _t, _mid, _ts, _key in verified_followups:
-                        try:
-                            await port_t.remember(MemoryItem(
-                                type="task", text=str(_t), source="memory",
-                                payload={"kind": "followup", "source": "memory",
-                                         "ref": doc_id, "source_ts": _ts, "source_msg_id": _mid,
-                                         "source_key": _key}))
-                        except Exception as e:  # noqa: BLE001
-                            log.debug("跟进写入跳过（%s）：%s", type(e).__name__, _t)
-                else:
-                    for _t, _mid, _ts, _key in verified_followups:
-                        followup.add(_t, "memory", doc_id, source_ts=_ts,
-                                     source_msg_id=_mid, source_key=_key)
+            for _t, _mid, _ts, _key in verified_followups:
+                try:
+                    await port.remember(MemoryItem(
+                        type="task", text=str(_t), source="memory",
+                        payload={"kind": "followup", "source": "memory",
+                                 "ref": doc_id, "source_ts": _ts, "source_msg_id": _mid,
+                                 "source_key": _key}))
+                except Exception as e:  # noqa: BLE001
+                    log.debug("跟进写入跳过（%s）：%s", type(e).__name__, _t)
             # 滚动纪要：历史原文只留最近 2500 字，更早的靠这段纪要接住。
             # 优先用同一次调用带回来的 digest；模型没给（或太短）再退回单独一次调用，
             # 保证旧行为可用，不会因为一次 JSON 缺字段就把纪要停更。

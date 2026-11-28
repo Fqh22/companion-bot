@@ -16,17 +16,14 @@ import time
 from app_core import self_check
 from app_core.round_timing import current as current_timing
 
+from app_core.tool_policy import READ_ONLY_TOOLS
+
 log = logging.getLogger("qqbot.tool_loop")
 
 # 只读工具可以在一轮里并发跑；写操作必须串行（同名文件别互相覆盖）。
-# 名单放在 tools 模块里，这里只做兜底。
+# 工具目录可提供自己的只读名单，默认使用内置策略。
 PER_TURN_CAP = {"meme_send": 1}
 
-_DEFAULT_READ_ONLY = frozenset({
-    # web_open 会往知识库写笔记，不是只读（tools.py 里已同步移出）。
-    "web_search", "kb_read", "kb_search", "memory_search", "memory_read",
-    "diary_read", "skill_read", "skill_list", "note_list", "remind_list",
-})
 # 并发时情绪事件可能同时落盘，串起来写（state.json 不是并发安全的）
 _mood_lock = asyncio.Lock()
 
@@ -145,7 +142,7 @@ async def run(core, msgs: list[dict], *,
         # 否则后续请求可能 400。关闭思考时该字段为空，不用带。
         if msg.get("reasoning_content"):
             work[-1]["reasoning_content"] = msg["reasoning_content"]
-        read_only = getattr(tools_mod, "READ_ONLY_TOOLS", _DEFAULT_READ_ONLY)
+        read_only = getattr(tools_mod, "READ_ONLY_TOOLS", READ_ONLY_TOOLS)
         results: list[str] = [""] * len(calls)
         pending: list[tuple[int, str, dict, str]] = []
         seen: set[str] = set()

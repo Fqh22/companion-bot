@@ -3,16 +3,15 @@ from __future__ import annotations
 
 import asyncio
 
-from nonebot import get_bots, get_driver
+from nonebot import get_bots
+from nonebot.adapters.onebot.v11.exception import ActionFailed
 from nonebot.log import logger
 
+from app_core.delivery import DELIVERY_UNKNOWN, ConfirmedText, DeliveryResult, Receipt
 from companion_core import shared_application
 
 _application = shared_application()
 core = _application.core
-
-driver = get_driver()
-
 
 def _admin_id() -> int:
     """管理员 QQ 由 config.yaml 的 admin.user_id 决定，未配置时返回 0。"""
@@ -54,25 +53,37 @@ def _chunks(text: str, limit: int = 1200, max_parts: int = 3) -> list[str]:
     return parts
 
 
-async def _send(text: str) -> bool:
-    """发一条私聊（超长自动分条）。返回是否真的发出去了。"""
+async def _send(text: str) -> DeliveryResult:
+    """传输状态不明或部分送达时终止重试，避免重复推送已收到的内容。"""
     uid = _admin_id()
     if not uid:
         return False
     parts = _chunks(text)
+    if not parts:
+        return False
     for bot in get_bots().values():
-        sent: list[str] = []
+        delivery = ConfirmedText()
+        uncertain = False
         try:
             for p in parts:
-                await bot.call_api("send_private_msg", user_id=uid, message=p)
-                sent.append(p)
+                response = await bot.call_api("send_private_msg", user_id=uid, message=p)
+                mid = response.get("message_id") if isinstance(response, dict) else None
+                delivery.add(p, Receipt("qq", str(mid or ""), p))
                 await asyncio.sleep(0.3)
-            # 提醒/推送同样要进历史，不然它「提醒过」这件事第二天就不记得了。
-            # 记的是**用户实际收到的内容**（分条拼回去），不是原始全文。
-            await core.record_assistant(f"private:{uid}", "\n".join(sent), "schedule")
+        except ActionFailed as exc:
+            logger.warning(f"[schedule] 平台拒绝推送，已送达 {len(delivery.parts)} 段：{exc}")
+        except Exception as exc:
+            uncertain = True
+            logger.warning(f"[schedule] 推送结果未知：{type(exc).__name__}: {exc}")
+        finally:
+            if delivery.parts:
+                await core.record_delivery(
+                    f"private:{uid}", "\n".join(delivery.parts),
+                    references=tuple(delivery.references), track_followup=False)
+        if uncertain:
+            return DELIVERY_UNKNOWN
+        if delivery.parts:
             return True
-        except Exception:  # noqa: BLE001
-            continue
     return False
 
 
@@ -80,9 +91,7 @@ sched = core.scheduler.Scheduler(core, send=_send)
 _warm_tasks: list[asyncio.Task] = []
 
 
-@driver.on_startup
 async def _start() -> None:
-    await _application.start(catch_up=True)
     if _warm_tasks:
         return
     sched.start()
@@ -101,10 +110,12 @@ async def _start() -> None:
                         asyncio.create_task(core.meme.ensure_vectors())))
 
 
-@driver.on_shutdown
 async def _stop() -> None:
     await sched.stop()
     for task in _warm_tasks:
         task.cancel()
     await asyncio.gather(*_warm_tasks, return_exceptions=True)
     _warm_tasks.clear()
+
+
+_application.register_background(_start, _stop)

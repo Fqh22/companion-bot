@@ -12,28 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: 分层与规范检查（纯 AST，无依赖）
-        run: python ops/lint-plugins.py
-      - name: 分层依赖（kernel/domain 方向）
-        run: python ops/lint-layers.py
-      - name: 分层护栏自检（故意写违规，确认上一条会红）
-        run: python ops/test-lint-layers.py
-      - name: 密钥扫描
-        run: python ops/scan-secrets.py
-      - name: 文档守门员（链接 / 路径引用 / 登记表）
-        run: python ops/check-links.py
-      - name: 文档护栏自检（故意写坏反例，确认上一条会红）
-        run: python ops/test-check-links.py
-      - name: embedding 维度护栏自检
-        run: python ops/test-embed-guard.py
-      - name: 批次 2 护栏自检（门控 / 预筛 / 状态归属 / 默认值）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-batch2-guards.py
-      - name: 批次 3 护栏自检（导出往返 / 面板 / 预算 / 只读性）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-batch3-guards.py
+      - name: 静态检查
+        run: python ops/verify.py --profile static
       # 2026-11-15 两次踩坑：.ps1 丢 BOM 后 PS 5.1 按 GBK 解析中文直接语法错；
       # 手工 scp 又让云端 ops/*.sh 丢了 +x，cron 静默停摆一天。两条都用 CI 守住。
       - name: PowerShell 脚本必须带 UTF-8 BOM
@@ -60,106 +40,8 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: |
-            nonebot/requirements.txt
-            ops/requirements-config-ui.txt
-      - name: 装依赖
-        run: pip install -r nonebot/requirements.txt -r ops/requirements-config-ui.txt
-      # 下面这些都不联网、不碰生产库、几十秒跑完，天生适合当守门员
-      - name: 离线回归
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-nonebot-offline.py
-      - name: 日期锚点回归（历史 / 总结 / 记忆写入 / 授权时间）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-dates.py
-      - name: 全链路体检（假模型）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/smoke-all.py
-      - name: 复盘产出基线（apply_review 逐字节 diff）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/ab-review.py
-      - name: 配置三处同步（DEFAULTS / example.yaml / 面板）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/check-config-sync.py
-      - name: 配置面板测试
-        run: python ops/test-config-ui.py
-      - name: kernel 测试
-        run: python ops/test-kernel.py
-      - name: Engine 门面测试
-        run: python ops/test-engine.py
-      - name: 适配器冒烟
-        run: python ops/test-console.py
-      - name: console 端到端
-        run: python ops/test-console-e2e.py
-      - name: 身份映射测试
-        run: python ops/test-identity.py
-      - name: 投递 golden
-        run: python ops/test-delivery.py
-      - name: 审批端口
-        run: python ops/test-approval.py
-      - name: QQ 入站归一化
-        run: python ops/test-inbound.py
-      - name: companion-core 包门面
-        run: python ops/test-package.py
-      - name: 投递账本
-        run: python ops/test-delivery-ledger.py
-      - name: 跟进控制
-        run: python ops/test-followup-control.py
-      - name: 当轮意图
-        run: python ops/test-turn-intent.py
-      - name: 响应流程
-        run: python ops/test-response-flow.py
-      - name: 对话事实核对
-        run: python ops/test-grounding.py
-      - name: 供应商路由
-        run: python ops/test-provider-routes.py
-      # 跨层接线：单层全绿但参数传错，只有这两套抓得住（docs/04-评测与实验.md 的矩阵）
-      - name: 联动体检
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/link-check.py
-      - name: 插件启动
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/smoke-plugins.py
-      # 记忆契约：只读适配器（P1）
-      - name: 记忆契约
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-memory-port.py
-      # 批次 4 会 import tools → kb/web（numpy/httpx），必须放在装了依赖的 test job；
-      # lint job 不装依赖，2026-11-22 之前它被前面的密钥扫描挡住、从没真正跑过。
-      - name: 批次 4 护栏自检（审计链 / 授权门 / 分段 / 通道）
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-batch4-guards.py
-      # 护栏自检：故意写违规，确认 lint 真的会红（规则不会悄悄失效）
-      - name: 护栏自检
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-guards.py
-      # 通道无关层：换通道时真正要复用的那部分（流式/typing/超时）
-      - name: 通道无关层
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/test-runner.py
-      # 真实时钟：时间相关行为被 mock 后，重启/跨天/迟到任务只有它覆盖
-      - name: 真实时钟冒烟
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: python ops/smoke-clock.py
-      # prompt 快照基线：改造前后必须逐字节相同（S1a 的保护网）
-      # QQBOT_ROOT 必须在临时目录下——工具会拒绝在非临时根上运行（防止写生产数据）
-      - name: prompt 快照基线
-        env:
-          QQBOT_CODE_DIR: ${{ github.workspace }}/nonebot
-        run: |
-          export QQBOT_ROOT="$(mktemp -d)"
-          python ops/test-prompt-golden.py
-          python ops/test-prompt-golden.py --offline
-          python ops/test-prompt-golden.py --selftest
+          cache-dependency-path: nonebot/requirements.txt
+      - name: 安装依赖
+        run: pip install -r nonebot/requirements.txt
+      - name: 离线验证
+        run: python ops/verify.py --profile ci

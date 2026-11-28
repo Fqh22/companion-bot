@@ -461,7 +461,7 @@ async def dynamic_checks(chat_mod) -> None:
 
 
 async def feishu_checks():
-    from unittest.mock import patch
+    from unittest.mock import AsyncMock, patch
     from plugins import feishu
 
     class Runner:
@@ -481,7 +481,7 @@ async def feishu_checks():
         return SimpleNamespace(event=SimpleNamespace(message=message, sender=sender))
 
     calls = []
-    with patch.object(feishu, "OWNER", "owner"), patch.object(feishu, "TurnRunner", Runner):
+    with patch.object(feishu, "OWNER", "owner"), patch("app_core.runner.TurnRunner", Runner):
         await feishu._handle(event("burst-1", "那件事先等等", "asked"))
         await feishu._handle(event("burst-2", "下周一再说"))
         await feishu._handle(event("burst-2", "重复事件"))
@@ -501,7 +501,7 @@ async def feishu_checks():
         await release_image.wait()
         return "/tmp/feishu-image.jpg"
 
-    with (patch.object(feishu, "OWNER", "owner"), patch.object(feishu, "TurnRunner", Runner),
+    with (patch.object(feishu, "OWNER", "owner"), patch("app_core.runner.TurnRunner", Runner),
           patch.object(feishu, "_load_image", load_image),
           patch.object(feishu._turns, "media_gap", 0.05), patch.object(feishu._turns, "text_gap", 0.05)):
         await feishu._handle(event("image-1", {"image_key": "key"}, message_type="image"))
@@ -528,6 +528,24 @@ async def feishu_checks():
         check("飞书富文本同条图文一起处理",
               len(calls) == 1 and calls[0].text == "这张图怎么读"
               and calls[0].images == ["/tmp/feishu-image.jpg"])
+
+    class TimedOutRunner(Runner):
+        async def run(self, inbound):
+            raise TimeoutError
+
+    record = AsyncMock()
+    with (patch.object(feishu, "OWNER", "owner"), patch("app_core.runner.TurnRunner", TimedOutRunner),
+          patch.object(feishu, "_send_message", side_effect=["timeout-notice", False]),
+          patch.object(feishu._turns, "text_gap", 0.05),
+          patch.object(feishu.core, "record_delivery", record)):
+        await feishu._handle(event("timeout-delivered", "发送超时兜底"))
+        await drain()
+        await feishu._handle(event("timeout-rejected", "拒收超时兜底"))
+        await drain()
+        check("飞书超时兜底只入账平台确认收到的提示",
+              record.await_count == 1 and record.await_args.kwargs ==
+              {"references": (("feishu:timeout-notice", "这次想太久了，先没说出来。"),),
+               "track_followup": False})
 
 
 # ---------------- 群聊：独立链路 ----------------
@@ -642,6 +660,7 @@ async def group_checks() -> None:
 async def plugin_logic_checks() -> None:
     """单独验证命令参数解析与内核图注入库。"""
     from types import SimpleNamespace
+    from unittest.mock import AsyncMock, patch
 
     import plugins.commands as cmd_mod
 
@@ -671,6 +690,47 @@ async def plugin_logic_checks() -> None:
     _parts = sched_mod._chunks("啊" * 5000, 1200, 3)
     check("超长推送按边界分条并说明剩余",
           len(_parts) == 4 and _parts[-1].startswith("…（还有"), f"{len(_parts)} 段")
+
+    from nonebot.adapters.onebot.v11.exception import ActionFailed
+    from app_core.delivery import DELIVERY_UNKNOWN
+
+    record = AsyncMock()
+    first = SimpleNamespace(call_api=AsyncMock(
+        side_effect=[{"message_id": 42}, ActionFailed(retcode=100)]))
+    second = SimpleNamespace(call_api=AsyncMock(return_value={"message_id": 43}))
+    with (patch.object(sched_mod, "_admin_id", return_value=123),
+          patch.object(sched_mod, "_chunks", return_value=["第一段", "第二段"]),
+          patch.object(sched_mod, "get_bots", return_value={"first": first, "second": second}),
+          patch.object(sched_mod.core, "record_delivery", record)):
+        consumed = await sched_mod._send("长推送")
+        check("定时推送部分失败时只入账已确认段，且不换机器人重发",
+              consumed and second.call_api.await_count == 0 and
+              record.await_args.args == ("private:123", "第一段") and
+              record.await_args.kwargs == {"references": (("qq:42", "第一段"),),
+                                           "track_followup": False})
+        first.call_api.reset_mock(side_effect=True)
+        first.call_api.side_effect = TimeoutError
+        record.reset_mock()
+        consumed = await sched_mod._send("送达未知")
+        check("定时推送送达未知时保留状态且不重发",
+              consumed is DELIVERY_UNKNOWN and first.call_api.await_count == 1
+              and second.call_api.await_count == 0 and record.await_count == 0)
+        first.call_api.side_effect = ActionFailed(retcode=100)
+        consumed = await sched_mod._send("明确拒收")
+        check("推送首段明确拒收时允许换机器人发送",
+              consumed and second.call_api.await_count == 2 and record.await_count == 1)
+
+    reminder = sched_mod.core.remind
+    claim_events = []
+    scheduler = type(sched_mod.sched)(sched_mod.core, send=AsyncMock(
+        side_effect=[DELIVERY_UNKNOWN, False]))
+    with (patch.object(reminder, "due_now", return_value=[
+              {"id": 1, "text": "一"}, {"id": 2, "text": "二"}]),
+          patch.object(reminder, "claim", return_value=True),
+          patch.object(reminder, "release", side_effect=claim_events.append),
+          patch.object(scheduler, "_reminder_text", new=AsyncMock(return_value="提醒正文"))):
+        await scheduler._run_reminders()
+        check("提醒仅在明确未送达时释放抢占供重试", claim_events == [2], str(claim_events))
 
     import plugins.chat as chat_mod2
     from app_core.chat_turn_base import Turn

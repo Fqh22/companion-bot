@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 
-from nonebot import get_bots, get_driver, logger
+from nonebot import get_bots, logger
 
 from app_core import config
 from app_core.delivery import Receipt
@@ -16,7 +16,6 @@ from companion_core import shared_application
 _application = shared_application()
 core = _application.core
 
-driver = get_driver()
 _task: asyncio.Task | None = None
 
 
@@ -70,10 +69,8 @@ async def _compose(topic: str, why: str, mood_hint: str = "") -> str:
     return await runtime.compose(topic, why, mood_hint)
 
 
-@driver.on_startup
 async def _start() -> None:
     global _task
-    await _application.start(catch_up=True)
     if _task is not None and not _task.done():
         return
     try:
@@ -83,10 +80,12 @@ async def _start() -> None:
     _task = asyncio.create_task(runtime.run())
 
 
-@driver.on_shutdown
 async def _stop() -> None:
     global _task
     if _task is not None:
         _task.cancel()
         await asyncio.gather(_task, return_exceptions=True)
         _task = None
+
+
+_application.register_background(_start, _stop)

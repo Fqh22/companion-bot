@@ -1,4 +1,4 @@
-"""[orchestration] memory 的召回索引：矩阵 / BM25 / 实体图缓存。"""
+"""[orchestration] memory 的召回索引：向量矩阵、词表与相似记忆。"""
 from __future__ import annotations
 
 import json
@@ -130,65 +130,6 @@ class IndexMixin:
         self._vocab = vocab_mod.build(lists, limit)
         self._vocab_ts = now
         return self._vocab
-
-    def _graph_index(self):
-        """建／取实体图，原子条数一变就重建（新记忆会带新原子）。"""
-        from app_core import memgraph
-
-        c = self._conn()
-        n = c.execute("SELECT COUNT(*) FROM memory_atoms").fetchone()[0]
-        if self._graph is not None and self._graph_n == n:
-            c.close()
-            return self._graph
-        rows = c.execute(
-            "SELECT parent_memory_id, entities FROM memory_atoms "
-            "WHERE COALESCE(status, 'active') = 'active'"
-        ).fetchall()
-        c.close()
-        parsed = []
-        for parent, raw in rows:
-            try:
-                es = json.loads(raw or "[]")
-            except Exception:
-                es = []
-            if isinstance(es, list):
-                parsed.append((parent, es))
-        self._graph = memgraph.EntityGraph(parsed)
-        self._graph_n = n
-        return self._graph
-
-    def _parents_of(self, doc_ids: list[str]) -> list[int]:
-        """doc_id（字符串）→ documents.id（整数，连边用的是它）。"""
-        if not doc_ids:
-            return []
-        c = self._conn()
-        q = ",".join("?" * len(doc_ids))
-        rows = c.execute(
-            f"SELECT id FROM documents WHERE doc_id IN ({q})", doc_ids).fetchall()
-        c.close()
-        return [r[0] for r in rows]
-
-    def _shadow_graph(self, query: str, top_ids: list[str]) -> None:
-        """把召回结果的「实体邻居」找出来，落盘。仍然不改返回值。"""
-        from app_core import shadow
-
-        graph = self._graph_index()
-        if not graph.n:
-            return
-        seeds = self._parents_of(top_ids)
-        rel = graph.related(seeds, limit=5)
-        if not rel:
-            shadow.record_graph(query, dense=top_ids, expanded=[])
-            return
-        c = self._conn()
-        q = ",".join("?" * len(rel))
-        rows = c.execute(
-            f"SELECT id, doc_id FROM documents WHERE id IN ({q})", [p for p, _ in rel]
-        ).fetchall()
-        c.close()
-        by_parent = {r[0]: r[1] for r in rows}
-        shadow.record_graph(query, dense=top_ids,
-                            expanded=[by_parent[p] for p, _ in rel if p in by_parent])
 
     def similar_active(self, vec: list[float], top_k: int = 3,
                        min_score: float = 0.5,

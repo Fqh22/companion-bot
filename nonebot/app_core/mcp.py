@@ -172,15 +172,17 @@ def client_for(spec: dict, timeout: float = DEFAULT_TIMEOUT) -> Client:
     return c
 
 
+def _read_only_tools(server: dict):
+    for tool in server.get("tools") or []:
+        if isinstance(tool, dict) and tool.get("name") and tool.get("read_only") is not False:
+            yield tool
+
+
 def tool_specs(cfg: dict | None = None) -> list[tuple[str, dict, dict]]:
     """返回 [(llm 工具名, OpenAI function 定义, {server, tool})]，只含 read_only。"""
     out = []
     for s in servers(cfg):
-        for t in s.get("tools") or []:
-            if not isinstance(t, dict) or not t.get("name"):
-                continue
-            if t.get("read_only") is False:
-                continue
+        for t in _read_only_tools(s):
             fname = f"{PREFIX}{s['name']}__{t['name']}"
             desc = str(t.get("description") or f"{s['name']} 的 {t['name']}")
             out.append((fname, {
@@ -215,8 +217,7 @@ async def call(llm_name: str, args: dict, cfg: dict | None = None) -> str:
     spec = next((s for s in servers(cfg) if s.get("name") == server), None)
     if spec is None:
         raise McpError(f"server 不在白名单：{server}")
-    allowed = {str(t.get("name")) for t in (spec.get("tools") or [])
-               if isinstance(t, dict) and t.get("read_only") is not False}
+    allowed = {str(t["name"]) for t in _read_only_tools(spec)}
     if tool not in allowed:
         raise McpError(f"{server}.{tool} 不在只读白名单里")
     c = client_for(spec)

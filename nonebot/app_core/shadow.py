@@ -1,18 +1,6 @@
-"""[orchestration] 影子模式：只记录、不发送。用来在改行为前先量收益。
+"""[orchestration] 记录正反馈、检索门控、二次召回和人格实验的观测数据。
 
-现在记五种（都只落盘、不改行为、不影响发送）：
-
-1. **正例**——他说「哈哈哈」「笑死」或者接着追问，是正反馈。
-   之前只有纠错（负例）闭环，正例全丢了。
-2. **召回门控**——这轮判「要不要回忆」+ 实际召回条数（判据截止 2026-11-30）。
-3. **碎片候选**——写入侧命中高相似时记一条，供离线评审（截止 2026-11-30）。
-4. **连边扩展**——顺着「共同实体」能连到哪些没被召回的记录。
-5. **二次召回**——用上一轮的话再召回，捞到了什么。
-
-2026-11-16 删掉三个「无消费方」的影子：补一句 / 画像块 / 自指率。
-补一句从没产生过样本（0 条），画像与自指率攒了 200+ 条但没有任何结论、
-也没有人定期看，留着只是每轮多写一行盘。代码在 git 历史里，要重开再捡。
-BM25+RRF 的影子同批删除（判据 11-14 已被人工否决）。
+周报可读取以往的实体图日志。
 """
 from __future__ import annotations
 
@@ -30,7 +18,6 @@ POSITIVE_LOG = DATA / "shadow-positive.jsonl"
 GRAPH_LOG = DATA / "shadow-graph.jsonl"
 SECOND_LOG = DATA / "shadow-second.jsonl"
 GATE_LOG = DATA / "shadow-recall-gate.jsonl"
-DEDUP_LOG = DATA / "consolidation-candidates.jsonl"
 
 # 「他接住了」的信号。宁窄勿宽：只在明显是笑/认同/继续追问时记。
 _POSITIVE = ("哈哈", "笑死", "太对了", "绝了", "确实是这样", "你说得对",
@@ -69,23 +56,6 @@ def record_positive(user_text: str, reply: str) -> None:
                            "reply": (reply or "")[:200]})
 
 
-def record_dedup_hit(new_text: str, old_id: str, old_text: str,
-                     cos: float) -> None:
-    """记一次「本可合并的碎片」，供 ops/consolidate.py 离线评审。
-
-    写入侧的影子去重以前只打一行 log，日志轮转后就没了，攒不出候选集。
-    这里只落盘、**不改任何记忆**：归档 / 合并是不可逆的，按 01 §6 先有
-    可审查的候选，截止 2026-11-30 再决定要不要做（docs/04）。
-    """
-    _append(DEDUP_LOG, {
-        "ts": time.time(),
-        "cos": round(float(cos), 3),
-        "new": (new_text or "")[:120],
-        "old_id": str(old_id or "")[:40],
-        "old_text": (old_text or "")[:120],
-    })
-
-
 def record_recall_gate(query: str, user_text: str, need: bool, why: str,
                        recalled_n: int, mode: str = "shadow") -> None:
     """记一次「这轮要不要回忆」的判断 + 实际召回条数。只写文件，不改回复。
@@ -102,22 +72,6 @@ def record_recall_gate(query: str, user_text: str, need: bool, why: str,
         "q": (query or "")[:60],
         "said": (user_text or "")[:80],
         "recalled": int(recalled_n or 0),
-    })
-
-
-def record_graph(query: str, dense: list[str], expanded: list[str]) -> None:
-    """记一次「顺着共同实体能连到哪些没被召回的记录」。
-
-    记的是**新增的**邻居而不是全部：这些候选一旦被采用，就是排在召回结果
-    后面的「相关但没命中」。没有邻居时也记一条，否则算不出覆盖率。
-    """
-    d = [str(x)[:8] for x in (dense or [])][:5]
-    e = [str(x)[:8] for x in (expanded or []) if str(x) not in set(dense or [])][:5]
-    _append(GRAPH_LOG, {
-        "ts": time.time(),
-        "q": (query or "")[:60],
-        "dense": d,
-        "expanded": e,
     })
 
 

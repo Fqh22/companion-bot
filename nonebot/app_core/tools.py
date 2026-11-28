@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from app_core import audit, diary, kb, learn, meme, remind, web, wiki
+from app_core.tool_policy import BUILTIN_POLICIES, PUBLIC_TOOLS, READ_ONLY_TOOLS
 
 log = logging.getLogger("qqbot.tools")
 
@@ -90,24 +91,6 @@ TOOLS = [
             "required": ["query"]}}},
 ]
 
-
-# 只读工具：同一轮里可以并发执行。名单要跟着插件走——
-# 只要有一个写操作混进并发，同名笔记/技能文件就可能互相覆盖。
-READ_ONLY_TOOLS = frozenset({
-    "web_search", "kb_read", "kb_search", "memory_search", "memory_read",
-    "diary_read", "skill_read", "skill_list", "note_list", "remind_list",
-})
-# web_open 以前被列进只读名单，但它会 learn.note_write 往知识库写笔记
-# （见下面 PUBLIC_TOOLS 的注释）——放进并发组等于允许两个写操作同时落盘。
-# 2026-11-16 批次 4 移出，改走串行 + 审计。
-
-# 外人能用的工具：只给「不碰他的东西」的那几个。
-# 判据不是读还是写，而是**碰不碰他的库**——note_list / kb_read / memory_read
-# 都是只读，但读的全是他的笔记、知识和记忆，一样不能给。
-# 发表情（meme_send）放进来是因为它只用一次、内容是他收藏的梗图，不涉及隐私。
-# web_open 不能给：它会 learn.note_write（web.py），等于往他的知识库写东西，
-# 而且这条路径不受「插件只做 IO」约束——陌生人不该有写入口。
-PUBLIC_TOOLS = frozenset({"web_search", "meme_send"})
 
 # 单次工具返回的上限：超了截断并说明，别让一条记忆撑满上下文。
 MAX_RESULT_CHARS = 2000
@@ -206,8 +189,7 @@ async def _meme_send(core, args, images) -> str:
     return "已发了一张表情包（没找到贴合的，按分类挑的，可能不太对味）"
 
 
-# 工具名 → 实现。**加工具只改两处**：TOOLS 里的 schema、这里的 HANDLERS，不再动 execute。
-# 两边名字必须一致；模块加载时会自检，不一致直接抛错（比等测试红更早）。
+# 工具名 → 实现。新增时登记 schema、实现与权限策略，由模块加载自检。
 HANDLERS = {
     "note_write": _note_write,
     "note_list": _note_list,
@@ -335,5 +317,6 @@ if _SCHEMA_NAMES != set(HANDLERS):
     raise RuntimeError(
         "工具 schema 与实现不一致：" + ", ".join(sorted(_SCHEMA_NAMES ^ set(HANDLERS))))
 
-
-
+if _SCHEMA_NAMES != set(BUILTIN_POLICIES):
+    raise RuntimeError("工具 schema 与权限策略不一致：" + ", ".join(
+        sorted(_SCHEMA_NAMES ^ set(BUILTIN_POLICIES))))

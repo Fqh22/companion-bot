@@ -1,7 +1,6 @@
 """[orchestration] chat 的一轮流水线：prepare / compose / generate / commit。
 
 从 chat.py 抽出来，目的是让 ChatCore 只剩组装和对外接口。
-为了兼容测试对 chat.DB / chat.REPLY_MAX_TOKENS 的补丁，常量通过 _chat() 动态读取。
 """
 from __future__ import annotations
 
@@ -18,8 +17,7 @@ from dataclasses import dataclass, field
 
 from app_core.round_timing import current as current_timing
 from app_core import (attention, config, correction, followup, grounding, intent, kb, memory_instant,
-                      learn, mood, perception, relational, shadow, wiki)
-from app_core import profile as profile_mod
+                      learn, mood, perception, relational, shadow)
 from app_core import prompt as prompt_mod
 from app_core import self_check as self_check_mod
 from app_core import web as web_mod
@@ -32,12 +30,12 @@ from app_core.chat_turn_commit import CommitMixin
 # 新增一个 self.xxx、或 ChatCore 改名/删成员，ops/lint-plugins.py 会红。
 # 完整的一等上下文（TurnContext）没做——见 docs/04 §10。
 TURN_DEPS = {
-    "_affect_port", "_context_format", "_memory_port", "_run_tools",
+    "_affect_port", "_context_format", "_memory_port", "_recall_context", "_run_tools",
     "_style_mode", "_thinking_for", "build_messages", "caption_images",
     "first_token_budget", "get_digest", "history", "history_max_chars", "image_history", "interpret_intent",
     "last_user_ts", "max_tokens", "memory", "persist_inbound", "persona_for",
     "recalled_image", "save_image_references",
-    "recall_query_items", "reply_deadline", "seg_max",
+    "recall_query_items", "reply_deadline", "reply_min_tokens", "fallback_lines", "seg_max",
 }
 
 from app_core.chat_turn_base import (  # noqa: F401  兼容老调用方
@@ -136,7 +134,7 @@ class ChatTurnMixin(CommitMixin):
         # 「不记得他、也不知道我」的版本——否则他一句话就能把我的记忆念出来，
         # 或者把话写进我的库（2026-11-05 实测：陌生人问「我是谁」，它答了 QQ 号）。
         _ap = self._affect_port() if turn.owner else None
-        turn.m = (_ap.read() if _ap is not None else mood.settle(mood.load())) if turn.owner else {
+        turn.m = _ap.read() if turn.owner else {
             "valence": 0.0, "valence_base": 0.0, "energy": 0.7, "social": 0.5}
 
         if store_text is not None:
@@ -336,14 +334,16 @@ class ChatTurnMixin(CommitMixin):
         两条向量一次算完：本轮这句（判话题推进）+ 召回 query（含前几轮）。
         之前分两次串行 embed，同一个 provider 要握手两遍，白等一趟 HTTP。
         """
-        from app_core import recall_gate
+        mode = self._recall_gate_mode() if turn.owner else "off"
+        need, why = True, "off"
+        if mode != "off":
+            from app_core import recall_gate
 
-        gate_mode = self._recall_gate_mode()
-        need, _ = recall_gate.decide(
-            user_text,
-            refers_previous=intent.refers_to_previous(user_text),
-            has_images=bool(turn.images))
-        turn.skip_recall = (not turn.owner) or (gate_mode == "on" and not need)
+            need, why = recall_gate.decide(
+                user_text, refers_previous=intent.refers_to_previous(user_text),
+                has_images=bool(turn.images))
+        turn.recall_gate = (mode, need, why)
+        turn.skip_recall = not turn.owner or (mode == "on" and not need)
         try:
             seconds = min(2.0, self._prep_left(turn))
             texts = [user_text] if user_text.strip() and not turn.skip_recall and seconds > 0 else []
@@ -367,32 +367,15 @@ class ChatTurnMixin(CommitMixin):
         # 不是本人就不观察也不保存：情绪是全局单例，别人几句话能把他的心情带跑。
         if turn.owner:
             _ap = self._affect_port()
-            if _ap is not None:
-                _ap.observe(turn.m, user_text, vec=turn.mvec)
-                _ap.write(turn.m)
-            else:
-                mood.observe(turn.m, user_text, vec=turn.mvec)
-                mood.save(turn.m)
+            _ap.observe(turn.m, user_text, vec=turn.mvec)
+            _ap.write(turn.m)
         turn.seg_max = self.seg_max(turn.m)
 
     async def _prepare_recall(self, turn: Turn, user_text: str) -> None:
-        """召回记忆 + 检索门控 + 二次召回影子。
-
-        P1：fact 召回改走 `MemoryPort`（契约），结果与旧路径一致；
-        `chat.memory_port=false` 可退回旧路径。
-        """
+        """召回事实并记录本轮的候选注入与影子判断。"""
         _t_recall = time.perf_counter()
-        # 检索门控：默认 off（零开销）；shadow 只落盘判断，on 才真的跳过召回。
-        # 依据 RealCompanion 2026-10：真实流量仅约 3.4% 需要回忆，瓶颈是
-        # 「什么时候不检索」。影子截止 2026-11-30，见 docs/04-评测与实验.md。
-        _gm, _need, _why = self._recall_gate_mode(), True, "off"
-        if _gm in ("shadow", "on"):
-            from app_core import recall_gate
-
-            _need, _why = recall_gate.decide(
-                user_text,
-                refers_previous=intent.refers_to_previous(user_text),
-                has_images=bool(turn.images))
+        _gm, _need, _why = turn.recall_gate
+        if _gm != "off":
             turn.memory_trace.append({"type": "gate", "need": _need, "why": _why})
         port = None
         try:
@@ -496,21 +479,7 @@ class ChatTurnMixin(CommitMixin):
             knowledge_request = bool(re.search(r"知识库|笔记里|我(?:写|记|存)过|翻.{0,5}笔记", query))
             if knowledge_request and intent.refers_to_previous(query):
                 query = turn.query
-            port = self._memory_port()
-            if port is not None:
-                try:
-                    items = await port.recall(query, ("knowledge",),
-                                              trace=turn.memory_trace)
-                    turn.knowledge = next(
-                        (i.text for i in items if i.type == "knowledge"), "")
-                except Exception as e:  # noqa: BLE001
-                    log.debug("知识读取失败（%s）", e)
-                    turn.knowledge = ""
-            else:
-                try:
-                    turn.knowledge = wiki.index_text(query=query)
-                except Exception:
-                    turn.knowledge = ""
+            turn.knowledge = await self._recall_context("knowledge", query, turn.memory_trace)
             if not turn.knowledge and knowledge_request:
                 try:
                     turn.knowledge = "\n\n".join(await kb.recall(
@@ -536,22 +505,12 @@ class ChatTurnMixin(CommitMixin):
         默认 shadow —— 只把「本来会注入的这 200 字」落盘，不改 messages。
         """
         try:
-            _pfields = learn.profile_fields() if turn.owner else {}
-            if _pfields:
-                port = self._memory_port()
-                if port is not None:
-                    items = await port.recall(turn.query, ("profile",),
-                                              trace=turn.memory_trace)
-                    _ptext = next((i.text for i in items if i.type == "profile"), "")
-                else:
-                    _ptext = profile_mod.compact(_pfields, learn.profile_conf(),
-                                                 learn.profile_seen())
-                # YAML 里写 on/off 会被解析成布尔 True/False（YAML 1.1 的老毛病），
-                # 这里统一归一成字符串，别让「写对了却没生效」再坑一次。
+            if turn.owner:
                 _pm = (config.load().get("profile") or {}).get("inject", "shadow")
                 _pmode = "on" if _pm is True else ("off" if _pm is False else str(_pm))
+                text = await self._recall_context("profile", turn.query, turn.memory_trace)
                 if _pmode == "on":
-                    turn.profile_block = _ptext
+                    turn.profile_block = text
         except Exception as e:  # noqa: BLE001
             log.debug("画像注入准备失败：%s", e)
 
@@ -765,7 +724,7 @@ class ChatTurnMixin(CommitMixin):
                         else:
                             turn.failed_parts.append(part)
 
-        turn.img_budget = max(self.max_tokens, _chat().REPLY_MAX_TOKENS)
+        turn.img_budget = max(self.max_tokens, self.reply_min_tokens)
         turn.think = self._thinking_for(turn.user_text, turn.images)
         own_text = grounding.direct_words(turn.store_text or turn.user_text)
         allow_web = not grounding.forbids_web(own_text)
@@ -826,7 +785,7 @@ class ChatTurnMixin(CommitMixin):
                 except Exception as e:  # noqa: BLE001
                     log.warning("元叙述重试失败：%s", e)
         if not turn.text and not turn.sent_parts:
-            turn.text = random.choice(_chat().FALLBACK_LINES)
+            turn.text = random.choice(self.fallback_lines)
         # 这一轮到底费不费劲：查了几轮工具、答了多长。问一句答一句几乎不耗，
         # 查三次资料再写长答案才该累——按条数扣钱会把这两件事算成一样。
         try:

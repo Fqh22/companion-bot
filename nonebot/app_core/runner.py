@@ -1,42 +1,28 @@
-"""[orchestration] 通道无关的一轮对话：typing、流式、时限、分段节奏。
+"""[orchestration] 私聊入口与平台无关的回复投递。
 
-为什么要这一层：现在这套「锁 → 取回合 → 调引擎 → 边生成边发 → 补发尾巴」
-写在 plugins/chat 里，换通道就得重写 300 行。这里把它抽出来，通道只实现
-Channel 的三个原语：
-
-    send_text(session, text) -> bool | "buffered"
-        True 已送达；"buffered" 已收下但还没投递（语音缓冲，不要再发、先别写历史）；
-        False 发送失败。
-    send_image(session, path) -> bool    发一张图
-    typing(session, on) -> None          显示/关闭「正在输入」（不支持就空实现）
-
-引擎只认 InboundMessage/OutboundMessage，所以新通道不需要 NoneBot、不需要 QQ。
-
-入站分批由 InboundTurns 管理。这里另有跨通道会话锁，确保引擎对共享记忆、
-情绪和跟进状态的读写串行。typing 心跳与时限也在这里。
-
-时限不再是一把尺子（2026-11-16）：
-- `deadline` 是宽松总上限，只兜底，不决定「正常回复该多长」；
-- `stall_seconds` 是无进展超时：发出第一句之后，久无新句子就收尾。
-原来的 `wait_for(timeout=45)` 会用「取消整轮」把长回复/多段语音一刀切成半截，
-而 45 这个数字是从「工具 6 轮最坏 9 分钟」倒推的，反过来绑架了正常路径。
+InboundTurns 聚合文本和附件。私聊入口补充意图、记忆正文及回复形态，
+TurnRunner 按会话串行执行引擎和投递，管理 typing、节奏、总时限与无进展超时。
+通道通过 Channel 返回送达回执、缓冲状态或失败。
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from datetime import datetime
 from typing import Protocol
 
 from app_core import mood, pacing
-from app_core.delivery import (BUFFERED, DELIVERY_UNKNOWN, Capability, DeliveryPolicy,
-                               DeliveryResult, Receipt, is_buffered, is_delivered)
+from app_core.delivery import (BUFFERED, DELIVERY_UNKNOWN, Capability, ConfirmedText,
+                               DeliveryPolicy, DeliveryResult, Receipt, is_buffered, is_delivered)
 from app_core.engine import Engine, InboundMessage, OutboundMessage
 from app_core.message import Part as _Part
+from app_core.outbound import READ_ALOUD_DIRECTIVE, deliver_voice_reply
 from app_core.round_timing import TurnTiming, current
+from app_core.turn import IMAGE_UNAVAILABLE, Turn
 
-log = logging.getLogger("app_core.runner")
+log = logging.getLogger("qqbot.runner")
 
 
 class Channel(Protocol):
@@ -54,10 +40,106 @@ class Channel(Protocol):
     async def typing(self, session: str, on: bool) -> None: ...
 
 
+class PrivateChannel(Channel, Protocol):
+    defer_text: bool
+    buffered: list[str]
+    sent_text: list[str]
+
+    async def send_text(self, session: str, text: str) -> DeliveryResult: ...
+
+
 # 同一会话串行：两轮并发会各自 prepare，互相覆盖记忆/情绪/跟催状态。
 # 并发消息在真人聊天里也是「一句一句回」，排队是更对的行为，不是延迟缺陷。
 _SESSION_LOCKS: dict[str, asyncio.Lock] = {}
 _TYPING_TASKS: dict[tuple[type, str], asyncio.Task] = {}
+
+
+def voice_reply_mode(settings: dict) -> str:
+    mode = str(settings.get("voice_reply_mode") or "voice").strip().lower()
+    return mode if mode in ("text_then_voice", "voice_then_text", "voice") else "voice"
+
+
+async def run_private_turn(turn: Turn, inbound: InboundMessage, channel: PrivateChannel, *,
+                           engine: Engine, caps: Capability, voice_mode: str,
+                           synthesize, speak, draw, notify, on_timeout,
+                           store_composed: bool = False) -> None:
+    """编排两端共用的私聊回合，通道负责平台字段、发送与超时提示。"""
+    core = engine.core
+    session = inbound.session
+    platform = inbound.platform
+    timing = TurnTiming(platform, received=turn.meta.get("received_at", time.monotonic()))
+    timing.input_count = turn.meta["input_count"]
+    timing.mark("batch_start")
+    timing.marks["input_ready"] = turn.meta.get("ready_at", timing.received)
+    text, stored = turn.compose()
+    raw = "\n".join(turn.texts)
+    log.info("[%s] recv %s: %r (%d images)", platform, session, text[:60], len(inbound.images))
+    try:
+        voice_failed = turn.meta.get("voice_unavailable")
+        image_failed = turn.meta.get("image_unavailable")
+        if turn.empty() and (image_failed or voice_failed):
+            timing.status = "voice_unavailable" if voice_failed else "image_unavailable"
+            message = "这段语音没转出来，可以重发或打字补一下。" if voice_failed else IMAGE_UNAVAILABLE
+            if is_delivered(await notify(message)):
+                timing.mark("first_sent")
+            return
+
+        timing.mark("intent_start")
+        decision = await core.interpret_intent(
+            session, raw, voice=inbound.voice, quote_text=inbound.quote_text,
+            reply_to=inbound.reply_reference)
+        timing.mark("intent_finish")
+        timing.reply_form = "voice" if decision.voice else "text"
+        channel.defer_text = decision.voice and voice_mode != "text_then_voice"
+        prompt = turn.image_status(text)
+        if decision.read_aloud:
+            prompt = READ_ALOUD_DIRECTIVE + prompt
+        if store_composed or (image_failed and stored is None):
+            stored = text
+        msg = replace(inbound, text=prompt, store_text=stored, intent=decision)
+        runner = TurnRunner(engine, channel, caps=caps, deadline=core.reply_deadline,
+                            stall_seconds=getattr(core, "reply_stall_seconds", 30), timing=timing)
+        out = await runner.run(msg)
+        if getattr(out, "images_sent", None):
+            try:
+                await core.record_assistant(session, "（另外发了一张图）", kind="image")
+            except Exception:
+                log.warning("[%s] 写回发图记录失败", platform, exc_info=True)
+        rewrite = not decision.read_aloud
+        if decision.voice and channel.buffered:
+            channel.defer_text = False
+            await deliver_voice_reply(
+                buffered=list(channel.buffered),
+                synth=lambda seg: synthesize(seg, mood=core.mood.load(), rewrite=rewrite),
+                send_voice=lambda path: channel.send_part(session, _Part("voice", path)),
+                send_text=lambda part: channel.send_text(session, part),
+                record_delivery=lambda part, refs: core.record_delivery(session, part, references=refs),
+                mode=voice_mode, tag=f"[{platform}]",
+                on_delivery=lambda: timing.mark("first_sent"))
+        elif decision.voice and channel.sent_text:
+            asyncio.create_task(speak("".join(channel.sent_text), rewrite=rewrite))
+        if decision.draw:
+            asyncio.create_task(draw(text if store_composed else raw))
+    except asyncio.TimeoutError:
+        timing.status = "timeout"
+        log.warning("[%s] 回复超时 %s，已发 %d 段", platform, session, len(channel.sent_text))
+        await on_timeout(bool(channel.sent_text))
+    except asyncio.CancelledError:
+        timing.status = "cancelled"
+        raise
+    except Exception:
+        timing.status = "error"
+        raise
+    finally:
+        timing.emit()
+
+
+async def send_delivery(core, session: str, text: str, send) -> None:
+    """即时提示送达后再写回，保留后续引用所用的平台消息 ID。"""
+    confirmed = ConfirmedText()
+    if confirmed.add(text, await send(text)):
+        await core.record_delivery(session, confirmed.parts[0],
+                                   references=tuple(confirmed.references), track_followup=False)
 
 
 class TurnRunner:
@@ -245,8 +327,8 @@ class TurnRunner:
 
     async def _run(self, msg: InboundMessage, timing: TurnTiming) -> OutboundMessage:
         started = time.monotonic()
-        references: list[tuple[str, str]] = []
-        confirmed: list[str] = []
+        delivery = ConfirmedText()
+        confirmed = delivery.parts
         state = {"last_progress": started, "sent": 0, "why": ""}
         pending: asyncio.Queue[tuple[str, bool] | None] = asyncio.Queue(maxsize=4)
         typing_key = (type(self.channel), msg.session)
@@ -293,10 +375,8 @@ class TurnRunner:
                         msg.session, _Part("text", part), timeout=min(2.0, self._remaining(started)))
                     if not is_delivered(status):
                         continue
-                text = status.text if isinstance(status, Receipt) and status.text is not None else part
-                confirmed.append(text)
-                if isinstance(status, Receipt) and status.reference:
-                    references.append((status.reference, text))
+                if not delivery.add(part, status):
+                    continue
                 state["sent"] = len(confirmed)
                 state["last_progress"] = time.monotonic()
                 timing.mark("first_sent")
@@ -347,4 +427,4 @@ class TurnRunner:
             for task in (watch, worker, progress, typing):
                 task.cancel()
             await asyncio.gather(watch, worker, progress, return_exceptions=True)
-            await self._remember_confirmed(msg, confirmed, references)
+            await self._remember_confirmed(msg, confirmed, delivery.references)

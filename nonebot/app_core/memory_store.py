@@ -15,7 +15,7 @@ import uuid
 import numpy as np
 
 from app_core import config
-from app_core.memory_common import PERSONA_ID, SHADOW_DEDUP_COS
+from app_core.memory_common import PERSONA_ID
 from app_core import timenorm
 from app_core.vec import cos as _cos
 from app_core.vec import pack as _pack
@@ -25,48 +25,6 @@ log = logging.getLogger("qqbot.memory")
 
 
 class StoreMixin:
-    def _shadow_dedup(self, text: str, vec: list[float] | None) -> None:
-        """影子模式去重：只记录「本该合并」，不真的合并。
-
-        同一个事实会在不同日期的总结里反复出现（「他在准备面试」可能散在 5 条记忆里），
-        召回时 top-5 里挤进来 3 条重复内容，等于白白挤掉别的东西。
-
-        为什么不直接合并：合并会改写已有记忆、改变召回形态，误合并比重复更难发现
-        （一次 0.86 的误判就把两条不相干的事粘成一条，且不可逆）。所以先只打日志，
-        攒一周看 `[记忆去重]` 命中的是不是真的重复，再决定开不开。
-        """
-        if not vec:
-            return
-        try:
-            import numpy as np
-
-            mat, ids = self._matrix()
-            if mat is None:
-                return
-            q = np.asarray(vec, dtype=np.float32)
-            if q.shape[0] != mat.shape[1]:
-                return
-            q = q / (np.linalg.norm(q) or 1.0)
-            scores = mat @ q
-            i = int(scores.argmax())
-            top = float(scores[i])
-            if top < SHADOW_DEDUP_COS:
-                return
-            hit = self._docs_by_ids([ids[i]]).get(ids[i])
-            if not hit:            # 已归档的不算重复：它本来就不参与召回
-                return
-            log.info("[记忆去重] 与 %s cos=%.3f（影子模式：本次仍新建）新=%s 旧=%s",
-                     ids[i][:8], top, (text or "")[:40], (hit.get("text") or "")[:40])
-            # 以前只有上面这行日志，轮转后就没有候选集可评审了。
-            # 落盘一份只读候选（不改记忆），由 ops/consolidate.py 汇总。
-            try:
-                from app_core import shadow as _shadow
-                _shadow.record_dedup_hit(text, ids[i], hit.get("text") or "", top)
-            except Exception:  # noqa: BLE001
-                pass
-        except Exception as e:  # noqa: BLE001
-            log.debug("影子去重检查失败（不影响写入）：%s", e)
-
     def _dup_window(self) -> float:
         try:
             cfg = config.load().get("memory") or {}
@@ -151,7 +109,6 @@ class StoreMixin:
         if dup:
             log.info("窗口内已有同样内容，跳过重复写入：%s", dup[:8])
             return dup
-        self._shadow_dedup(text, vec)
         doc_id = str(uuid.uuid4())
         now = time.time()
         meta = {

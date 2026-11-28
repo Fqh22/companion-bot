@@ -5,7 +5,7 @@ QQ 现有行为：动态段长 18–32，最多 6 段；这些是风格，不是
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app_core.prompt import split_reply
 
@@ -47,6 +47,25 @@ class Receipt:
 
 
 DeliveryResult = bool | str | Receipt | UnknownDelivery
+
+
+@dataclass
+class ConfirmedText:
+    """本批真正送达的文字及平台引用，供历史账本一次写入。"""
+
+    parts: list[str] = field(default_factory=list)
+    references: list[tuple[str, str]] = field(default_factory=list)
+
+    def add(self, text: str, result: DeliveryResult) -> bool:
+        if not is_delivered(result):
+            return False
+        if isinstance(result, Receipt):
+            if result.text is not None:
+                text = result.text
+            if result.reference:
+                self.references.append((result.reference, text))
+        self.parts.append(text)
+        return True
 
 
 @dataclass(frozen=True)

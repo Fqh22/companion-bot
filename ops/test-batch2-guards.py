@@ -184,6 +184,9 @@ def gate_pipeline_checks() -> None:
         def _memory_port(self):
             return self._port
 
+        async def _recall_context(self, kind, query, trace):
+            return ""
+
         async def get_digest(self, session: str) -> str:
             return ""
 

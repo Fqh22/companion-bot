@@ -82,7 +82,7 @@ ops/test-harness.py 会逐项断言它真的生效。改这些模块的路径常
 | 命令 | `app_core/help.py` 登记 + 插件 handler；新通道用 `commands.default_registry` | lint-plugins + test-commands |
 | LLM 工具 | `TOOLS` 加 schema + `HANDLERS` 加实现（名字必须一致） | smoke-all |
 | 定时任务 | `scheduling/scheduler.py` 的 `JOBS` + `_run_job` | smoke-all / smoke-clock |
-| 配置项 | `config.DEFAULTS` + `config.example.yaml` + `ops/config-ui.py` 键表 | test-config-ui |
+| 配置项 | `config.DEFAULTS` + `config.example.yaml` | check-config-sync |
 
 ## 6. 提交与 PR
 

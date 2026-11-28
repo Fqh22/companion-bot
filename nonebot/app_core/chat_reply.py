@@ -18,6 +18,7 @@ from app_core import config, inflight, shadow, tool_loop, tools
 from app_core.delivery import Capability, DeliveryPolicy, plan_delivery
 from app_core import prompt as prompt_mod
 from app_core.chat_turn_base import _chat
+from app_core.tool_policy import RETRY_BLOCKED
 
 log = logging.getLogger("qqbot.chat")
 
@@ -238,7 +239,7 @@ class ReplyMixin:
         if not allow_web:
             banned.update(("web_search", "web_open"))
         if retry:
-            banned |= _chat().SIDE_EFFECT_TOOLS
+            banned |= RETRY_BLOCKED
         messages = [*msgs[:-1], {"role": "system", "content":
             "回答前判断证据是否够。已给全信息就直接答。缺的是对话里提过的细节，先看引用、原话、图注或记忆。"
             "缺的是公开事实、时效信息或需要可靠来源，且允许联网时，带上实际对象和待核实的问题去搜。"

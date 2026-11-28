@@ -33,6 +33,10 @@ class InboundMessage:
     image_sources: dict[str, list[str]] = field(default_factory=dict)
 
     @property
+    def reply_reference(self) -> str | None:
+        return f"{self.platform}:{self.reply_to}" if self.reply_to else None
+
+    @property
     def parts(self) -> list:
         """形式视图：把旧字段翻译成 Part，不改存储。
 
@@ -94,8 +98,8 @@ class Engine:
         if msg.image_sources:
             kwargs["image_sources"] = {f"{msg.platform}:{event_id}": paths
                                        for event_id, paths in msg.image_sources.items() if paths}
-        if msg.reply_to:
-            kwargs["reply_to"] = f"{msg.platform}:{msg.reply_to}"
+        if msg.reply_reference:
+            kwargs["reply_to"] = msg.reply_reference
         if msg.intent is not None:
             kwargs["turn_intent"] = msg.intent
         if msg.quote_text:

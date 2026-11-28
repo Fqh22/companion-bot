@@ -153,7 +153,7 @@ from app_core import (  # noqa: E402
     memory_index as memory_index_mod, memory_store as memory_store_mod,
     mood as mood_mod, mood_domain as mood_domain_mod, mood_store as mood_store_mod,
     remind as remind_mod, mcp as mcp_mod,
-    memgraph as memgraph_mod, scheduler as sched_mod,
+    scheduler as sched_mod,
     history as history_mod, learn_constants as learn_constants_mod,
     learn_store as learn_store_mod, plugin_api as plugin_api_mod,
     notes_meta as notes_meta_mod,
@@ -167,7 +167,7 @@ from app_core import (  # noqa: E402
     perception as perception_mod, correction as correction_mod,
     vec as vec_mod,
     status as status_mod, runner as runner_mod,
-    commands as commands_mod, introspect as introspect_mod, runtime as runtime_mod,
+    commands as commands_mod, introspect as introspect_mod,
     proactive_runtime as proactive_runtime_mod,
     memory_port as memory_port_mod,
     audit as audit_mod, proactive_channels as proactive_channels_mod,
@@ -178,7 +178,7 @@ from app_core import (  # noqa: E402
     asr as asr_mod,
     relation_notes as relation_notes_mod,
     situation as situation_mod,
-    textsim as textsim_mod, tools as tools_mod, vocab as vocab_mod,
+    textsim as textsim_mod, tool_policy, tools as tools_mod, vocab as vocab_mod,
     web as web_mod, wiki as wiki_mod,
 )
 
@@ -240,7 +240,6 @@ check("commands 有注册表", hasattr(commands_mod, "CommandRegistry")
       and hasattr(commands_mod, "default_registry"))
 check("introspect 有只读文本", hasattr(introspect_mod, "ping_text")
       and hasattr(introspect_mod, "usage_text"))
-check("runtime 有后台入口", hasattr(runtime_mod, "start_background"))
 check("proactive_runtime 有循环", hasattr(proactive_runtime_mod, "ProactiveRuntime"))
 check("memory_port 有契约", hasattr(memory_port_mod, "MemoryPort")
       and hasattr(memory_port_mod, "MemoryItem"))
@@ -454,16 +453,6 @@ async def main() -> None:
               [s[0] for s in _specs] == ["mcp__x__read_a"], str([s[0] for s in _specs]))
         check("mcp 工具带外部标注", "外部工具" in _specs[0][1]["function"]["description"])
 
-        # ---------- memgraph（共现实体连边） ----------
-        shadow_mod.GRAPH_LOG = TMP / "smoke-shadow-graph.jsonl"
-        gg = memgraph_mod.EntityGraph([(1, ["装机", "内存"]), (2, ["装机"])])
-        check("memgraph 建图并连边",
-              [p for p, _ in gg.related([1])] == [2], str(gg.stats()))
-        check("memgraph 归一化",
-              memgraph_mod.normalize(" A  架构 ") == memgraph_mod.normalize("a 架构"))
-        shadow_mod.record_graph("装机", dense=["x"], expanded=["y", "x"])
-        check("shadow 连边落盘", (TMP / "smoke-shadow-graph.jsonl").exists())
-
         # ---------- vocab（主题词表复用） ----------
         check("vocab 近义归并",
               vocab_mod.canonicalize(["求职面试"], ["求职"]) == ["求职"])
@@ -633,6 +622,8 @@ async def main() -> None:
             purge_mod.BACKUP_DIR = _saved_bk
 
         # ---------- prompt / pacing / proactive / summarize / tool_loop / config / llm ----------
+        check("模型工具都有权限策略",
+              set(tools_mod.HANDLERS) == set(tool_policy.BUILTIN_POLICIES))
         # 这七个模块以前只被间接调用（经 chat），没有直接体检项——
         # link-check 现在会查「每个模块都进了 smoke-all」，所以补上。
         check("insight: 提示词要求引用来源", "sources" in insight_mod.INSIGHT_SYSTEM)
@@ -798,7 +789,7 @@ async def main() -> None:
         check("memory._all_vectors", isinstance(mem._all_vectors(), list))
         _ranked = memory_score_mod.rank([0.4, 0.2, 0.1], None, None, None, time.time())
         check("memory_score.rank", len(_ranked) == 3)
-        check("memory_common 常量", memory_common_mod.SHADOW_DEDUP_COS > 0)
+        check("memory_common 常量", bool(memory_common_mod.PERSONA_ID))
         check("memory_store 有存储方法",
               hasattr(memory_store_mod.StoreMixin, "add_document"))
         check("memory_index 有索引方法",

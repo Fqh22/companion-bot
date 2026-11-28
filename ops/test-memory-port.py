@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
@@ -217,6 +218,17 @@ async def main() -> None:
     fields_now = learn_mod2.profile_fields()
     check("profile 写入生效", fields_now.get("技术与项目") == "在做 companion-bot", str(fields_now)[:60])
     check("profile 返回 dropped 字段", "dropped" in st, str(st)[:50])
+
+    from app_core import chat, config
+
+    core = chat.ChatCore()
+    with patch.object(config, "load", return_value={"chat": {"memory_port": False}}):
+        trace = []
+        profile = await core._recall_context("profile", "", trace)
+        check("旧开关仍停用事实召回入口，画像沿用同一接口", core._memory_port() is None
+              and "在做 companion-bot" in profile and trace == [])
+    with patch.object(config, "load", return_value={"chat": {"affect_port": False}}):
+        check("旧情绪开关仍得到相同的状态接口", core._affect_port() is not None)
 
     # P4：记忆轨迹
     from app_core.introspect import trace_text

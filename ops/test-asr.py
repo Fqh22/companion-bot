@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 CODE = Path(os.environ.get("QQBOT_CODE_DIR", "/opt/nonebot")).resolve()
 sys.path.insert(0, str(CODE))
@@ -22,33 +23,36 @@ from app_core import asr  # noqa: E402
 from harness import check, report  # noqa: E402
 
 
-def main() -> None:
+def main() -> int:
     import shutil
 
-    if not shutil.which("ffmpeg"):
-        # 没跑 ≠ 通过：本机（Windows）没有 ffmpeg 时返回 2，让 CI 不会把跳过当绿灯。
-        print("SKIP（未执行）没有 ffmpeg，转码测试跳过")
-        sys.exit(2)
+    missing = [name for name in ("ffmpeg", "ffprobe") if not shutil.which(name)]
+    if missing:
+        print("SKIP（未执行）缺少 " + "、".join(missing))
+        return 2
 
-    src = Path(tempfile.mkstemp(suffix=".wav")[1])
-    subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
-                    "-i", "anullsrc=r=16000:cl=mono", "-t", "1", str(src)],
-                   capture_output=True, timeout=60)
+    with tempfile.TemporaryDirectory(prefix="asr-fixtures-") as temp:
+        src = Path(temp) / "source.wav"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                        "-i", "anullsrc=r=16000:cl=mono", "-t", "1", str(src)],
+                       capture_output=True, check=True, timeout=60)
 
-    wav = asr.to_wav(src)
-    check("转码成功", wav is not None and wav.exists(), str(wav))
-    if wav:
-        d = asr.duration(wav)
-        check("时长约 1 秒", 0.5 <= d <= 2.0, f"{d:.2f}")
-        r = asyncio.run(asr.transcribe(wav))
-        check("没 key 时给原因", r["text"] == "" and "key" in r["error"], r["error"][:30])
-        wav.unlink(missing_ok=True)
-    src.unlink(missing_ok=True)
+        wav = asr.to_wav(src)
+        check("转码成功", wav is not None and wav.exists(), str(wav))
+        if wav:
+            try:
+                d = asr.duration(wav)
+                check("时长约 1 秒", 0.5 <= d <= 2.0, f"{d:.2f}")
+                with patch.object(asr, "service_route", return_value=Mock(key=lambda: "")):
+                    r = asyncio.run(asr.transcribe(wav))
+                check("缺少凭证时给原因", r["text"] == "" and "凭证未配置" in r["error"],
+                      r["error"][:30])
+            finally:
+                wav.unlink(missing_ok=True)
 
-    bad = Path(tempfile.mkstemp(suffix=".txt")[1])
-    bad.write_text("not audio", encoding="utf-8")
-    check("坏文件转码失败", asr.to_wav(bad) is None)
-    bad.unlink(missing_ok=True)
+        bad = Path(temp) / "bad.txt"
+        bad.write_text("not audio", encoding="utf-8")
+        check("坏文件转码失败", asr.to_wav(bad) is None)
 
     return report()
 

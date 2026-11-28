@@ -25,7 +25,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-from app_core import prompt, status  # noqa: E402
+from app_core import prompt  # noqa: E402
 
 TOTAL = 0
 FAILS: list[str] = []
@@ -156,38 +156,6 @@ def export_checks() -> None:
               "; ".join(err_e))
 
 
-def observability_checks() -> None:
-    with tempfile.TemporaryDirectory(prefix="observe-guard-") as td:
-        data = Path(td)
-        (data / "memory_trace.jsonl").write_text("\n".join([
-            json.dumps({"ts": 1700000000, "turn_id": "t1", "query": "还记得吗",
-                        "injected": [{"id": "abc", "score": 0.42, "text": "他喜欢美式"}],
-                        "t_recall_ms": 12.5,
-                        "trace": [{"type": "gate", "need": True, "why": "explicit-recall"}]}),
-            json.dumps({"ts": 1700000001, "turn_id": "t2", "query": "哈哈",
-                        "injected": [], "trace": []}),
-        ]) + "\n", encoding="utf-8")
-        (data / "shadow-recall-gate.jsonl").write_text('{"need":true}\n', encoding="utf-8")
-        snap = status.observability(data_dir=data, mem_db=data / "no.db",
-                                    chat_db=data / "no.db", limit=5)
-        check("面板：缺库时降级不抛", isinstance(snap.get("status"), dict))
-        check("面板：轨迹解析出注入分数与门控原因",
-              len(snap["trace"]) == 2 and snap["trace"][0]["top_score"] == 0.42
-              and snap["trace"][0]["gate"] == "explicit-recall",
-              str(snap["trace"][:1]))
-        check("面板：影子文件列出行数",
-              any(x["name"] == "shadow-recall-gate.jsonl" and x["lines"] == 1
-                  for x in snap["shadows"]))
-        ui = (ROOT / "ops" / "config-ui.py").read_text(encoding="utf-8")
-        html = (ROOT / "ops" / "config-ui" / "index.html").read_text(encoding="utf-8")
-        js = (ROOT / "ops" / "config-ui" / "app.js").read_text(encoding="utf-8")
-        check("面板：只读 API / tab / 渲染函数都接上",
-              "/api/observability" in ui and 'data-tab="observe"' in html
-              and "loadObservability" in js and "observability_switches" in ui)
-        check("面板：没有写操作（只 GET）",
-              "/api/observability" in ui.split("def do_POST")[0])
-
-
 def budget_checks() -> None:
     mem = [
         {"text": "洞察一", "type": "insight"},
@@ -206,23 +174,19 @@ def budget_checks() -> None:
           and "洞察一" in tiered, tiered[:80].replace("\n", " / "))
     cfg = (CODE / "app_core" / "config.py").read_text(encoding="utf-8")
     ex = (CODE / "config.example.yaml").read_text(encoding="utf-8")
-    ui = (ROOT / "ops" / "config-ui.py").read_text(encoding="utf-8")
-    check("分层预算：默认 legacy，三处配置同步",
+    check("分层预算：默认 legacy，与示例配置同步",
           '"budget_mode": "legacy"' in cfg
-          and 'budget_mode: "legacy"' in ex
-          and '"chat.budget_mode"' in ui)
+          and 'budget_mode: "legacy"' in ex)
 
 
 def decay_and_consolidation_checks() -> None:
     ms = (CODE / "app_core" / "memory_store.py").read_text(encoding="utf-8")
-    sh = (CODE / "app_core" / "shadow.py").read_text(encoding="utf-8")
     check("访问强化：touch 真的写 reinforcement_count",
           "reinforcement_count=reinforcement_count+1" in ms
           and "last_reinforced_at=?" in ms)
     check("访问强化：仍然只记账、不改状态",
           "UPDATE memory_atoms SET" in ms and "DELETE FROM documents" not in ms.split("def touch")[1].split("def ")[0])
-    check("碎片候选：去重命中会落盘",
-          "def record_dedup_hit" in sh and "record_dedup_hit(text" in ms)
+    check("已停止采集碎片候选", "_shadow_dedup" not in ms)
 
     cons = load_ops("consolidate_mod", "consolidate.py")
     with tempfile.TemporaryDirectory(prefix="consolidate-guard-") as td:
@@ -248,7 +212,6 @@ def decay_and_consolidation_checks() -> None:
 
 def main() -> None:
     export_checks()
-    observability_checks()
     budget_checks()
     decay_and_consolidation_checks()
     if FAILS:

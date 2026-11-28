@@ -16,7 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from app_core import followup, mood, paths, perception, proactive_channels
+from app_core import followup, mood, paths, perception
+from app_core.delivery import ConfirmedText
 from app_core import proactive as decide
 from app_core import proactive_sources as sources
 
@@ -158,13 +159,12 @@ class ProactiveRuntime:
             return None
 
     async def _deliver(self, key: str, topic: str, text: str) -> bool:
-        receipt = await self.send(text)
-        if not receipt:
+        delivery = ConfirmedText()
+        if not delivery.add(text, await self.send(text)):
             return False
-        ref = receipt.reference if isinstance(receipt, proactive_channels.Receipt) else ""
-        refs = ((ref, text),) if ref else ()
         await self.core.record_delivery(
-            self._session(), text, references=refs, topic_key=key, topic=topic)
+            self._session(), delivery.parts[0], references=tuple(delivery.references),
+            topic_key=key, topic=topic)
         return True
 
     # ---------- 生成 ----------

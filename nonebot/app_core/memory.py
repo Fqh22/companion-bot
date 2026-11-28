@@ -30,9 +30,6 @@ log = logging.getLogger("qqbot.memory")
 EMBED_API = "https://open.bigmodel.cn/api/paas/v4/embeddings"
 EMBED_MODEL = "embedding-3"
 PERSONA_ID = "editor-assistant"
-# 影子去重阈值：新记忆与已有活跃记忆的 cos 达到这个值就认为「说的是同一件事」。
-# 现在**只记日志、不合并**——先攒一周看误判率，再决定要不要真的改成更新旧记忆。
-SHADOW_DEDUP_COS = 0.85
 
 
 def _zhipu_key() -> str:
@@ -84,9 +81,6 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         self.time_w = float(mem_cfg.get("recall_time_weight", 0.3))
         self.imp_w = float(mem_cfg.get("recall_importance_weight", 0.1))
         self.keep_important = float(mem_cfg.get("recall_keep_important", 0.8))
-        # 实体连边（共现实体），同样只跑影子
-        self._graph = None
-        self._graph_n = -1
         # 主题词表（给摘要复用），带 TTL 缓存
         self._vocab: list[str] | None = None
         self._vocab_ts = 0.0
@@ -260,8 +254,4 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
                 log.info("召回 %r → %s", (query or "")[:14], " | ".join(parts))
             except Exception:
                 pass
-        try:
-            self._shadow_graph(query, [d["doc_id"] for d in out])
-        except Exception as e:  # noqa: BLE001
-            log.debug("连边影子失败：%s", e)
         return out
