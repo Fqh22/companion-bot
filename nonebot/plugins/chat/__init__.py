@@ -327,25 +327,6 @@ async def _set_typing(sid: str, on: bool) -> None:
         logger.debug(f"[chat] typing 设置失败：{type(e).__name__}: {e}")
 
 
-async def _typing_loop(sid: str) -> None:
-    """QQ 的「正在输入」会自己过期，5 秒续一次，直到本轮结束。"""
-    try:
-        while True:
-            await _set_typing(sid, True)
-            await asyncio.sleep(5)
-    except asyncio.CancelledError:
-        raise
-
-
-async def _pace(text: str, fast: bool = False) -> None:
-    """发出这一条之前的“打字”停顿。计算在 app_core.pacing，这里只负责睡。
-
-    fast=True 时压低上限：长回答段数多，再按原节奏发就会撞穿回复时限。
-    """
-    await asyncio.sleep(pacing.pace_seconds(text, datetime.now().hour,
-                                            core.mood.load(), fast=fast))
-
-
 async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> DeliveryResult:
     """发一条文字，失败重试一次。发不出去不抛异常——用户侧无能为力，
     但必须留日志，否则「它回了但没收到」永远查不出来。
@@ -372,28 +353,6 @@ async def _send_text(part: str, tries: int = 2, reply_id: str | None = None) -> 
             logger.warning(f"[chat] 发送结果未知：{type(e).__name__}: {e}")
             return DELIVERY_UNKNOWN
     return False
-
-
-async def _send_replies(replies: list[str], images: list[str] | None = None,
-                        reply_id: str | None = None) -> None:
-    total = len(replies)
-    for i, part in enumerate(replies):
-        if i:
-            await asyncio.sleep(pacing.gap_seconds(i, total))
-        await _pace(part, fast=pacing.is_fast(i, total))
-        await _send_text(part, reply_id=reply_id if i == 0 else None)
-    for path in images or []:
-        try:
-            p = Path(path)
-            if not p.exists():
-                logger.warning(f"[chat] 表情包文件不存在：{p}")
-                continue
-            # 传 bytes → 适配器编码成 base64；传 Path 会变成 file:// 宿主机路径，
-            # 而 OneBot 跑在容器里看不到宿主机目录（实测 ENOENT，表情包一张都发不出去）。
-            data = await asyncio.to_thread(core.meme.payload, str(p))
-            await chat.send(MessageSegment.image(data))
-        except Exception as e:  # noqa: BLE001
-            logger.warning(f"[chat] 表情包发送失败：{type(e).__name__}: {e}")
 
 
 async def _collect_file(sid: str, seg: MessageSegment, caption: str = "",

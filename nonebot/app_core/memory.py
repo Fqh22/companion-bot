@@ -155,6 +155,7 @@ class Memory(StoreMixin, IndexMixin, EmbedMixin):
         DB.parent.mkdir(parents=True, exist_ok=True)
         c = sqlite3.connect(DB, timeout=15)
         c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA busy_timeout=15000")
         return c
 
     def _lexical_recall(self, query: str, top_k: int, *, touch: bool) -> list[dict]:

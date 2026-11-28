@@ -26,6 +26,7 @@ def _db():
 def _conn() -> sqlite3.Connection:
     c = sqlite3.connect(_db(), timeout=15)
     c.execute("PRAGMA journal_mode=WAL")
+    c.execute("PRAGMA busy_timeout=15000")
     return c
 
 

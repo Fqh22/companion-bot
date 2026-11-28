@@ -2,7 +2,7 @@
 #
 # 布局由 ops/release-switch.sh 维护：
 #   /opt/nonebot-releases/<sha>-<ts>/   每个版本完整代码
-#   /opt/nonebot/current -> 当前 release（切换只改这一个符号链接）
+#   /opt/nonebot 是真实目录，由 release-switch.sh 用 renameat2 原子交换
 #   /opt/nonebot/{data,venv,config.yaml,.env} 保持真实，不随版本走
 #   /opt/nonebot-ops-state/              ops 日志/state/ops.env 共享
 #
@@ -39,7 +39,10 @@ $RelId = "$Sha-$Ts"
 $RelDir = "/opt/nonebot-releases/$RelId"
 $Tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("qqbot-deploy-" + $Ts)
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
-$SshOpts = @("-i", $Key, "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=20")
+$SshOpts = @("-i", $Key, "-o", "ProxyCommand=none", "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=20")
+
+python ops/scan-secrets.py
+if ($LASTEXITCODE -ne 0) { throw "密钥扫描未通过，停止部署" }
 
 function Invoke-Remote([string]$Cmd) {
     & ssh @SshOpts $SshHost $Cmd

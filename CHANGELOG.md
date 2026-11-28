@@ -8,6 +8,15 @@
 > 2026-11-16 收敛：156 条 → 20 条。被删的日常记录在提交 `abe8234` 之前的 git 历史里。
 > 文档总量的教训：流水账越详细，越没人读——它只需要在「想查某一批」时能被搜到。
 
+## 2026-11-28 · 精简审查入口
+
+- 合并项目入口的架构和验证索引，按任务定位文档，并从差异追到调用链和相关断言。项目入口从 139 行减到 83 行，完整验证清单移到文档地图。规范和文档链接检查通过，文档护栏自检 6/6。
+
+## 2026-11-28 · 放宽历史上下文与总结输出预算
+
+- 默认 `context.history_max_chars` 由 `2500` 调整为 `6000`，避免连续深聊及带图注对话过早滚出窗口；`summary.max_tokens` 由 `700` 调整为 `1600`，避免长总结触顶截断。同步更新云端 `config.yaml`（并将 `llm.reply_deadline_seconds` 从 `45` 同步到 `90`），主模型与总结模型保持不变。
+- 代码审查问题收口：修复 `ops/test-provider-routes.py` 假 Bearer 串触发 `scan-secrets` 误报、对齐 `_manifest.sha256` Python 3.12 校验；修复 QQ `/approve` 命令前缀未剥离导致无法批准及重放未传 `images`；修复 `recall_gate=off` 时暗中跳过寒暄召回及 `shadow` 负样本与纠正清单丢失；为 `web.py` 补齐异步 DNS 与建连直连已校验 IP 防 DNS Rebinding；为 `audit.record` 加线程锁与尾读避免并发哈希链断裂，并补充 `tools.execute` 变更前快照；为 `memory` / `followup_store` / `remind` 补充 `busy_timeout=15000`；清理 `plugins/chat` 零引用旧函数并同步 `config-ui.py` 与 `docs/02~04` 描述。云端 Python 3.12 隔离沙盒全量 `verify.sh` 19/19、`test-batch2/3/4-guards`、`test-web`、`test-config-ui`、`smoke-clock`、`test-prompt-golden` 39/39 全绿，本地 `scan-secrets` / `lint-plugins` / `lint-layers` / `check-links` 全绿。
+
 ## 2026-11-25 · 工具正文隔离与知识按需检索
 
 - 工具轮结束后才投递经检查的正文，拦截工具协议、调用 JSON 和内部背景块，保留用户索取的代码示例。知识目录按当前问题筛选，降低旧主题被顺手复述的概率。响应流程 30/30，事实核对 35/35。

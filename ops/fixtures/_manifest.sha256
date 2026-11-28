@@ -9,8 +9,8 @@
   "origin_code": "7f3f3ca",
   "git_head": "89348a8",
   "tool_commit": "89348a8",
-  "python": "3.13.13",
+  "python": "3.12.3",
   "metadata": {
-    "platform": "Windows"
+    "platform": "Linux"
   }
 }

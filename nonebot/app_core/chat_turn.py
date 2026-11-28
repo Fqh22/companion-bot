@@ -150,8 +150,7 @@ class ChatTurnMixin(CommitMixin):
             turn.digest = await self.get_digest(session)
         except Exception:
             turn.digest = ""
-        # 还没有纪要时放宽历史预算：一上线就砍到 2500 会把老上下文丢了
-        hist_budget = self.history_max_chars if turn.digest else max(self.history_max_chars, 4000)
+        hist_budget = self.history_max_chars
         turn.stage = READ_HISTORY
         # 先读历史、后写本轮：否则刚写进去的这句会被 history() 读回来，
         # 再在 build_messages 末尾追加一次 —— 同一句话在 prompt 里出现两遍。
@@ -208,10 +207,11 @@ class ChatTurnMixin(CommitMixin):
         await self._prepare_vectors(turn, user_text)
         if timing:
             timing.mark("vectors_finish")
-        if not turn.skip_recall and self._prep_left(turn) > 0:
+        if turn.owner and self._prep_left(turn) > 0:
             try:
                 async with asyncio.timeout(self._prep_left(turn)):
-                    await self._prepare_recall(turn, user_text)
+                    if not turn.skip_recall:
+                        await self._prepare_recall(turn, user_text)
                     await self._prepare_knowledge(turn, user_text)
             except TimeoutError:
                 turn.budget_exhausted = True
@@ -321,6 +321,15 @@ class ChatTurnMixin(CommitMixin):
         except Exception as e:
             log.warning("跟进回应入账失败：%s", e)
 
+    @staticmethod
+    def _recall_gate_mode() -> str:
+        try:
+            mode = str((config.load().get("memory") or {}).get(
+                "recall_gate", "off")).strip().lower()
+        except Exception:  # noqa: BLE001
+            mode = "off"
+        return mode if mode in ("shadow", "on") else "off"
+
     async def _prepare_vectors(self, turn: Turn, user_text: str) -> None:
         """算本轮向量并观察情绪。
 
@@ -329,8 +338,12 @@ class ChatTurnMixin(CommitMixin):
         """
         from app_core import recall_gate
 
-        no_recall = recall_gate.decide(user_text, has_images=bool(turn.images))[1] == "smalltalk"
-        turn.skip_recall = not turn.owner or no_recall
+        gate_mode = self._recall_gate_mode()
+        need, _ = recall_gate.decide(
+            user_text,
+            refers_previous=intent.refers_to_previous(user_text),
+            has_images=bool(turn.images))
+        turn.skip_recall = (not turn.owner) or (gate_mode == "on" and not need)
         try:
             seconds = min(2.0, self._prep_left(turn))
             texts = [user_text] if user_text.strip() and not turn.skip_recall and seconds > 0 else []
@@ -372,12 +385,7 @@ class ChatTurnMixin(CommitMixin):
         # 检索门控：默认 off（零开销）；shadow 只落盘判断，on 才真的跳过召回。
         # 依据 RealCompanion 2026-10：真实流量仅约 3.4% 需要回忆，瓶颈是
         # 「什么时候不检索」。影子截止 2026-11-30，见 docs/04-评测与实验.md。
-        _gm, _need, _why = "off", True, "off"
-        try:
-            _gm = str((config.load().get("memory") or {}).get(
-                "recall_gate", "off")).strip().lower()
-        except Exception:  # noqa: BLE001
-            pass
+        _gm, _need, _why = self._recall_gate_mode(), True, "off"
         if _gm in ("shadow", "on"):
             from app_core import recall_gate
 

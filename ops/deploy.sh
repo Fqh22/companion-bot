@@ -3,7 +3,7 @@
 #
 # 布局由 ops/release-switch.sh 维护：
 #   /opt/nonebot-releases/<sha>-<ts>/   每个版本完整代码
-#   /opt/nonebot/current -> 当前 release（切换只改这一个符号链接）
+#   /opt/nonebot 是真实目录，由 release-switch.sh 用 renameat2 原子交换
 #   /opt/nonebot/{data,venv,config.yaml,.env} 保持真实，不随版本走
 #   /opt/nonebot-ops-state/              ops 日志/state/ops.env 共享
 #
@@ -34,8 +34,9 @@ for a in "$@"; do
   esac
 done
 
-SSH=(ssh -i "$KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 -o ServerAliveInterval=20 "$HOST")
+SSH=(ssh -i "$KEY" -o ProxyCommand=none -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o ServerAliveInterval=20 "$HOST")
 cd "$(dirname "$0")/.."
+(python3 ops/scan-secrets.py || python ops/scan-secrets.py) || { echo "密钥扫描未通过，停止部署" >&2; exit 1; }
 SHA="$(git rev-parse --short HEAD)"
 TS="$(date +%Y%m%d-%H%M%S)"
 REL_ID="$SHA-$TS"

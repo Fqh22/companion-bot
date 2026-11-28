@@ -119,8 +119,129 @@ def config_checks() -> None:
           "reply_stall_seconds: 30" in ex and 'recall_gate: "off"' in ex)
 
 
+def gate_pipeline_checks() -> None:
+    import asyncio
+    import json
+    import tempfile
+    import types
+    from unittest.mock import patch
+
+    for mod_name in ("yaml", "httpx", "numpy", "aiosqlite"):
+        if mod_name not in sys.modules:
+            try:
+                __import__(mod_name)
+            except ImportError:
+                stub = types.ModuleType(mod_name)
+                if mod_name == "httpx":
+                    stub.AsyncClient = type("AsyncClient", (), {})
+                    stub.Timeout = lambda *a, **k: None
+                    stub.Limits = lambda *a, **k: None
+                sys.modules[mod_name] = stub
+
+    from app_core import chat_turn, config, paths, shadow  # noqa: E402
+    from app_core.memory_port import MemoryItem  # noqa: E402
+
+    class _DummyMem:
+        def __init__(self) -> None:
+            self.embed_calls: list[list[str]] = []
+
+        async def embed(self, texts: list[str]) -> list[list[float]]:
+            self.embed_calls.append(list(texts))
+            return [[0.1, 0.2] for _ in texts]
+
+    class _DummyPort:
+        def __init__(self) -> None:
+            self.fact_calls = 0
+
+        async def recall(self, query, types=("fact",), limit=5, qv=None, touch=True, trace=None):
+            if "fact" in types:
+                self.fact_calls += 1
+                return [MemoryItem(type="fact", text="记忆A", ref="d1", payload={"score": 0.9})]
+            return []
+
+    class _DummyCore(chat_turn.ChatTurnMixin):
+        first_token_budget = 10.0
+        reply_deadline = 90.0
+        history_max_chars = 6000
+        recall_query_items = 2
+        max_tokens = 1000
+
+        def __init__(self, port, mem) -> None:
+            self._port = port
+            self.memory = mem
+
+        @staticmethod
+        def _is_owner(session: str) -> bool:
+            return session == "private:1"
+
+        def _affect_port(self):
+            return types.SimpleNamespace(
+                read=lambda: {"valence": 0.0, "valence_base": 0.0, "energy": 0.7, "social": 0.5},
+                observe=lambda *a, **k: None,
+                write=lambda *a, **k: None,
+            )
+
+        def _memory_port(self):
+            return self._port
+
+        async def get_digest(self, session: str) -> str:
+            return ""
+
+        async def history(self, session: str, max_chars: int = 6000) -> list[dict]:
+            return []
+
+        async def interpret_intent(self, session: str, text: str, **kw):
+            return None
+
+        async def last_user_ts(self, session: str) -> float:
+            return 0.0
+
+        async def persist_inbound(self, session: str, stored: str) -> int:
+            return 1
+
+        def seg_max(self, m: dict) -> int:
+            return 25
+
+    with tempfile.TemporaryDirectory(prefix="gate-pipe-") as td:
+        old_data = paths.DATA
+        old_gate = shadow.GATE_LOG
+        paths.DATA = Path(td)
+        shadow.GATE_LOG = Path(td) / "shadow-recall-gate.jsonl"
+        try:
+            async def run_mode(mode: str):
+                port = _DummyPort()
+                mem = _DummyMem()
+                c = _DummyCore(port, mem)
+                with (patch.object(config, "load", return_value={"memory": {"recall_gate": mode}, "chat": {}}),
+                      patch.object(chat_turn.learn, "recent_corrections", return_value=["记住规则"]),
+                      patch.object(chat_turn.learn, "skill_match", return_value=[]),
+                      patch.object(chat_turn.learn, "profile_fields", return_value={})):
+                    turn = await c._turn_prepare("private:1", "哈哈", None, None)
+                return turn, port, mem
+
+            t_off, p_off, m_off = asyncio.run(run_mode("off"))
+            check("recall_gate=off 时寒暄不跳过召回",
+                  not t_off.skip_recall and p_off.fact_calls == 1 and len(m_off.embed_calls) == 1)
+
+            t_sh, p_sh, _ = asyncio.run(run_mode("shadow"))
+            rows = [json.loads(x) for x in shadow.GATE_LOG.read_text(encoding="utf-8").splitlines() if x.strip()]
+            check("recall_gate=shadow 时寒暄仍召回且落盘 need=False 样本",
+                  not t_sh.skip_recall and p_sh.fact_calls == 1
+                  and any(r.get("need") is False and r.get("why") == "smalltalk" for r in rows),
+                  str(rows))
+
+            t_on, p_on, m_on = asyncio.run(run_mode("on"))
+            check("recall_gate=on 时寒暄跳过召回但保留纠正清单",
+                  t_on.skip_recall and p_on.fact_calls == 0 and m_on.embed_calls == []
+                  and "记住规则" in t_on.lessons)
+        finally:
+            paths.DATA = old_data
+            shadow.GATE_LOG = old_gate
+
+
 def main() -> None:
     gate_checks()
+    gate_pipeline_checks()
     prefilter_checks()
     state_checks()
     config_checks()

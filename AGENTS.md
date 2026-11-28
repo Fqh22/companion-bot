@@ -10,64 +10,22 @@
 - 在项目根运行 `python ops/lint-plugins.py` 做快速离线检查。下方列出了按改动范围执行的其他验证。
 - 默认串行接手项目主工作树，保留已有未提交改动。确有并行任务时再使用独立 Git worktree。部署、恢复、云端备份和真实数据验证按本项目的运维流程执行。
 
-## 1. 先跑什么
+## 1. 验证
 
-```bash
-# 本地（Windows 也行）：全量 20 套，约 90 秒
-export QQBOT_CODE_DIR=$PWD/nonebot
-python ops/lint-plugins.py        # 分层/规范（秒级）
-python ops/lint-layers.py         # domain / adapters 依赖方向
-python ops/test-nonebot-offline.py
-python ops/smoke-all.py
-python ops/test-runner.py
-python ops/test-commands.py
-python ops/link-check.py          # 联动体检：插件 ↔ 内核接线（不是文档链接）
-python ops/smoke-plugins.py
-python ops/test-guards.py         # 护栏自检：lint 规则必须能抓到反例
-python ops/test-lint-layers.py    # 分层护栏自检：缺标记 / 反向依赖 / 新增环 必须红
-python ops/check-links.py         # 文档守门员：链接 / 路径引用 / 登记表
-python ops/test-check-links.py    # 护栏自检：故意写坏文档，确认上一条会红
-python ops/test-embed-guard.py    # embedding 维度守卫（含反例）
-python ops/test-batch2-guards.py  # 门控 / 预筛 / 每轮状态归属 / 配置默认值
-python ops/test-batch3-guards.py  # 主体导出往返 / 面板 / 预算双模式 / 只读性
-python ops/test-batch4-guards.py  # 审计链 / 授权门 / 多段语音 / 主动通道
-python ops/replay-diff.py 5       # 全链路冒烟：真实对话重放，只看召回一致/无异常（会调 LLM，不进 CI）
-python ops/memory-report.py 7     # 记忆使用周报：0 条率 / 平均条数 / 类型分布（观察期每周跑）
+在项目根运行 `python ops/lint-plugins.py`。本地验证按[验证清单](docs/README.md#验证清单)执行。代码改动至少跑基础八项和受影响链路的测试，交付前跑完整检查。云端使用 `ops/verify.sh --pre` 和 `ops/verify.sh`。
 
-# 云端：五件套
-ops/verify.sh --pre              # 重启前：不碰生产库
-ops/verify.sh                    # 全量
-```
+## 2. 定位代码与审查
 
-**改完必须全绿**。CI 也会跑，但本地先跑能省一轮。
+改动审查先看 `git status --short` 和 `git diff --stat HEAD`，再读目标差异、直接调用链和对应断言。未跟踪文件从状态清单按需打开。架构审查按链路查阅[文档地图](docs/README.md#按任务阅读)。长测试、基线和变更记录按关键词定位，测试输出保留汇总、失败和相关警告。
 
-## 2. 目录与分层
+`app_core` 放内核，`adapters` 转换平台字段，`plugins` 接平台 IO，`companion_core` 提供应用门面，`ops` 放验证和运维入口。分层与扩展方式见[系统与扩展](docs/02-系统与扩展.md)。
 
-| 路径 | 层 | 说明 |
-|---|---|---|
-| `nonebot/app_core/` | domain / orchestration / infra | 业务内核，**不许 import nonebot** |
-| `nonebot/adapters/` | 适配 | 平台字段 → `InboundMessage`；只走门面 |
-| `nonebot/plugins/` | 平台胶水 | NoneBot 的 `on_message/on_command` |
-| `nonebot/companion_core/` | 门面包 | `EngineConfig` + `create_application` |
-| `ops/` | 运维/测试 | 每个脚本可独立跑 |
-| `docs/` | 文档 | 地图见 `docs/README.md`：01 定义与决策 / 02 系统与扩展 / 03 运维与通道 / 04 评测与实验 |
+## 3. 扩展入口
 
-分层规则由 `ops/lint-layers.py` 强制（详见 `docs/02-系统与扩展.md`）：
-
-- **domain**（`prompt` `pacing` `delivery` `intent` `mood_domain` …）只做纯规则，不碰 IO，不 import orchestration；
-- **orchestration**（`engine` `runner` `commands` `runtime` `chat` `scheduler` `proactive_runtime` …）负责编排；
-- **infra**（`paths` `config` `files` `kernel/*`）只提供基础设施。
-
-## 3. 加东西只走这五条路
-
-| 要加什么 | 改哪里 | 检查 |
-|---|---|---|
-| **业务模块** | `app_core/<name>.py`，docstring 首行标 `[domain]` 或 `[orchestration]` | `lint-layers` |
-| **通道** | 实现 `Channel` 三原语（`adapters/console.py` 是模板），用 `TurnRunner` | `test-runner` |
-| **命令** | `app_core/help.py` 登记 + 插件 handler；新通道用 `commands.default_registry` | `lint-plugins`（覆盖检查）+ `test-commands` |
-| **LLM 工具** | `TOOLS` 加 schema + `HANDLERS` 加实现（两处名字必须一致，模块加载会自检） | `smoke-all` |
-| **定时任务** | `scheduling/scheduler.py` 的 `JOBS` 加一行 + `_run_job` 分支 | `smoke-all` / `smoke-clock` |
-| **配置项** | `config.DEFAULTS` + `config.example.yaml` + `ops/config-ui.py` 键表 | `test-config-ui` |
+- 模块声明 `[domain]`、`[orchestration]` 或 `[infra]`。domain 只做纯规则，orchestration 编排流程，infra 提供基础设施。
+- 通道使用 `Channel` 和 `TurnRunner`。命令登记在 `app_core/help.py`，跨端走 `commands.default_registry`。
+- LLM 工具同时登记 `TOOLS` 和 `HANDLERS`。定时任务更新 `scheduling/scheduler.py` 的 `JOBS` 和 `_run_job`。
+- 配置同步 `config.DEFAULTS`、`config.example.yaml` 和 `ops/config-ui.py`。
 
 ## 4. 红线（lint 会拦，别绕）
 
@@ -90,6 +48,7 @@ ops/verify.sh                    # 全量
 - **测试**：新行为配一条 `check()`，放在对应的 `ops/test-*.py`；纯逻辑优先。
 - **文档**：改了对外行为/命令/配置，同步 `docs/` 对应页。
 - **决策**：改了 `docs/01-定义与决策.md` 里已记录的决策，必须在 CHANGELOG 写「为什么改」，否则会被当成默认值。
+- **交接看板（`HANDOFF.md`）**：凡改动代码、配置、文档或云端状态，收尾时通过本地 `workspace-memory` MCP 服务的 `checkpoint_put` 更新结构化状态（自动同步 `HANDOFF.md`）；未接入 MCP 时起草摘要经用户确认后更新 `HANDOFF.md`。
 
 文档规则的**唯一真相源**是 `docs/README.md` 的「约定 / 规则」两节（含机器检查项）；
 本文件只列必须留痕的动作，不复制规则正文。
@@ -105,26 +64,13 @@ ops/verify.sh                    # 全量
 | 引用回复默认关（`chat.quote_reply=false`） | `config.py` |
 | 分层不物理搬家，用 docstring 标记 + lint | `docs/02-系统与扩展.md` |
 
-## 7. 常见错误（AI 最容易犯）
+## 7. 测试约定
 
-- 在 `plugins/` 里直接 `import app_core.chat`——通过 `companion_core.shared_application()` 取得宿主实例。
-- 新建一个平行模块（`new_tools.py`）而不是注册进 `HANDLERS`。
-- 加工具只改 `TOOLS` 不改 `HANDLERS`（加载就抛错）。
-- 测完只跑一个脚本就说「全绿」——至少跑第 1 节的 8 条。
-- 把测试写死日期（`2026-11-06 09:00`）——必须从 `time.time()` 派生。
+时间相关测试以 `time.time()` 为基准构造数据。
 
-## 8. 设计判据（加东西之前）
+## 8. 新功能设计
 
-现行定义见 `docs/01-定义与决策.md`：**判断/克制是第一支柱，记忆是被调用的资源，主体可携带、可授权**。
-加任何功能前先回答五问：
-
-1. **会不会让「还是它」更稳？**（连续性）
-2. **换掉这块，用户能不能从别处轻易得到？** 能 → 接外部；不能 → 自研。
-3. **能不能完整带走？**（人格 / 记忆 / 关系状态可读、可 diff、可版本化）
-4. **失败时能否降级、说清、回滚？**（可审计）
-5. **会不会让表达污染事实，或让事实压过人？**（保留自 09）
-
-历史定义（记忆体 / 接住）的沿革见 `docs/01-定义与决策.md` §12，已归档，不再作判据。
+按[定义与决策](docs/01-定义与决策.md)的五问检查连续性、外部能力复用、迁移、审计回滚和事实准确性。
 
 ## 9. 排障入口
 

@@ -101,6 +101,20 @@ def audit_checks() -> None:
         check("审计：过期请求不执行",
               audit.decide("old", True, pending_path=pending, log_path=log) is None)
 
+    with tempfile.TemporaryDirectory(prefix="audit-conc-") as td_c:
+        from concurrent.futures import ThreadPoolExecutor
+
+        clog = Path(td_c) / "audit.jsonl"
+
+        def _write_one(i: int) -> None:
+            audit.record("note_write", target=f"item-{i}", path=clog)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(_write_one, range(16)))
+        crows = audit.recent(20, path=clog)
+        cok, cerrs = audit.verify_chain(crows)
+        check("审计：并发写入 16 条哈希链不断裂", len(crows) == 16 and cok, "; ".join(cerrs))
+
     check("授权门：默认关闭，旧行为不变",
           audit.requires_approval("note_write", cfg={"tools": {}}) is False)
     check("授权门：开启后只拦写类工具",
@@ -367,6 +381,22 @@ def wiring_checks() -> None:
           'on_command("approve", priority=5, block=True, permission=SUPERUSER)' in admin
           and 'on_command("audit", priority=5, block=True, permission=SUPERUSER)' in admin
           and '("approve",' in hp and '("audit",' in hp)
+    ns: dict = {}
+    exec(
+        "import re\n"
+        + next(line for line in admin.splitlines() if line.startswith("def _extract_arg("))
+        + "\n"
+        + "\n".join(admin.split("def _extract_arg(", 1)[1].splitlines()[1:4]),
+        ns,
+    )
+    ex_fn = ns["_extract_arg"]
+    check("admin 命令参数提取剥离 /approve 与 /profile_forget",
+          ex_fn("/approve a1b2c3d4", "/approve") == "a1b2c3d4"
+          and ex_fn("approve a1b2c3d4", "/approve") == "a1b2c3d4"
+          and ex_fn("/approve", "/approve") == ""
+          and ex_fn("/profile_forget 职业与求职", "/profile_forget") == "职业与求职")
+    check("审批重放把 images 传给 tools.execute",
+          "images=images, approved=True" in admin and "MessageSegment.image" in admin)
     check("新 app_core 模块已进 smoke-all 覆盖",
           "audit as audit_mod" in smoke
           and "proactive_channels as proactive_channels_mod" in smoke

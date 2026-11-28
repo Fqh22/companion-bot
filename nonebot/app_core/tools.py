@@ -285,13 +285,28 @@ async def execute(core, name: str, args: dict, images: list[str] | None = None,
                                 ensure_ascii=False) + "\n")
     except Exception:  # noqa: BLE001
         pass
+    def _before_snapshot(tool_name: str, tool_args: dict) -> str:
+        try:
+            if tool_name == "remind_cancel":
+                return remind.describe_pending()[:200]
+            if tool_name == "note_write":
+                title = str((tool_args or {}).get("title") or "").strip()
+                if title:
+                    hits = [n for n in learn.note_list() if title in n]
+                    return ("已存在：" + ", ".join(hits[:3]))[:200] if hits else "新笔记"
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
+
+    before = _before_snapshot(name, args) if side else ""
+
     def _log(status: str, after: str = "") -> None:
         if not side:
             return
         try:
             audit.record(name, target=audit.target_of(name, args),
                          actor=("owner" if approved else "model"),
-                         status=status, after=after)
+                         status=status, before=before, after=after)
         except Exception:  # noqa: BLE001
             pass
 

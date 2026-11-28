@@ -1,6 +1,7 @@
 """[orchestration] 网页学习：抓正文、清理、LLM 提炼要点。"""
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import json
 import re
@@ -39,6 +40,25 @@ _client = None
 _client_cls = None
 
 
+class _SafeBackend:
+    """在 TCP 建连前再次解析并直连已校验的公网 IP，消除 DNS Rebinding TOCTOU。"""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    async def connect_tcp(self, host: str, port: int, timeout=None,
+                          local_address=None, socket_options=None):
+        ips = await asyncio.to_thread(_resolve_global_ips, host, int(port))
+        if not ips:
+            raise PermissionError(f"SSRF blocked: {host}")
+        return await self._inner.connect_tcp(
+            ips[0], port, timeout=timeout,
+            local_address=local_address, socket_options=socket_options)
+
+
 def _http() -> httpx.AsyncClient:
     """共享的抓取客户端：省掉每次 web_open 的 TLS 握手（约 100–200ms）。
 
@@ -55,6 +75,11 @@ def _http() -> httpx.AsyncClient:
                       follow_redirects=False, headers={"User-Agent": UA},
                       limits=httpx.Limits(max_connections=4,
                                           max_keepalive_connections=2))
+        if cls is httpx.AsyncClient:
+            pool = getattr(getattr(_client, "_transport", None), "_pool", None)
+            backend = getattr(pool, "_network_backend", None) if pool is not None else None
+            if backend is not None and not isinstance(backend, _SafeBackend):
+                pool._network_backend = _SafeBackend(backend)
         _client_cls = cls
     return _client
 
@@ -167,6 +192,30 @@ async def search(query: str, count: int = 5) -> str:
     return "搜索结果：\n" + "\n\n".join(lines)
 
 
+def _resolve_global_ips(hostname: str, port: int) -> list[str]:
+    """解析域名并校验全部返回 IP 均为公网地址；任一不合法或异常返回空列表。"""
+    try:
+        infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
+    except Exception:
+        return []
+    if not infos:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for info in infos:
+        addr = str(info[4][0]).split("%")[0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return []
+        if not ip.is_global:
+            return []
+        if addr not in seen:
+            seen.add(addr)
+            out.append(addr)
+    return out
+
+
 def _safe(url: str) -> bool:
     """SSRF 防护：只允许公网 http(s)。
 
@@ -181,14 +230,21 @@ def _safe(url: str) -> bool:
         port = u.port or (443 if u.scheme == "https" else 80)
         if port not in SAFE_PORTS:
             return False
-        infos = socket.getaddrinfo(u.hostname, port, proto=socket.IPPROTO_TCP)
-        if not infos:
+        return bool(_resolve_global_ips(u.hostname, port))
+    except Exception:
+        return False
+
+
+async def _safe_async(url: str) -> bool:
+    """异步 SSRF 校验：把 DNS 解析放到线程池，避免慢 DNS 阻塞事件循环。"""
+    try:
+        u = urlparse(url)
+        if u.scheme not in ("http", "https") or not u.hostname:
             return False
-        for info in infos:
-            ip = ipaddress.ip_address(str(info[4][0]).split("%")[0])
-            if not ip.is_global:
-                return False
-        return True
+        port = u.port or (443 if u.scheme == "https" else 80)
+        if port not in SAFE_PORTS:
+            return False
+        return bool(await asyncio.to_thread(_resolve_global_ips, u.hostname, port))
     except Exception:
         return False
 
@@ -224,24 +280,27 @@ async def fetch(url: str) -> tuple[str, str, int]:
     c = _http()
     cur = url
     for hop in range(MAX_REDIRECTS + 1):
-        if not _safe(cur):
+        if not await _safe_async(cur):
             return "", cur, 403
-        async with c.stream("GET", cur) as r:
-            if r.status_code in (301, 302, 303, 307, 308):
-                if hop >= MAX_REDIRECTS:
-                    return "", str(r.url), 403
-                loc = r.headers.get("location") or ""
-                if not loc:
-                    return "", str(r.url), r.status_code
-                cur = urljoin(str(r.url), loc)
-                continue                      # 下一跳重新 _safe 后再发请求
-            buf = bytearray()
-            async for chunk in r.aiter_bytes():
-                buf.extend(chunk)
-                if len(buf) > MAX_BYTES:
-                    return "", str(r.url), 413
-            enc = r.encoding or "utf-8"
-            return bytes(buf).decode(enc, "replace"), str(r.url), r.status_code
+        try:
+            async with c.stream("GET", cur) as r:
+                if r.status_code in (301, 302, 303, 307, 308):
+                    if hop >= MAX_REDIRECTS:
+                        return "", str(r.url), 403
+                    loc = r.headers.get("location") or ""
+                    if not loc:
+                        return "", str(r.url), r.status_code
+                    cur = urljoin(str(r.url), loc)
+                    continue                      # 下一跳重新 _safe 后再发请求
+                buf = bytearray()
+                async for chunk in r.aiter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) > MAX_BYTES:
+                        return "", str(r.url), 413
+                enc = r.encoding or "utf-8"
+                return bytes(buf).decode(enc, "replace"), str(r.url), r.status_code
+        except PermissionError:
+            return "", cur, 403
     return "", cur, 403
 
 
@@ -249,7 +308,7 @@ async def web_open(core, url: str) -> str:
     url = (url or "").strip()
     if not re.match(r"^https?://", url, re.I):
         url = "https://" + url.lstrip("/")
-    if not _safe(url):
+    if not await _safe_async(url):
         return f"这个地址看起来不合法：{url[:80]}"
     try:
         html, final, status = await fetch(url)

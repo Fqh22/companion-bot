@@ -76,33 +76,65 @@ def _rows(path: Path) -> list[dict]:
     return out
 
 
+_LOG_LOCK = threading.Lock()
+
+
+def _last_row(path: Path) -> dict | None:
+    """从文件末尾读取最后一条合法 JSON 行，避免每次写入全表扫描。"""
+    if not path.exists():
+        return None
+    try:
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size <= 0:
+                return None
+            f.seek(max(0, size - 16384))
+            chunk = f.read().decode("utf-8", errors="replace")
+        for raw in reversed(chunk.splitlines()):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                r = json.loads(raw)
+                if isinstance(r, dict):
+                    return r
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    rows = _rows(path)
+    return rows[-1] if rows else None
+
+
 def record(action: str, *, target: str = "", actor: str = "model",
            status: str = "done", before: str = "", after: str = "",
            request_id: str = "", session: str = "", note: str = "",
            path: Path | None = None) -> dict:
     """追加一条审计记录。`status`: pending / done / approved / denied / expired / failed。"""
-    log = Path(path) if path else AUDIT_LOG
-    prev = _rows(log)
-    rec = {
-        "ts": time.time(),
-        "request_id": request_id or uuid.uuid4().hex[:12],
-        "action": action,
-        "target": str(target)[:120],
-        "actor": actor,
-        "status": status,
-        "before": str(before)[:200],
-        "after": str(after)[:200],
-        "note": str(note)[:120],
-        "session": str(session)[:60],
-        "revertible": action not in IRREVERSIBLE,
-        "prev_hash": _line_hash(prev[-1]) if prev else "",
-    }
-    try:
-        log.parent.mkdir(parents=True, exist_ok=True)
-        with log.open("a", encoding="utf-8") as f:
-            f.write(_dump(rec) + "\n")
-    except Exception:  # noqa: BLE001  审计失败不该让主流程挂掉
-        pass
+    log_path = Path(path) if path else AUDIT_LOG
+    with _LOG_LOCK:
+        prev = _last_row(log_path)
+        rec = {
+            "ts": time.time(),
+            "request_id": request_id or uuid.uuid4().hex[:12],
+            "action": action,
+            "target": str(target)[:120],
+            "actor": actor,
+            "status": status,
+            "before": str(before)[:200],
+            "after": str(after)[:200],
+            "note": str(note)[:120],
+            "session": str(session)[:60],
+            "revertible": action not in IRREVERSIBLE,
+            "prev_hash": _line_hash(prev) if prev else "",
+        }
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as f:
+                f.write(_dump(rec) + "\n")
+        except Exception:  # noqa: BLE001  审计失败不该让主流程挂掉
+            pass
     return rec
 
 

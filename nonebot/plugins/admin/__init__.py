@@ -1,10 +1,13 @@
 """admin 插件：基础命令。"""
 from __future__ import annotations
 
+import asyncio
+import re
 from datetime import datetime
+from pathlib import Path
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import MessageEvent
+from nonebot.adapters.onebot.v11 import MessageEvent, MessageSegment
 from nonebot.permission import SUPERUSER
 
 from companion_core import shared_application
@@ -23,6 +26,11 @@ approve_cmd = on_command("approve", priority=5, block=True, permission=SUPERUSER
 audit_cmd = on_command("audit", priority=5, block=True, permission=SUPERUSER)
 
 
+def _extract_arg(raw: str, cmd: str) -> str:
+    name = cmd.lstrip("/／")
+    return re.sub(rf"^[/／]?{re.escape(name)}(?:\s+|$)", "", (raw or "").strip(), count=1).strip()
+
+
 def _arg(event: MessageEvent, cmd: str) -> str:
     """命令后面那一截参数。
 
@@ -33,7 +41,7 @@ def _arg(event: MessageEvent, cmd: str) -> str:
     于是这条命令永远只会回「用法：…」或「没有这个字段」。参数一律从 handler 的
     event 拿，别去猜当前事件。
     """
-    return (event.get_plaintext() or "").replace(cmd, "", 1).strip()
+    return _extract_arg(event.get_plaintext() or "", cmd)
 
 
 @approve_cmd.handle()
@@ -43,14 +51,21 @@ async def _approve(event: MessageEvent):
     只认 10 分钟内的请求；过期 / 已处理 / 编的 id 一律不执行。
     """
 
-    rid = _arg(event, "approve").strip().split()[0] if _arg(event, "approve").strip() else ""
+    arg = _arg(event, "/approve")
+    rid = arg.split()[0] if arg else ""
     if not rid:
         await approve_cmd.finish("用法：/approve <id>（/audit 看最近的记录）")
     item = core.audit.decide(rid, True, by="owner")
     if not item:
         await approve_cmd.finish("没有这个待授权请求（可能已过期或已处理）。")
+    images: list[str] = []
     out = await core.tools.execute(core, str(item["name"]),
-                              dict(item.get("args") or {}), approved=True)
+                                 dict(item.get("args") or {}), images=images, approved=True)
+    for img in images:
+        p = Path(img)
+        if p.exists():
+            data = await asyncio.to_thread(core.meme.payload, str(p))
+            await approve_cmd.send(MessageSegment.image(data))
     await approve_cmd.finish(f"已批准并执行：{item['name']}\n{out[:200]}")
 
 

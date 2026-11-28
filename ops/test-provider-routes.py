@@ -67,14 +67,14 @@ async def main() -> int:
     transport = httpx.MockTransport(handle)
     async_client = httpx.AsyncClient
     async with async_client(transport=transport) as http:
-        with patch.object(llm.keys, "get", side_effect=lambda k: "fixture-" + k), patch.object(llm, "_http", return_value=http):
+        with patch.object(llm.keys, "get", side_effect=lambda k: "fx-" + k), patch.object(llm, "_http", return_value=http):
             text = []
 
             async def receive(delta):
                 text.append(delta)
 
             out = await legacy.stream(messages, tools, receive)
-            check("DeepSeek 请求字段逐项兼容", calls[-1] == (DEEPSEEK_CHAT, "Bearer fixture-deepseek", {
+            check("DeepSeek 请求字段逐项兼容", calls[-1] == (DEEPSEEK_CHAT, "Bearer fx-deepseek", {
                 "model": "chat-model", "messages": messages, "temperature": 1.15,
                 "max_tokens": 1000, "thinking": {"type": "enabled"}, "stream": True,
                 "stream_options": {"include_usage": True}, "tools": tools}))
@@ -82,18 +82,18 @@ async def main() -> int:
                   and out["tool_calls"][0]["function"] == {"name": "search", "arguments": "{}"})
             await legacy.summarize(messages, json_mode=True)
             check("旧总结端点、凭证、关闭思考与 JSON 模式保持一致", calls[-1] == (
-                DEEPSEEK_CHAT, "Bearer fixture-deepseek", {"model": "summary-model", "messages": messages,
+                DEEPSEEK_CHAT, "Bearer fx-deepseek", {"model": "summary-model", "messages": messages,
                 "temperature": 1.15, "max_tokens": 700, "thinking": {"type": "disabled"},
                 "response_format": {"type": "json_object"}}))
             alt = client(current, summary)
             await alt.stream(messages, tools)
             api, auth, fields = calls[-1]
-            check("兼容模型走独立端点与凭证，过滤 DeepSeek 专用字段", (api, auth) == (current.api, "Bearer fixture-chat")
+            check("兼容模型走独立端点与凭证，过滤 DeepSeek 专用字段", (api, auth) == (current.api, "Bearer fx-chat")
                   and fields["messages"] == [{"role": "assistant", "content": "已查"}]
                   and not {"thinking", "stream_options"} & fields.keys())
             result = await alt.summarize(messages, json_mode=True)
             check("总结走独立地址和凭证，保留 JSON 输出", json.loads(result) == {"ok": True}
-                  and calls[-1][:2] == (summary.api, "Bearer fixture-summary")
+                  and calls[-1][:2] == (summary.api, "Bearer fx-summary")
                   and calls[-1][2]["response_format"] == {"type": "json_object"})
 
         services = {name: {"api": f"https://media.invalid/{path}", "key_ref": name}
@@ -101,7 +101,7 @@ async def main() -> int:
                                        ("tts_deepseek", "speak"), ("speech_rewrite", "rewrite"))}
         validate_services(services)
         check("语音及 OCR 默认服务沿用原凭证", service_route("asr").key_ref == service_route("ocr").key_ref == "deepseek")
-        with patch.object(llm.keys, "get", side_effect=lambda k: "fixture-" + k), patch.object(
+        with patch.object(llm.keys, "get", side_effect=lambda k: "fx-" + k), patch.object(
                 config, "load", return_value={"provider_routes": services}), patch.object(
                 httpx, "AsyncClient", side_effect=lambda *a, **kw: async_client(transport=transport, **kw)), patch.object(
                 asr, "duration", return_value=1), patch.object(tts, "REWRITE", True):
@@ -112,8 +112,8 @@ async def main() -> int:
                   and await ocr.ocr_text(media) == "测试文字" and len(await tts._pcm_deepseek("测试")) == 2000
                   and json.loads(await tts.spoken_script("测试")) == {"ok": True})
             check("外围服务凭证只发给各自端点", [(api.split("/")[-1], auth) for api, auth, _ in calls[-5:]] == [
-                ("search", "Bearer fixture-search"), ("asr", "Bearer fixture-asr"), ("ocr", "Bearer fixture-ocr"),
-                ("speak", "Bearer fixture-tts_deepseek"), ("rewrite", "Bearer fixture-speech_rewrite")])
+                ("search", "Bearer fx-search"), ("asr", "Bearer fx-asr"), ("ocr", "Bearer fx-ocr"),
+                ("speak", "Bearer fx-tts_deepseek"), ("rewrite", "Bearer fx-speech_rewrite")])
     return report()
 
 

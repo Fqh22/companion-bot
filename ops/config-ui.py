@@ -61,8 +61,8 @@ COOKIE = "cui"
 
 # ---------------------------------------------------------------- schema ----
 GROUP_META = {
-    "admin": ("管理员", "主人身份；留空会让所有人被当成本人。"),
-    "llm": ("对话模型", "回复用的模型、温度、工具轮数与 45 秒硬线。"),
+    "admin": ("管理员", "主人身份；留空则无主人身份，所有会话按普通用户处理。"),
+    "llm": ("对话模型", "回复用的模型、温度、工具轮数与回复时限。"),
     "provider_routes": ("供应商入口", "为搜索、识别与语音设置独立端点和凭证引用。"),
     "summary": ("总结模型", "记忆总结 / 复盘 / 周报 / 日记；长 JSON 建议用 chat。"),
     "embedding": ("向量模型", "记忆召回用的 embedding 服务。"),
@@ -81,7 +81,7 @@ GROUP_META = {
 
 # id -> (label, description, extra)
 F = {
-    "admin.user_id": ("管理员 QQ", "你的 QQ 号。留空或 0 会让所有人被当成本人；启动自检会报警。", {"required": False}),
+    "admin.user_id": ("管理员 QQ", "你的 QQ 号。留空或 0 则无主人身份，所有会话按普通用户处理；启动自检会报警。", {"required": False}),
     "llm.protocol": ("对话协议", "留空沿用旧配置，或选择 deepseek、openai_compatible。", {"required": False}),
     "llm.key_ref": ("对话凭证引用", "keys.json 中的字段名。", {"required": False}),
     "summary.api": ("总结 API", "单独配置总结端点。", {"required": False}),
@@ -125,7 +125,7 @@ F = {
     "tools.total_timeout_seconds": ("工具总预算", "一轮回复里所有工具调用的总上限；会被首字预算压小。", {"min": 10, "max": 900}),
     "tools.require_approval": ("写操作授权门", "开启后写类工具需主人 /approve <id> 批准才执行；默认关。", {}),
     "proactive.channel": ("主动消息通道", "默认 qq；feishu 需飞书启用且有会话映射，发不出去会回退 QQ。", {"options": ["qq", "feishu"]}),
-    "context.history_max_chars": ("历史字符预算", "没有纪要时自动放宽到 4000。", {"min": 500, "max": 20000}),
+    "context.history_max_chars": ("历史字符预算", "默认 6000，留足连续深聊上下文。", {"min": 500, "max": 20000}),
     "context.history_max_items": ("历史条数", "最多取最近多少条消息。", {"min": 5, "max": 200}),
     "context.history_item_max_chars": ("单条消息上限", "防止一条 8000 字文件反复塞回 prompt。", {"min": 100, "max": 5000}),
     "context.recall_query_items": ("召回拼接条数", "召回 query 额外拼最近几条用户消息。", {"min": 1, "max": 10}),
@@ -194,7 +194,7 @@ BASIC_FIELDS = {
 
 # 高风险项：改错会让机器人哑掉、记忆不写、或者群消息越界。
 HIGH_RISK = {
-    "admin.user_id": "留空会让所有私聊都被当成本人（可用全部工具、读已有记忆）。",
+    "admin.user_id": "留空或 0 则无主人身份，所有私聊按普通用户处理（无私有记忆、无写工具、不发主动消息）。",
     "llm.api": "地址写错，所有对话直接失败。",
     "llm.model": "模型名写错，所有对话直接失败。",
     "summary.model": "总结模型写错，记忆会静默不写入。",

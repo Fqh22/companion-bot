@@ -13,12 +13,47 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-from app_core.web import clean_summary  # noqa: E402
+from app_core.web import _SafeBackend, _safe_async, clean_summary  # noqa: E402
 
 from harness import check, report  # noqa: E402
 
 
+async def _ssrf_checks() -> None:
+    import asyncio
+    import socket
+    from unittest.mock import patch
+
+    check("异步 SSRF 挡内网与元数据",
+          not await _safe_async("http://10.0.0.1/x")
+          and not await _safe_async("http://169.254.169.254/latest/"))
+
+    seen_hosts: list[str] = []
+
+    class _FakeBackend:
+        async def connect_tcp(self, host, port, timeout=None, local_address=None, socket_options=None):
+            seen_hosts.append(host)
+            return "ok"
+
+    pub_ip = ".".join(("93", "184", "216", "34"))
+    seq = iter([
+        [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (pub_ip, 443))],
+        [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))],
+    ])
+
+    backend = _SafeBackend(_FakeBackend())
+    with patch("socket.getaddrinfo", side_effect=lambda *a, **k: next(seq)):
+        res = await backend.connect_tcp("rebind.example", 443)
+        check("建连直连已校验公网 IP", res == "ok" and seen_hosts == [pub_ip], str(seen_hosts))
+        blocked = False
+        try:
+            await backend.connect_tcp("rebind.example", 443)
+        except PermissionError:
+            blocked = True
+        check("DNS Rebinding 切回环地址时被拦截", blocked)
+
+
 def main() -> None:
+    import asyncio
     title = "AI人才市場發生哪些變化？報告：從做AI走向用AI"
     raw = "# AI人才市場發生哪些變化？報告：從做AI走向用AI 2026年09月28日13:59 | 來源：人民網222 ..."
     out = clean_summary(raw, title)
@@ -36,6 +71,7 @@ def main() -> None:
     long = "字" * 400
     check("截断到 240", len(clean_summary(long)) == 240, str(len(clean_summary(long))))
 
+    asyncio.run(_ssrf_checks())
     return report()
 
 
