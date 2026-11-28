@@ -87,7 +87,7 @@ summary:
   # （真正原因是思考模式吃掉了输出预算，关掉思考后截断率会明显下降，
   #   但 summary 仍保留 chat + 重试兜底。注：deepseek-chat 目前实际路由到 flash。）
   model: deepseek-chat
-  max_tokens: 700
+  max_tokens: 1600
   retry_model: deepseek-chat
   thinking: false
 
@@ -149,9 +149,8 @@ proactive:
   channel: "qq"
 
 context:
-  # 历史对话的字符预算。6000 时占满载 prompt 的 57%，是最大头。
-  # 降到 4000 能省约 1/4 输入，仍够容纳 30–50 条短消息。
-  history_max_chars: 2500
+  # 历史对话的字符预算。留足连续深聊上下文，配合稳定前缀缓存降低成本。
+  history_max_chars: 6000
   history_max_items: 40       # 条数上限，防止短句刷屏
   # 单条消息上限。文件正文只在当前轮给全文，入库的是摘要；
   # 但老数据里可能还有超长条目，读历史时再兜一层。

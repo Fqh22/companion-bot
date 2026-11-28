@@ -91,7 +91,7 @@ class GroupCore:
             DB, api=self.api, model=self.model, temperature=self.temperature,
             max_tokens=self.reply_max_tokens, thinking=False,
             summary_model=summ.get("model") or "deepseek-chat",
-            summary_max=int(summ.get("max_tokens", 700)),
+            summary_max=int(summ.get("max_tokens", 1600)),
             summary_retry=summ.get("retry_model") or "",
             summary_thinking=False, route=route, summary_route=summary_route)
 

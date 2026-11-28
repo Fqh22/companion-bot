@@ -713,7 +713,7 @@ async def main() -> None:
     # ---------- E2. 滚动纪要 ----------
     dg = await core.get_digest(session)
     check("总结后生成滚动纪要", bool(dg) and "纪要" in dg, (dg or "")[:30])
-    check("历史预算已降到 2500", core.history_max_chars == 2500, str(core.history_max_chars))
+    check("历史预算默认 6000", core.history_max_chars == 6000, str(core.history_max_chars))
     m_with = core.build_messages([{"role": "user", "content": "x"}], "y", digest=dg)
     # 前缀里多了时效规则，位置不再固定；按内容找，别按索引数
     check("纪要在历史之前注入",

@@ -94,7 +94,7 @@ DEFAULTS = {
         "protocol": "",
         "key_ref": "",
         "model": "deepseek-chat",
-        "max_tokens": 700,
+        "max_tokens": 1600,
         "retry_model": "deepseek-chat",
         # 结构化 JSON 输出不需要思维链，关掉更稳更快，也不会被推理吃掉输出预算
         "thinking": False,
@@ -180,7 +180,7 @@ DEFAULTS = {
         "channel": "qq",
     },
     "context": {
-        "history_max_chars": 2500,
+        "history_max_chars": 6000,
         "history_max_items": 40,
         "history_item_max_chars": 1500,
         "recall_query_items": 2,

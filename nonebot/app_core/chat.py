@@ -178,7 +178,7 @@ class ChatCore(HistoryMixin, SummaryMixin, ReplyMixin, ChatTurnMixin):
         self.temperature = float(llm.get("temperature", 1.15))
         self.max_tokens = int(llm.get("max_tokens", MAX_TOKENS))
         self.summary_model = summ.get("model") or "deepseek-chat"
-        self.summary_max = int(summ.get("max_tokens", 700))
+        self.summary_max = int(summ.get("max_tokens", 1600))
         self.summary_retry = summ.get("retry_model") or self.summary_model
         self.summary_thinking = bool(summ.get("thinking", False))
         self.llm_thinking = bool(llm.get("thinking", False))
